@@ -1,0 +1,180 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withReader('UTF-8') { reader ->
+        localProperties.load(reader)
+    }
+}
+
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+if (flutterVersionCode == null) {
+    flutterVersionCode = '1'
+}
+
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+if (flutterVersionName == null) {
+    flutterVersionName = '1.0'
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace "io.cylonix.sase"
+    compileSdkVersion 34
+    ndkVersion "25.1.8937393"
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    lintOptions {
+        checkReleaseBuilds false
+    }
+
+    defaultConfig {
+        applicationId "io.cylonix.sase"
+        minSdkVersion 26
+        targetSdkVersion 34
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+    }
+
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+            storePassword keystoreProperties['storePassword']
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.release
+        }
+        release {
+            // TODO: Add your own signing config for the release build.
+            // Signing with the debug keys for now, so `flutter run --release` works.
+            signingConfig signingConfigs.release
+            //signingConfig signingConfigs.debug
+            // Close obfuscation
+            minifyEnabled false // Delete useless code
+            shrinkResources false // Delete useless resources
+            //useProguard true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    flavorDimensions "version"
+    productFlavors {
+        net {
+            // Network only version. No meet, no remote desktop, et al.
+            // Assigns this product flavor to the "version" flavor dimension.
+            // If you are using only one dimension, this property is optional,
+            // and the plugin automatically assigns all the module's flavors to
+            // that dimension.
+            dimension "version"
+            applicationIdSuffix ".net"
+            versionNameSuffix "-net"
+        }
+        full {
+            dimension "version"
+            //applicationIdSuffix ".full"
+            versionNameSuffix "-full"
+        }
+    }
+    sourceSets {
+        net {
+            java.srcDirs = ['src/net/kotlin/io/cylonix/sase']
+            res.srcDirs = ['src/net/res']
+            manifest.srcFile 'src/net/AndroidManifest.xml'
+        }
+        full {
+            java.srcDirs = ['src/net/kotlin/io/cylonix/sase']
+            res.srcDirs = ['src/net/res']
+            manifest.srcFile 'src/full/AndroidManifest.xml'
+        }
+    }
+    packagingOptions {
+    }
+
+    aaptOptions {
+        additionalParameters =["--warn-manifest-validation"]
+    }
+
+    // https://pub.dev/packages/flutter_local_notifications#gradle-setup
+    compileOptions {
+        // Flag to enable support for the new language APIs
+        coreLibraryDesugaringEnabled true
+        // Sets Java compatibility to Java 17
+        sourceCompatibility 17
+        targetCompatibility 17
+    }
+
+    kotlinOptions {
+        jvmTarget = 17
+    }
+
+    buildFeatures {
+        //compose = true
+        buildConfig = true
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+dependencies {
+    implementation "androidx.browser:browser:1.2.0"
+	implementation "androidx.security:security-crypto:1.1.0-alpha03"
+    netImplementation ':ipn@aar'
+    fullImplementation ':ipn@aar'
+    netImplementation ':ipn_app@aar'
+    fullImplementation ':ipn_app@aar'
+
+    implementation "androidx.work:work-runtime:2.9.0"
+
+    def activity_version = "1.9.3"
+    implementation "androidx.activity:activity:$activity_version"
+    implementation "androidx.activity:activity-ktx:$activity_version"
+    implementation "androidx.fragment:fragment-ktx:1.8.5"
+
+    // Compose dependencies.
+    def composeBom = platform('androidx.compose:compose-bom:2024.06.00')
+    implementation composeBom
+    implementation 'androidx.compose.material3:material3:1.2.1'
+    implementation 'androidx.compose.material:material-icons-core:1.6.8'
+    implementation "androidx.compose.ui:ui:1.6.8"
+    implementation "androidx.compose.ui:ui-tooling:1.6.8"
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3'
+    implementation 'androidx.activity:activity-compose:1.9.0'
+    implementation "com.google.accompanist:accompanist-permissions:0.34.0"
+    implementation "com.google.accompanist:accompanist-systemuicontroller:0.34.0"
+    implementation "androidx.core:core-splashscreen:1.1.0-rc01"
+
+    // Kotlin dependencies.
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
+    implementation 'junit:junit:4.13.2'
+    runtimeOnly "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.23"
+    implementation "org.jetbrains.kotlin:kotlin-reflect:1.9.23"
+
+    // https://pub.dev/packages/flutter_local_notifications#gradle-setup
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
+}

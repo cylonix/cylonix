@@ -1,0 +1,12 @@
+[submodule "tailscale"]
+	path = tailscale
+	url = git@github.com:cylonix/tailscale.git
+	branch = cylonix
+[submodule "tailscale-android"]
+	path = tailscale-android
+	url = git@github.com:cylonix/tailscale-android.git
+	branch = main
+[submodule "wireguard-apple"]
+	path = wireguard-apple
+	url = git@github.com:cylonix/wireguard-apple.git
+	branch = cylonix2

@@ -1,0 +1,8 @@
+# App name
+app_name: ${APP_NAME}
+
+# If to force AR glasses UI
+enable_ar: ${ENABLE_AR}
+
+# If to force TV UI
+enable_tv: ${ENABLE_TV}

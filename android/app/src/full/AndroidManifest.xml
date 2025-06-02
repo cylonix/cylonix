@@ -1,0 +1,121 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.BLUETOOTH"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-feature android:name="android.software.leanback"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen"
+              android:required="false" />
+	<queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+    <application
+        tools:replace="android:allowBackup, android:icon, android:label, android:name, anroid:theme"
+        android:name=".App"
+        android:allowBackup="false"
+        android:hasFragileUserData="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/LaunchTheme"
+		>
+        <service
+            tools:replace="android:exported"
+            android:name="org.jitsi.meet.sdk.ConnectionService"
+            android:exported="false"
+            tools:node="merge" />
+        <activity
+            tools:replace="anroid:theme"
+            android:name=".MainActivity"
+            android:launchMode="singleTask"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:resizeableActivity="true"
+            android:exported="true">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <!-- Displays an Android View that continues showing the launch screen
+                 Drawable until Flutter paints its first frame, then this splash
+                 screen fades out. A splash screen is useful to avoid any visual
+                 gap between the end of Android's launch screen and the painting of
+                 Flutter's first frame. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.SplashScreenDrawable"
+              android:resource="@drawable/launch_background"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+				<action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+			</intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2"
+			/>
+	    <service android:name=".IPNService"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted"
+			android:permission="android.permission.BIND_VPN_SERVICE">
+			<intent-filter>
+				<action android:name="android.net.VpnService"/>
+			</intent-filter>
+		</service>
+		<service
+			android:name=".QuickToggleService"
+			android:icon="@mipmap/ic_launcher"
+			android:label="@string/tile_name"
+            android:exported="false"
+			android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+		    <intent-filter>
+			    <action android:name="android.service.quicksettings.action.QS_TILE"/>
+		    </intent-filter>
+	    </service>
+        <profileable android:shell="true"/>
+    </application>
+</manifest>

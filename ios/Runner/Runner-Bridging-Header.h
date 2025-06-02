@@ -1,0 +1,5 @@
+#import "GeneratedPluginRegistrant.h"
+#include "../../wireguard-apple/Sources/WireGuardKitC/WireGuardKitC.h"
+#include "../../wireguard-apple/Sources/WireGuardKitGo/wireguard.h"
+#include "wireguard-go-version.h"
+#include "../../wireguard-apple/Sources/Shared/Logging/ringlogger.h"
