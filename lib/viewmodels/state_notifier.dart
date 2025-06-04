@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/const.dart';
 
 //import 'package:sase_app_ui/utils/logger.dart';
 //final _logger = Logger(tag: 'StateNotifier');
@@ -103,9 +104,14 @@ final controlURLProvider =
   final prefs = ref.watch(sharedPreferencesProvider).value;
   return PreferenceNotifier(
     'control_url',
-    defaultValue: 'https://manage.cylonix.io',
+    defaultValue: cylonixURL,
     prefs: prefs,
   );
+});
+
+final isCylonixControllerProvider = Provider<bool>((ref) {
+  final controller = ref.watch(controlURLProvider);
+  return controller == cylonixURL;
 });
 
 final alwaysUseDerpProvider =
@@ -123,6 +129,16 @@ final showDevicesProvider =
   final prefs = ref.watch(sharedPreferencesProvider).value;
   return PreferenceNotifier(
     'show_devices',
+    defaultValue: false,
+    prefs: prefs,
+  );
+});
+
+final introViewedProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'intro_viewed',
     defaultValue: false,
     prefs: prefs,
   );

@@ -58,11 +58,15 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     return isApple() ? const TextStyle(fontSize: 13) : null;
   }
 
+  bool get _isIpad {
+    return Platform.isIOS && (MediaQuery.of(context).size.shortestSide >= 600);
+  }
+
   Widget _appleIcon(IconData icon) {
     return Icon(
       icon,
       color: CupertinoColors.activeBlue,
-      size: 16,
+      size: _isIpad ? 24 : 16,
     );
   }
 
@@ -73,7 +77,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
 
     final labelStyle = TextStyle(
       color: CupertinoColors.label.resolveFrom(context),
-      fontSize: 14,
+      fontSize: _isIpad ? 16 : 14,
       fontWeight: FontWeight.w500,
     );
 
@@ -81,10 +85,10 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
       return CupertinoButton(
         onPressed: onTap,
         sizeStyle: CupertinoButtonSize.small,
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(vertical: _isIpad ? 16 : 8),
         child: Row(children: [
           leading,
-          const SizedBox(width: 8),
+          SizedBox(width: _isIpad ? 16 : 8),
           Flexible(
             child: Text(title, style: labelStyle),
           ),
@@ -94,15 +98,16 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
 
     return Container(
       width: 300,
-      color: CupertinoColors.systemFill,
+      color:
+          CupertinoColors.tertiarySystemGroupedBackground.resolveFrom(context),
       child: ListView(
         padding: EdgeInsets.only(
-          left: Platform.isIOS ? 64 : 32,
-          top: Platform.isMacOS ? 32 : 0,
+          left: Platform.isIOS && !_isIpad ? 64 : 32,
+          top: Platform.isMacOS || _isIpad ? 32 : 0,
         ),
         children: [
           _buildLeading(context, user),
-          if (Platform.isMacOS) ...[
+          if (Platform.isMacOS || _isIpad) ...[
             const SizedBox(height: 32),
             const Text(
               "Navigation",
@@ -239,9 +244,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
                 color: _getHealthColor(health),
                 shape: BoxShape.circle,
               ),
-              constraints: const BoxConstraints(
-                minWidth: 12,
-                minHeight: 12,
+              constraints: BoxConstraints(
+                maxWidth: _isIpad ? 12 : 8,
+                maxHeight: _isIpad ? 12 : 8,
               ),
             ),
           ),
@@ -294,7 +299,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(height: Platform.isIOS ? 16 : 32),
+        SizedBox(height: Platform.isIOS && !_isIpad ? 16 : 32),
         // Avatar and name
         GestureDetector(
           onTap: widget.onNavigateToUserSwitcher,

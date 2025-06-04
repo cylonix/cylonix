@@ -25,6 +25,7 @@
 .pub-cache/
 .pub/
 /build/
+devtools_options.yaml
 
 # Web related
 lib/generated_plugin_registrant.dart

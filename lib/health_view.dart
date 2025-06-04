@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
 import 'utils/utils.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 
 class HealthView extends ConsumerWidget {
@@ -24,8 +25,12 @@ class HealthView extends ConsumerWidget {
 
   Widget _buildApple(BuildContext context, WidgetRef ref) {
     return CupertinoPageScaffold(
+      backgroundColor:
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+        backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         leading: onNavigateBack != null
@@ -157,16 +162,16 @@ class HealthWarningList extends ConsumerWidget {
   }
 }
 
-class _HealthWarningTile extends StatelessWidget {
+class _HealthWarningTile extends ConsumerWidget {
   final UnhealthyState warning;
   final LoginProfile? user;
 
   const _HealthWarningTile({required this.warning, this.user});
 
   @override
-  Widget build(BuildContext context) {
-    final isCylonixController =
-        user?.controlURL.contains("cylonix.io") ?? false;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isCylonixController = ref.watch(isCylonixControllerProvider);
+    final isUserWithCylonixController = user?.controlURL.contains("cylonix.io");
     if (isApple()) {
       return CupertinoListTile(
         padding: const EdgeInsets.all(8),
@@ -186,7 +191,9 @@ class _HealthWarningTile extends StatelessWidget {
                   ),
         backgroundColor: _getBackgroundColor(context),
         title: Text(
-          warning.title,
+          isUserWithCylonixController ?? isCylonixController
+              ? warning.title.replaceAll("Tailscale", "Cylonix")
+              : warning.title,
           style: CupertinoTheme.of(context)
               .textTheme
               .textStyle
@@ -195,7 +202,7 @@ class _HealthWarningTile extends StatelessWidget {
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
           child: Text(
-            isCylonixController
+            isUserWithCylonixController ?? isCylonixController
                 ? warning.text.replaceAll("Tailscale", "Cylonix")
                 : warning.text,
             style: CupertinoTheme.of(context)

@@ -1,3 +1,4 @@
+import 'package:cylonix/widgets/adaptive_widgets.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'about_view.dart';
 import 'custom_login_view.dart';
 import 'exit_node_picker.dart';
 import 'health_view.dart';
+import 'intro_page.dart';
 import 'main_view.dart';
 import 'models/ipn.dart';
 import 'peer_details_view.dart';
@@ -15,6 +17,7 @@ import 'utils/applog.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'user_switcher_view.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/main_navigation_rail.dart';
 
@@ -45,7 +48,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     } catch (e) {
       _logger.e("Failed to initialize logger: $e");
       if (mounted) {
-        showAlertDialog(
+        await showAlertDialog(
           context,
           "Error",
           "Failed to initialize logger: $e",
@@ -222,7 +225,35 @@ class _HomePageState extends ConsumerState<HomePage> {
     });
   }
 
-  Widget get _body {
+  @override
+  Widget build(BuildContext context) {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.when(
+      data: (prefs) {
+        final introViewed = ref.watch(introViewedProvider);
+        if (!introViewed) {
+          return _makePage(const IntroPage());
+        }
+        return _mainPage;
+      },
+      loading: () {
+        _logger.d("Waiting for SharedPreferences to be ready");
+        return const Center(child: AdaptiveLoadingWidget());
+      },
+      error: (error, stack) {
+        _logger.e("Error loading SharedPreferences: $error");
+        return _makePage(
+          Center(
+            child: AdaptiveErrorWidget(
+              error: error.toString(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget get _mainPage {
     if (!useNavigationRail(context)) {
       if (_page.value == Page.settings.value) {
         return _settingsView;
@@ -257,15 +288,14 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _makePage(Widget body) {
     if (isApple()) {
       return CupertinoPageScaffold(
-        child: _body,
+        child: body,
       );
     }
     return Scaffold(
-      body: _body,
+      body: body,
     );
   }
 }

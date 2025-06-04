@@ -129,8 +129,12 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   Widget _buildCupertinoScaffold(BuildContext context, List<LoginProfile> users,
       {bool loading = false}) {
     return CupertinoPageScaffold(
+      backgroundColor:
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+        backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "UserSwitcherView",
@@ -644,7 +648,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     }
   }
 
-  void _showProfilesData() {
+  void _showProfilesData() async {
     final profiles =
         ref.read(ipnStateNotifierProvider).valueOrNull?.loginProfiles;
     if (profiles == null || profiles.isEmpty) {
@@ -657,7 +661,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         profiles.map((p) => encoder.convert(p.toJson())).toList();
 
     if (isApple()) {
-      showCupertinoModalPopup(
+      await showCupertinoModalPopup(
         context: context,
         builder: (_) => AdaptiveModalPopup(
           child: Column(
@@ -688,7 +692,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         ),
       );
     } else {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Profiles Data'),

@@ -18,15 +18,15 @@ bool isXLargeScreen(BuildContext context) {
 }
 
 bool isLargeScreen(BuildContext context) {
-  return MediaQuery.of(context).size.width > 960.0;
+  return MediaQuery.of(context).size.width >= 960.0;
 }
 
 bool isMediumScreen(BuildContext context) {
-  return MediaQuery.of(context).size.width > 640.0;
+  return MediaQuery.of(context).size.width >= 640.0;
 }
 
 bool useNavigationRail(BuildContext context) {
-  return isMediumScreen(context);
+  return MediaQuery.of(context).size.width >= 800.0;
 }
 
 bool isInPortraitMode(BuildContext context) {

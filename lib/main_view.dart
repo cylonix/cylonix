@@ -44,7 +44,6 @@ class _MainViewState extends ConsumerState<MainView> {
   Timer? _autoLaunchTimer;
   String? _urlLaunched;
   bool _waitingForURL = false;
-  bool _retrying = false;
 
   @override
   void dispose() {
@@ -289,49 +288,59 @@ class _MainViewState extends ConsumerState<MainView> {
       case BackendState.running:
         break;
       case BackendState.starting:
-        return _buildConnectingView(context, true);
+        return _buildCenteredWidget(_buildConnectingView(context, true));
       default:
         return Padding(
           padding: const EdgeInsets.all(16),
-          child: _buildConnectView(context, ref),
+          child: _buildCenteredWidget(_buildConnectView(context, ref)),
         );
     }
 
-    if (!showDevices) {
-      return Column(
-        spacing: 16,
-        children: [
-          ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
-          if (!useNavigationRail(context)) ...[
-            _buildToggleDeviceViewButton(context, ref),
-          ],
-          const Expanded(child: Center(child: HealthStateWidget())),
-        ],
-      );
-    }
-
-    return Column(
-      children: [
-        if (isApple())
-          _buildExpiryNotification(context, netmap, ref)
-        else
-          _buildMaterialExpiryNotification(context, netmap, ref),
-        ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
-        if (!useNavigationRail(context)) ...[
-          _buildToggleDeviceViewButton(context, ref),
-        ],
-        Expanded(
-          child: PeerList(
-            onPeerTap: widget.onNavigateToPeerDetails,
-          ),
-        ),
-      ],
+    final child = !showDevices
+        ? Column(
+            spacing: 16,
+            children: [
+              ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
+              if (!useNavigationRail(context)) ...[
+                _buildToggleDeviceViewButton(context, ref),
+              ],
+              Expanded(
+                child: _buildCenteredWidget(const HealthStateWidget()),
+              ),
+            ],
+          )
+        : Column(
+            children: [
+              if (isApple())
+                _buildExpiryNotification(context, netmap, ref)
+              else
+                _buildMaterialExpiryNotification(context, netmap, ref),
+              ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
+              if (!useNavigationRail(context)) ...[
+                _buildToggleDeviceViewButton(context, ref),
+              ],
+              Expanded(
+                child: PeerList(
+                  onPeerTap: widget.onNavigateToPeerDetails,
+                ),
+              ),
+            ],
+          );
+    return Container(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: child,
+      ),
     );
   }
 
   Widget _buildCupertinoScaffold(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+      backgroundColor:
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
       appBar: _buildCupertinoHeader(context, ref),
       body: _buildContent(context, ref),
     );
@@ -347,7 +356,7 @@ class _MainViewState extends ConsumerState<MainView> {
     if (useNavigationRail(context)) {
       if (!showLeading) return null;
       return CupertinoLargeNavigationBar(
-        backgroundColor: CupertinoColors.systemBackground,
+        backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "MainView",
@@ -518,11 +527,9 @@ class _MainViewState extends ConsumerState<MainView> {
     return ref.watch(vpnPermissionNotifierProvider).when(
           data: (state) {
             if (!state.hasBeenAsked && !state.isGranted) {
-              return Center(child: _buildWelcomeView(context, ref));
+              return _buildWelcomeView(context, ref);
             } else if (!state.isGranted) {
-              return Center(
-                child: _buildPermissionRequest(context, ref),
-              );
+              return _buildPermissionRequest(context, ref);
             }
             return _buildVPNPreparedConnectView(context, ref);
           },
@@ -596,15 +603,12 @@ class _MainViewState extends ConsumerState<MainView> {
             state.vpnState == VpnState.connecting,
           );
         }
-        return Container(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: _buildNotStoppedAndNotRunningView(
-              context,
-              ref,
-              state,
-            ),
+        return ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: _buildNotStoppedAndNotRunningView(
+            context,
+            ref,
+            state,
           ),
         );
       },
@@ -612,49 +616,46 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildConnectingView(BuildContext context, bool turningOn) {
-    return Container(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 600),
-        child: SingleChildScrollView(
-          child: Column(
-            spacing: 48,
-            children: [
-              const SizedBox(height: 32),
-              Text(
-                turningOn ? "Starting..." : "Stopping...",
-                style: Theme.of(context).textTheme.titleLarge?.apply(
-                      fontWeightDelta: 2,
-                      color: isApple()
-                          ? CupertinoColors.label.resolveFrom(context)
-                          : Theme.of(context).colorScheme.primary,
-                    ),
-              ),
-              const AdaptiveLoadingWidget(),
-              _cancelAndRetryButton,
-              const HealthWarningList(color: CupertinoColors.systemBackground),
-            ],
-          ),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 600),
+      child: SingleChildScrollView(
+        child: Column(
+          spacing: 48,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 32),
+            Text(
+              turningOn ? "Starting..." : "Stopping...",
+              style: Theme.of(context).textTheme.titleLarge?.apply(
+                    fontWeightDelta: 2,
+                    color: isApple()
+                        ? CupertinoColors.label.resolveFrom(context)
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+            ),
+            const AdaptiveLoadingWidget(),
+            _cancelAndRetryButton,
+            const HealthWarningList(color: CupertinoColors.systemBackground),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildLoadingWithLogoView(BuildContext context, WidgetRef ref) {
-    return Center(
-      child: Column(
-        children: [
-          const Flexible(child: AdaptiveLoadingWidget()),
-          Flexible(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Image.asset(
-                'lib/assets/images/cylonix_128.png',
-              ),
+    return Column(
+      children: [
+        const SizedBox(height: 32),
+        const Flexible(child: Center(child: AdaptiveLoadingWidget())),
+        Flexible(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Image.asset(
+              'lib/assets/images/cylonix_128.png',
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -665,40 +666,38 @@ class _MainViewState extends ConsumerState<MainView> {
       "${state.backendState.name} ${state.vpnState.name}",
     );
 
-    return Column(
-      children: [
-        const SizedBox(height: 48),
-        if (state.backendState == BackendState.needsMachineAuth) ...[
-          _buildAuthRequiredView(
-            context,
-            state.netmap?.selfNode.nodeAdminUrl,
-          ),
-        ] else if (state.browseToURL != null ||
-            state.backendState == BackendState.needsLogin) ...[
-          _buildLoginRequiredView(context, ref, state.browseToURL),
-        ] else if (state.loggedInUser != null) ...[
-          _buildNotConnectedView(
-            context,
-            ref,
-            state.loggedInUser!.loginName,
-          ),
-        ] else if (state.backendState == BackendState.noState &&
-            state.vpnState == VpnState.disconnected) ...[
-          _buildStartView(context, ref),
-        ] else if (state.backendState == BackendState.inUseOtherUser) ...[
-          _buildErrorWidget(
-            context,
-            ref,
-            "In use by another user",
-            null,
-          ),
-        ] else ...[
-          _buildConnectingView(
-            context,
-            state.vpnState != VpnState.disconnecting,
-          ),
-        ],
-      ],
+    if (state.backendState == BackendState.needsMachineAuth) {
+      return _buildAuthRequiredView(
+        context,
+        state.netmap?.selfNode.nodeAdminUrl,
+      );
+    }
+    if (state.browseToURL != null ||
+        state.backendState == BackendState.needsLogin) {
+      return _buildLoginRequiredView(context, ref, state.browseToURL);
+    }
+    if (state.loggedInUser != null) {
+      return _buildNotConnectedView(
+        context,
+        ref,
+        state.loggedInUser!.loginName,
+      );
+    }
+    if (state.backendState == BackendState.noState &&
+        state.vpnState == VpnState.disconnected) {
+      return _buildStartView(context, ref);
+    }
+    if (state.backendState == BackendState.inUseOtherUser) {
+      return _buildErrorWidget(
+        context,
+        ref,
+        "In use by another user",
+        null,
+      );
+    }
+    return _buildConnectingView(
+      context,
+      state.vpnState != VpnState.disconnecting,
     );
   }
 
@@ -711,7 +710,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildStartView(BuildContext context, WidgetRef ref) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         const Icon(
           Icons.vpn_key,
@@ -751,6 +750,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildPermissionRequest(BuildContext context, WidgetRef ref) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         const Icon(Icons.vpn_key, size: 50),
         const SizedBox(height: 16),
@@ -815,6 +815,7 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildWelcomeView(BuildContext context, WidgetRef ref) {
     return Column(
       spacing: 16,
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         const Icon(Icons.vpn_key, size: 50),
@@ -842,6 +843,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildAuthRequiredView(BuildContext context, String? adminURL) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         const Icon(Icons.lock_outline, size: 40),
         const SizedBox(height: 16),
@@ -890,6 +892,7 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildNotConnectedView(
       BuildContext context, WidgetRef ref, String username) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       spacing: 16,
       children: [
         Icon(
@@ -950,8 +953,8 @@ class _MainViewState extends ConsumerState<MainView> {
     final profiles = ref.watch(loginProfilesProvider);
     return Column(
       spacing: 16,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        //const Icon(Icons.account_circle, size: 50),
         const SizedBox(height: 16),
         _welcomeTitle,
         const SizedBox(height: 8),
@@ -1042,61 +1045,22 @@ class _MainViewState extends ConsumerState<MainView> {
     );
   }
 
+  Widget _buildCenteredWidget(Widget child) {
+    return Column(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Center(
+            child: child,
+          ),
+        ),
+        Expanded(flex: 1, child: Container()),
+      ],
+    );
+  }
+
   Widget _buildErrorWidget(BuildContext context, WidgetRef ref, String error,
       Future<void> Function()? onRetry) {
-    return Center(
-      child: Column(
-        spacing: 16,
-        children: [
-          const SizedBox(height: 32),
-          Icon(
-            isApple() ? CupertinoIcons.exclamationmark_circle : Icons.error,
-            color: isApple()
-                ? CupertinoColors.systemRed.resolveFrom(context)
-                : Theme.of(context).colorScheme.error,
-            size: 48,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Error',
-            style: Theme.of(context).textTheme.titleMedium?.apply(
-                  fontWeightDelta: 2,
-                  color: isApple()
-                      ? CupertinoColors.label.resolveFrom(context)
-                      : Theme.of(context).colorScheme.primary,
-                ),
-          ),
-          Text(
-            error,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isApple()
-                  ? CupertinoColors.systemOrange.resolveFrom(context)
-                  : Theme.of(context).colorScheme.error,
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (onRetry != null)
-            _retrying
-                ? _buildLoadingWithLogoView(context, ref)
-                : AdaptiveButton(
-                    filled: true,
-                    width: 200,
-                    onPressed: () async {
-                      setState(() {
-                        _retrying = true;
-                      });
-                      await onRetry();
-                      if (mounted) {
-                        setState(() {
-                          _retrying = false;
-                        });
-                      }
-                    },
-                    child: const Text('Retry'),
-                  ),
-        ],
-      ),
-    );
+    return AdaptiveErrorWidget(error: error, onRetry: onRetry);
   }
 }

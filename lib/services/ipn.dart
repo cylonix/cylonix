@@ -346,7 +346,7 @@ class IpnService {
       _commandCompleters[id] = completer;
       await createTunnelsManager(id);
       final created = await completer.future.timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 120),
       );
       return created;
     } catch (e) {

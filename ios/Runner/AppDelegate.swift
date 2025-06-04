@@ -112,7 +112,7 @@ import UserNotifications
             invokeMethod("tunnelStatus", arguments: ["status": "invalid", "error": alertMessage])
             invokeMethod("tunnelCreated", arguments: ["id": id, "isCreated": false])
         case let .success(tunnelsMgr):
-            wg_log(.info, staticMessage: "Tunnel manager created")
+            wg_log(.info, message: "Tunnel manager created: tunnelsMgr=\(tunnelsMgr)")
             invokeMethod("tunnelCreated", arguments: ["id": id, "isCreated": true])
             tunnelsManager = tunnelsMgr
 

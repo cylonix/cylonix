@@ -37,9 +37,13 @@ class ExitNodePicker extends ConsumerWidget {
   Widget _buildCupertinoView(
       BuildContext context, WidgetRef ref, ExitNodeState model) {
     return CupertinoPageScaffold(
+      backgroundColor:
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
       navigationBar: CupertinoNavigationBar(
         automaticBackgroundVisibility: false,
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+        backgroundColor: Colors.transparent,
         middle: const Text('Choose Exit Node'),
         leading: onNavigateBackHome == null
             ? null
@@ -233,7 +237,7 @@ class ExitNodePicker extends ConsumerWidget {
   Widget _buildAllowLanAccess(BuildContext context, WidgetRef ref,
       ExitNodeState model, bool isCupertino) {
     if (isCupertino) {
-      return AdaptiveListTile(
+      return AdaptiveListTile.notched(
         leading: const Icon(CupertinoIcons.wifi),
         title: const Text('Allow LAN Access'),
         trailing: CupertinoSwitch(

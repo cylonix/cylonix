@@ -20,8 +20,12 @@ class AboutView extends ConsumerWidget {
 
   Widget _buildCupertinoView(BuildContext context) {
     return CupertinoPageScaffold(
+      backgroundColor:
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+        backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
         automaticallyImplyLeading: false,
         leading: onNavigateBack != null

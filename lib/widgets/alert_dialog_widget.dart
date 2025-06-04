@@ -87,7 +87,7 @@ class AlertDialogWidget extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(
                   vertical: 8,
-                  horizontal: 16,
+                  horizontal: 8,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -95,28 +95,44 @@ class AlertDialogWidget extends StatelessWidget {
                     if (content != null)
                       Text(
                         content!,
+                        textAlign: TextAlign.center,
                         style: textStyle,
                       ),
-                    if (successMsg != null) const SizedBox(height: 8),
-                    if (successSubtitle != null)
+                    if (successMsg != null) ...[
+                      const SizedBox(height: 8),
+                      if (successSubtitle != null)
+                        Text(
+                          successSubtitle!,
+                          style: subtitleStyle,
+                          textAlign: TextAlign.center,
+                        ),
                       Text(
-                        successSubtitle!,
-                        style: subtitleStyle,
+                        successMsg!,
+                        style: green,
+                        textAlign: TextAlign.center,
                       ),
-                    if (successMsg != null) Text(successMsg!, style: green),
-                    if (failureMsg != null) const SizedBox(height: 8),
-                    if (failureSubtitle != null)
+                    ],
+                    if (failureMsg != null) ...[
+                      const SizedBox(height: 8),
+                      if (failureSubtitle != null)
+                        Text(
+                          failureSubtitle!,
+                          style: subtitleStyle,
+                          textAlign: TextAlign.center,
+                        ),
                       Text(
-                        failureSubtitle!,
-                        style: subtitleStyle,
+                        failureMsg!,
+                        style: red,
+                        textAlign: TextAlign.center,
                       ),
-                    if (failureMsg != null) Text(failureMsg!, style: red),
-                    if (otherActions != null) const SizedBox(height: 8),
-                    if (otherActions != null) otherActions!,
+                    ],
+                    if (otherActions != null) ...[
+                      const SizedBox(height: 8),
+                      otherActions!,
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
             ],
           ),
         ),

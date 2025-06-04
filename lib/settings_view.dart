@@ -218,7 +218,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       }
     } catch (e) {
       if (mounted) {
-        showAlertDialog(
+        await showAlertDialog(
           context,
           "Error",
           "Failed to set tailchat service setting to ${!isRunning}: $e",
@@ -278,8 +278,12 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     final tailchatRunning = ref.watch(tailchatServiceStateProvider);
 
     return CupertinoPageScaffold(
+      backgroundColor:
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+        backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "Settings",

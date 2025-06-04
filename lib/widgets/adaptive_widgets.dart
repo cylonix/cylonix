@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../models/ipn.dart';
@@ -86,17 +87,26 @@ class AdaptiveSuccessIcon extends AdaptiveHealthyIcon {
   AdaptiveSuccessIcon({super.key, super.size});
 }
 
-class AppleBackButton extends CupertinoButton {
-  const AppleBackButton({super.onPressed, super.key})
-      : super(
-          sizeStyle: CupertinoButtonSize.small,
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.all(0),
-          child: const Icon(
-            CupertinoIcons.chevron_left,
-            size: 24,
-          ),
-        );
+class AppleBackButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+
+  const AppleBackButton({super.key, this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      sizeStyle: CupertinoButtonSize.small,
+      alignment: Alignment.centerLeft,
+      padding: EdgeInsets.only(
+        left: Platform.isMacOS && !useNavigationRail(context) ? 64 : 0,
+      ),
+      onPressed: onPressed,
+      child: const Icon(
+        CupertinoIcons.chevron_left,
+        size: 24,
+      ),
+    );
+  }
 }
 
 class CircledCheckIcon extends Icon {
@@ -134,11 +144,13 @@ class AdaptiveButton extends StatelessWidget {
   final bool filled;
   final bool textButton;
   final double? width;
+  final EdgeInsetsGeometry? padding;
   const AdaptiveButton({
     super.key,
     this.filled = false,
     this.textButton = false,
     this.width,
+    this.padding,
     required this.onPressed,
     required this.child,
   }) : assert(
@@ -150,7 +162,7 @@ class AdaptiveButton extends StatelessWidget {
     if (isApple()) {
       if (textButton) {
         return CupertinoButton(
-          padding: const EdgeInsets.only(left: 16, right: 16),
+          padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
           onPressed: onPressed,
           child: child,
         );
@@ -168,13 +180,13 @@ class AdaptiveButton extends StatelessWidget {
               ),
         child: filled
             ? CupertinoButton.filled(
-                padding: const EdgeInsets.only(left: 16, right: 16),
+                padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
                 //sizeStyle: CupertinoButtonSize.medium,
                 onPressed: onPressed,
                 child: child,
               )
             : CupertinoButton(
-                padding: const EdgeInsets.only(left: 16, right: 16),
+                padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
                 sizeStyle: CupertinoButtonSize.medium,
                 onPressed: onPressed,
                 child: child,
@@ -467,7 +479,8 @@ class AdaptiveListTile extends StatelessWidget {
                 subtitle: subtitle,
                 trailing: trailing,
                 backgroundColor: backgroundColor ??
-                    CupertinoColors.systemGrey6.resolveFrom(context),
+                    CupertinoColors.tertiarySystemGroupedBackground
+                        .resolveFrom(context),
                 onTap: onTap,
               )
             : CupertinoListTile(
@@ -476,7 +489,8 @@ class AdaptiveListTile extends StatelessWidget {
                 subtitle: subtitle,
                 title: title,
                 backgroundColor: backgroundColor ??
-                    CupertinoColors.systemGrey6.resolveFrom(context),
+                    CupertinoColors.tertiarySystemGroupedBackground
+                        .resolveFrom(context),
                 onTap: onTap,
               )
         : ListTile(
@@ -616,5 +630,79 @@ class AdaptiveModalPopup extends StatelessWidget {
               ),
             ],
           );
+  }
+}
+
+class AdaptiveErrorWidget extends StatefulWidget {
+  final String error;
+  final Future<void> Function()? onRetry;
+
+  const AdaptiveErrorWidget({
+    super.key,
+    required this.error,
+    this.onRetry,
+  });
+
+  @override
+  State<AdaptiveErrorWidget> createState() => _AdaptiveErrorWidgetState();
+}
+
+class _AdaptiveErrorWidgetState extends State<AdaptiveErrorWidget> {
+  bool _retrying = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      spacing: 16,
+      children: [
+        const SizedBox(height: 32),
+        Icon(
+          isApple() ? CupertinoIcons.exclamationmark_circle : Icons.error,
+          color: isApple()
+              ? CupertinoColors.systemRed.resolveFrom(context)
+              : Theme.of(context).colorScheme.error,
+          size: 48,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Error',
+          style: Theme.of(context).textTheme.titleMedium?.apply(
+                fontWeightDelta: 2,
+                color: isApple()
+                    ? CupertinoColors.label.resolveFrom(context)
+                    : Theme.of(context).colorScheme.primary,
+              ),
+        ),
+        Text(
+          widget.error,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: isApple()
+                ? CupertinoColors.systemOrange.resolveFrom(context)
+                : Theme.of(context).colorScheme.error,
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (widget.onRetry != null)
+          _retrying
+              ? const Center(child: AdaptiveLoadingWidget())
+              : AdaptiveButton(
+                  filled: true,
+                  width: 200,
+                  onPressed: () async {
+                    setState(() {
+                      _retrying = true;
+                    });
+                    await widget.onRetry?.call();
+                    if (mounted) {
+                      setState(() {
+                        _retrying = false;
+                      });
+                    }
+                  },
+                  child: const Text('Retry'),
+                ),
+      ],
+    );
   }
 }

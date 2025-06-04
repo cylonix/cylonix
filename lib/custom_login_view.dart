@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/alert.dart';
+import 'models/const.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'viewmodels/login_view.dart';
@@ -75,8 +76,12 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
 
   Widget _buildCupertinoView(BuildContext context, LoginViewStrings strings) {
     return CupertinoPageScaffold(
+      backgroundColor:
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+        context,
+      ),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+        backgroundColor: Colors.transparent,
         middle: Text(strings.title),
         leading: widget.onNavigateBackToSettings == null
             ? null
@@ -208,9 +213,6 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
         : null;
   }
 
-  static const _cylonixURL = 'https://manage.cylonix.io';
-  static const _tailscaleURL = 'https://controlplane.tailscale.com';
-
   Widget _buildCupertinoSection(LoginViewStrings strings) {
     final controlURL = ref.watch(controlURLProvider);
 
@@ -223,32 +225,32 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
             children: [
               AdaptiveListTile.notched(
                 title: const Text('Default (Cylonix)'),
-                subtitle: const Text(_cylonixURL),
+                subtitle: const Text(cylonixURL),
                 leading: const Icon(
                   CupertinoIcons.cloud,
                   color: CupertinoColors.activeBlue,
                 ),
-                trailing: _appleControlURLTrailing(_cylonixURL, controlURL),
+                trailing: _appleControlURLTrailing(cylonixURL, controlURL),
                 onTap: () {
                   setState(() {
                     _customURL = false;
                   });
-                  _setController(_cylonixURL);
+                  _setController(cylonixURL);
                 },
               ),
               AdaptiveListTile.notched(
                 title: const Text('Tailscale'),
-                subtitle: const Text(_tailscaleURL),
+                subtitle: const Text(tailscaleURL),
                 leading: const Icon(
                   CupertinoIcons.cloud_fill,
                   color: CupertinoColors.activeBlue,
                 ),
-                trailing: _appleControlURLTrailing(_tailscaleURL, controlURL),
+                trailing: _appleControlURLTrailing(tailscaleURL, controlURL),
                 onTap: () {
                   setState(() {
                     _customURL = false;
                   });
-                  _setController(_tailscaleURL);
+                  _setController(tailscaleURL);
                 },
               ),
               AdaptiveListTile.notched(
@@ -258,13 +260,12 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
                   CupertinoIcons.gear,
                   color: CupertinoColors.activeBlue,
                 ),
-                trailing:
-                    controlURL != _cylonixURL && controlURL != _tailscaleURL
-                        ? const Icon(
-                            CupertinoIcons.checkmark_circle_fill,
-                            color: CupertinoColors.activeBlue,
-                          )
-                        : null,
+                trailing: controlURL != cylonixURL && controlURL != tailscaleURL
+                    ? const Icon(
+                        CupertinoIcons.checkmark_circle_fill,
+                        color: CupertinoColors.activeBlue,
+                      )
+                    : null,
                 onTap: () {
                   setState(() {
                     _customURL = true;
@@ -342,9 +343,9 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
     final controlURL = ref.watch(controlURLProvider);
     final selectedIndex = _customURL
         ? 2
-        : controlURL == _cylonixURL
+        : controlURL == cylonixURL
             ? 0
-            : controlURL == _tailscaleURL
+            : controlURL == tailscaleURL
                 ? 1
                 : 2;
     return Column(
@@ -358,13 +359,13 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
                 value: 0,
                 groupValue: selectedIndex,
                 title: const Text('Default (Cylonix)'),
-                subtitle: const Text(_cylonixURL),
+                subtitle: const Text(cylonixURL),
                 secondary: Icon(
                   Icons.cloud,
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 onChanged: (value) {
-                  _setController(_cylonixURL);
+                  _setController(cylonixURL);
                 },
               ),
               const Divider(height: 1),
@@ -372,13 +373,13 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
                 value: 1,
                 groupValue: selectedIndex,
                 title: const Text('Tailscale'),
-                subtitle: const Text(_tailscaleURL),
+                subtitle: const Text(tailscaleURL),
                 secondary: Icon(
                   Icons.cloud_queue,
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 onChanged: (value) {
-                  _setController(_tailscaleURL);
+                  _setController(tailscaleURL);
                 },
               ),
               const Divider(height: 1),

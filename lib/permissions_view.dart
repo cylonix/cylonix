@@ -70,9 +70,12 @@ class PermissionsView extends ConsumerWidget {
         ),
       ];
       return CupertinoPageScaffold(
+        backgroundColor:
+            CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
+          context,
+        ),
         navigationBar: CupertinoNavigationBar(
-          backgroundColor:
-              CupertinoColors.systemBackground.resolveFrom(context),
+          backgroundColor: Colors.transparent,
           middle: const Text('Permissions'),
           leading: onNavigateBack == null
               ? null
