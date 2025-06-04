@@ -270,8 +270,12 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildToggleDeviceViewButton(BuildContext context, WidgetRef ref) {
-    final showDevices = ref.watch(showDevicesProvider);
+    final state = ref.watch(backendStateProvider) ?? BackendState.noState;
+    if (state != BackendState.running) {
+      return const SizedBox.shrink();
+    }
 
+    final showDevices = ref.watch(showDevicesProvider);
     return AdaptiveButton(
       onPressed: () {
         ref.read(showDevicesProvider.notifier).setValue(!showDevices);
@@ -620,8 +624,8 @@ class _MainViewState extends ConsumerState<MainView> {
       constraints: const BoxConstraints(maxWidth: 600),
       child: SingleChildScrollView(
         child: Column(
-          spacing: 48,
-          mainAxisAlignment: MainAxisAlignment.center,
+          spacing: MediaQuery.of(context).size.height > 600 ? 32 : 16,
+          mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 32),
             Text(
@@ -1046,6 +1050,9 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildCenteredWidget(Widget child) {
+    if (MediaQuery.of(context).size.height < 500) {
+      return Center(child: child);
+    }
     return Column(
       children: [
         Expanded(

@@ -140,7 +140,7 @@ class HealthWarningList extends ConsumerWidget {
     if (isApple()) {
       return AdaptiveListSection.insetGrouped(
         backgroundColor: Colors.transparent,
-        margin: const EdgeInsets.only(left: 16, right: 16, top: 120),
+        margin: const EdgeInsets.only(left: 16, right: 16, top: 32),
         children: [
           AdaptiveListSection.insetGrouped(
             header: const Text("Warnings"),
@@ -152,7 +152,7 @@ class HealthWarningList extends ConsumerWidget {
     }
     return ListView(
       shrinkWrap: true,
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 64),
+      padding: const EdgeInsets.only(left: 16, right: 16, top: 32),
       children: [
         const SizedBox(height: 16),
         Text("Warnings", style: Theme.of(context).textTheme.titleMedium),
