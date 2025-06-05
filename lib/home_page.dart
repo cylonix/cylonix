@@ -69,6 +69,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     return MainView(
       onLoginAtUrl: (url) => _loginToURL(url),
       onNavigateToSettings: () => Navigator.pushNamed(context, '/settings'),
+      onNavigateToUserSwitcher: () => Navigator.pushNamed(
+        context,
+        '/user-switcher',
+      ),
       onNavigateToPeerDetails: (Node node) => Navigator.pushNamed(
         context,
         '/peer-details',
@@ -84,6 +88,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     return MainView(
       onLoginAtUrl: (url) => _loginToURL(url),
       onNavigateToSettings: () => _selectPage(Page.settings.value),
+      onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
       onNavigateToPeerDetails: (Node node) {
         _nodeID = node.id;
         _selectPage(Page.perDetails.value);

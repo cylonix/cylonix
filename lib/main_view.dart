@@ -20,6 +20,7 @@ import 'widgets/peer_list.dart';
 class MainView extends ConsumerStatefulWidget {
   final Function(String) onLoginAtUrl;
   final Function() onNavigateToSettings;
+  final Function() onNavigateToUserSwitcher;
   final Function(Node) onNavigateToPeerDetails;
   final Function() onNavigateToExitNodes;
   final Function() onNavigateToHealth;
@@ -29,6 +30,7 @@ class MainView extends ConsumerStatefulWidget {
     Key? key,
     required this.onLoginAtUrl,
     required this.onNavigateToSettings,
+    required this.onNavigateToUserSwitcher,
     required this.onNavigateToPeerDetails,
     required this.onNavigateToExitNodes,
     required this.onNavigateToHealth,
@@ -1041,7 +1043,7 @@ class _MainViewState extends ConsumerState<MainView> {
           ),
           AdaptiveButton(
             textButton: true,
-            onPressed: () => Navigator.of(context).pushNamed("/user-switcher"),
+            onPressed: widget.onNavigateToUserSwitcher,
             child: const Text('Select Profile'),
           ),
         ],

@@ -11,6 +11,7 @@
 		250BE9D82DD3CAE0005B3AB1 /* FileDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250BE9D62DD3CADF005B3AB1 /* FileDropView.swift */; };
 		250BE9D92DD3CAE0005B3AB1 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250BE9D72DD3CADF005B3AB1 /* ShareViewController.swift */; };
 		250E36F62DC6EAE500486149 /* BackgroundTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250E36F52DC6EAE500486149 /* BackgroundTaskManager.swift */; };
+		25137D4A2DF12A9A0042C3C4 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25137D492DF12A9A0042C3C4 /* NetworkMonitor.swift */; };
 		251B9A322DD3CCCD004B3BAF /* PacketTunnelMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251B9A312DD3CCCC004B3BAF /* PacketTunnelMessage.swift */; };
 		251B9A332DD3CCDA004B3BAF /* PacketTunnelMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251B9A312DD3CCCC004B3BAF /* PacketTunnelMessage.swift */; };
 		251B9A342DD3CCE1004B3BAF /* PacketTunnelMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251B9A312DD3CCCC004B3BAF /* PacketTunnelMessage.swift */; };
@@ -150,6 +151,7 @@
 		250BE9D62DD3CADF005B3AB1 /* FileDropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileDropView.swift; path = ../apple/Sources/ShareExtension/FileDropView.swift; sourceTree = "<group>"; };
 		250BE9D72DD3CADF005B3AB1 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareViewController.swift; path = ../apple/Sources/ShareExtension/ShareViewController.swift; sourceTree = "<group>"; };
 		250E36F52DC6EAE500486149 /* BackgroundTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackgroundTaskManager.swift; path = Runner/BackgroundTaskManager.swift; sourceTree = "<group>"; };
+		25137D492DF12A9A0042C3C4 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NetworkMonitor.swift; path = "../wireguard-apple/Sources/WireGuardNetworkExtension/NetworkMonitor.swift"; sourceTree = "<group>"; };
 		251B9A312DD3CCCC004B3BAF /* PacketTunnelMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PacketTunnelMessage.swift; path = "../wireguard-apple/Sources/WireGuardNetworkExtension/PacketTunnelMessage.swift"; sourceTree = "<group>"; };
 		251B9A372DD4203E004B3BAF /* Media.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Media.xcassets; sourceTree = "<group>"; };
 		251D836C27F70AA0004CBB56 /* Keychain+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Keychain+Extension.swift"; path = "../wireguard-apple/Sources/Shared/Keychain+Extension.swift"; sourceTree = "<group>"; };
@@ -766,6 +768,7 @@
 		97C146E51CF9000F007C117D = {
 			isa = PBXGroup;
 			children = (
+				25137D492DF12A9A0042C3C4 /* NetworkMonitor.swift */,
 				251B9A312DD3CCCC004B3BAF /* PacketTunnelMessage.swift */,
 				250BE9D62DD3CADF005B3AB1 /* FileDropView.swift */,
 				250BE9D72DD3CADF005B3AB1 /* ShareViewController.swift */,
@@ -1131,6 +1134,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				25137D4A2DF12A9A0042C3C4 /* NetworkMonitor.swift in Sources */,
 				251B9A332DD3CCDA004B3BAF /* PacketTunnelMessage.swift in Sources */,
 				251D846627F710A9004CBB56 /* PacketTunnelProvider.swift in Sources */,
 				251D846727F710A9004CBB56 /* ErrorNotifier.swift in Sources */,
