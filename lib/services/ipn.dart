@@ -444,7 +444,7 @@ class IpnService {
   Future<Status> status({bool light = false, bool fast = false}) async {
     final result = await _sendCommand(
         'status', light ? jsonEncode({"peers": false}) : '',
-        timeoutMilliseconds: fast ? 1000 : 5000);
+        timeoutMilliseconds: fast ? 500 : 5000);
     return Status.fromJson(jsonDecode(result));
   }
 
@@ -661,19 +661,25 @@ class IpnService {
         _logger.d("Tunnel setup success. Proceed to start VPN engine.");
       } on TimeoutException {
         _logger.e("Timeout waiting for tunnel being active");
-        throw "Timeout waiting for VPN tunnel to be ready for configuraiton";
+        throw "Timeout waiting for VPN tunnel to be ready for configuration";
       } catch (e) {
         throw Exception("Failed to setup VPN: $e");
       }
       try {
-        final p = await currentProfile(fast: true);
-        _logger.d("Current profile: $p");
-        _logger.i("Tunnel ready to start with our config directly.");
-        await _watchNotifications();
-        await _start(const IpnOptions());
-        return;
+        final ret = await status(light: true, fast: true);
+        _logger.d("status: $ret");
+        if (ret.backendState.toLowerCase() !=
+            BackendState.noState.name.toLowerCase()) {
+          _logger.i(
+            "Tunnel already started with state: ${ret.backendState} "
+            "!= ${BackendState.noState.name}",
+          );
+          // If tunnel is already started, we can just watch notifications
+          _watchNotifications();
+          return;
+        }
       } catch (e) {
-        _logger.e("Failed to get status: $e. Wait for notiifaction to start.");
+        _logger.e("Failed to get status: $e. Wait for notification to start.");
       }
       _logger.d("Tunnel started. Waiting for notification to start VPN.");
       _startEngineBackendNotifySub?.cancel();
