@@ -285,13 +285,13 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                 context,
                 leading: const Icon(CupertinoIcons.add),
                 title: 'Add Account',
-                onTap: () => _handleAddProfile(),
+                onTap: _handleAddProfile,
               ),
               _buildActionTile(
                 context,
                 leading: const Icon(CupertinoIcons.arrow_right_circle),
                 title: 'Reauthenticate',
-                onTap: () => _handleReauthenticate(),
+                onTap: _handleReauthenticate,
               ),
               if (loginProfile != null) ...[
                 _buildActionTile(
@@ -299,7 +299,15 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                   leading: const Icon(CupertinoIcons.arrow_turn_up_left),
                   title: 'Log Out',
                   isDestructive: true,
-                  onTap: () => _handleLogout(),
+                  onTap: _handleLogout,
+                ),
+                const SizedBox(height: 32),
+                _buildActionTile(
+                  context,
+                  leading: const Icon(CupertinoIcons.info_circle),
+                  title: 'Delete Account',
+                  isDestructive: true,
+                  onTap: () => _handleDeleteAccount(loginProfile),
                 ),
               ],
             ],
@@ -314,13 +322,13 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         _buildActionTile(
           context,
           title: 'Add Account',
-          onTap: () => _handleAddProfile(),
+          onTap: _handleAddProfile,
         ),
         _buildDivider(),
         _buildActionTile(
           context,
           title: 'Reauthenticate',
-          onTap: () => _handleReauthenticate(),
+          onTap: _handleReauthenticate,
         ),
         if (loginProfile != null) ...[
           _buildDivider(),
@@ -328,7 +336,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
             context,
             title: 'Log Out',
             isDestructive: true,
-            onTap: () => _handleLogout(),
+            onTap: _handleLogout,
           ),
         ],
       ],
@@ -708,5 +716,59 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         ),
       );
     }
+  }
+
+  void _handleDeleteAccount(LoginProfile profile) async {
+    await showCupertinoModalPopup(
+      context: context,
+      builder: (_) => AdaptiveModalPopup(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 16,
+          children: [
+            AdaptiveListTile(
+              leading: Icon(
+                CupertinoIcons.trash,
+                color: CupertinoColors.destructiveRed.resolveFrom(context),
+              ),
+              title: const Text(
+                'Delete Account',
+                textAlign: TextAlign.center,
+              ),
+              trailing: AdaptiveButton(
+                onPressed: () => Navigator.pop(_),
+                child: const Text('Close'),
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Container(
+                  constraints: const BoxConstraints(
+                    maxWidth: 600,
+                  ),
+                  child: Text(
+                    'Delete Account will delete all the data associated with '
+                    'this account including the user profile and devices. If '
+                    'the account is an admin account, it will also delete all '
+                    'the users associated with the organization and its '
+                    'security settings. If you still want to proceed to delete '
+                    '"${profile.userProfile.displayName}". Please send a '
+                    'request to contact@cylonix.io. After the request is '
+                    'processed, you will receive an email with a link to '
+                    'delete your account.',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isApple()
+                          ? CupertinoColors.label.resolveFrom(context)
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
