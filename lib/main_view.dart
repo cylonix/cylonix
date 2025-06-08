@@ -78,6 +78,7 @@ class _MainViewState extends ConsumerState<MainView> {
           ? null
           : MainDrawer(
               onNavigateToSettings: widget.onNavigateToSettings,
+              onNavigateToUserSwitch: widget.onNavigateToUserSwitcher,
               onNavigateToExitNodes: widget.onNavigateToExitNodes,
               onNavigateToHealth: widget.onNavigateToHealth,
               onNavigateToAbout: widget.onNavigateToAbout,

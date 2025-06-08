@@ -9,6 +9,7 @@ import 'adaptive_widgets.dart';
 
 class MainDrawer extends ConsumerWidget {
   final Function() onNavigateToSettings;
+  final Function() onNavigateToUserSwitch;
   final Function()? onNavigateToExitNodes;
   final Function()? onNavigateToHealth;
   final Function()? onNavigateToHome;
@@ -17,6 +18,7 @@ class MainDrawer extends ConsumerWidget {
   const MainDrawer({
     super.key,
     required this.onNavigateToSettings,
+    required this.onNavigateToUserSwitch,
     this.onNavigateToExitNodes,
     this.onNavigateToHealth,
     this.onNavigateToHome,
@@ -81,37 +83,44 @@ class MainDrawer extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context, UserProfile? user) {
+    final child = Column(
+      children: [
+        CircleAvatar(
+          radius: 40,
+          backgroundColor: isApple()
+              ? CupertinoColors.systemGrey5
+              : Theme.of(context).colorScheme.secondaryContainer,
+          backgroundImage: (user?.profilePicURL.isNotEmpty ?? false)
+              ? NetworkImage(user!.profilePicURL)
+              : null,
+          child: (user?.profilePicURL.isEmpty ?? true)
+              ? Text(
+                  user?.displayName.characters.first.toUpperCase() ?? '',
+                  style: isApple()
+                      ? const TextStyle(
+                          color: CupertinoColors.label,
+                          fontSize: 24,
+                        )
+                      : Theme.of(context).textTheme.headlineMedium,
+                )
+              : null,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          user?.displayName ?? 'Not logged in',
+          style: isApple()
+              ? const TextStyle(fontSize: 17)
+              : Theme.of(context).textTheme.titleMedium,
+        ),
+      ],
+    );
     return DrawerHeader(
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundColor: isApple()
-                ? CupertinoColors.systemGrey5
-                : Theme.of(context).colorScheme.secondaryContainer,
-            backgroundImage: (user?.profilePicURL.isNotEmpty ?? false)
-                ? NetworkImage(user!.profilePicURL)
-                : null,
-            child: (user?.profilePicURL.isEmpty ?? true)
-                ? Text(
-                    user?.displayName.characters.first.toUpperCase() ?? '',
-                    style: isApple()
-                        ? const TextStyle(
-                            color: CupertinoColors.label,
-                            fontSize: 24,
-                          )
-                        : Theme.of(context).textTheme.headlineMedium,
-                  )
-                : null,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            user?.displayName ?? 'Not logged in',
-            style: isApple()
-                ? const TextStyle(fontSize: 17)
-                : Theme.of(context).textTheme.titleMedium,
-          ),
-        ],
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onNavigateToUserSwitch,
+          child: child,
+        ),
       ),
     );
   }
