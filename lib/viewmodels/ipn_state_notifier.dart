@@ -29,17 +29,22 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   IpnStateNotifier(this._ipnService, this._mdmSettings, this.ref)
       : super(const AsyncValue.loading()) {
     _logger.d("IpnStateNotifier initialized to loading state");
-    ref.listen(vpnPermissionStateProvider, (previous, next) {
-      if (next && previous != true) {
-        _logger.d("VPN permission granted, initializing engine");
-        _initialize();
-      } else {
-        _logger.d(
-          "VPN permission state didn't change or denied "
-          "(next=$next previous=$previous), not initializing engine",
-        );
-      }
-    });
+    if (isApple()) {
+      ref.listen(vpnPermissionStateProvider, (previous, next) {
+        if (next && previous != true) {
+          _logger.d("VPN permission granted=$next, initializing engine");
+          _initialize();
+        } else {
+          _logger.d(
+            "VPN permission state didn't change or denied "
+            "(next=$next previous=$previous), not initializing engine",
+          );
+        }
+      });
+    } else {
+      _logger.d("Not an Apple platform, initializing engine");
+      _initialize();
+    }
   }
 
   MDMSettingsService get mdmSettings => _mdmSettings;
@@ -93,10 +98,10 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> _handleIpnNotification(IpnNotification notification) async {
-    //_logger.d(
-    //  "Received notification state=${notification.state} "
-    //  "url=${notification.browseToURL}",
-    //);
+    _logger.d(
+      "Received notification state=${notification.state} "
+      "url=${notification.browseToURL}",
+    );
     List<LoginProfile>? loginProfiles;
     var currentProfile = state.valueOrNull?.currentProfile;
     if (notification.netMap != null) {
@@ -134,6 +139,11 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
             // needsLogin. Close the in-app web view.
             _logger.d("Closing in-app web view. State -> $backendState");
             closeInAppWebView();
+            if (Platform.isAndroid) {
+              // On Android we have to rely on the native side to
+              // close the custom tab.
+              _ipnService.loginComplete();
+            }
           }
         }
       }
@@ -235,7 +245,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   Future<void> toggleVpn() async {
     // Set loading state immediately
     final savedState = state.valueOrNull;
-    _logger.d("Toggling VPN. Set ipn state to loading");
+    _logger.d("Toggling VPN. Set ipn state to connecting or disconnecting");
 
     try {
       _logger.d("Toggling VPN");
@@ -271,7 +281,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> startVpn() async {
-    _logger.d("Starting VPN. Set ipn state to loading");
+    _logger.d("Starting VPN. Set ipn state to connecting");
     state = AsyncValue.data(
       (state.valueOrNull ?? const IpnState()).copyWith(
         vpnState: VpnState.connecting,
@@ -298,8 +308,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
   Future<void> login({String? authKey, String? controlURL}) async {
     _logger.d(
-      "Logging in with authKey: $authKey, controlURL: $controlURL"
-      " Set ipn state to loading",
+      "Logging in with authKey: $authKey, controlURL: $controlURL. "
+      "Set ipn state to connecting",
     );
     state = AsyncValue.data(
       (state.valueOrNull ?? const IpnState()).copyWith(
@@ -338,8 +348,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   Future<void> addProfile(String? controlURL) async {
     try {
       _logger.d(
-        "Adding profile with controlURL: $controlURL"
-        " Set ipn state to loading",
+        "Adding profile with controlURL: $controlURL. "
+        "Set ipn state to connecting",
       );
       state = AsyncValue.data(
         const IpnState().copyWith(
@@ -356,7 +366,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
   Future<void> switchProfile(String id) async {
     try {
-      _logger.d("Switching profile with id: $id. Set ipn state to loading");
+      _logger.d("Switching profile with id: $id. Set ipn state to connecting");
       state = AsyncValue.data(
         const IpnState().copyWith(
           vpnState: VpnState.connecting,

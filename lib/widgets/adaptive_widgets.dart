@@ -41,15 +41,25 @@ class AdaptiveSearchBar extends StatelessWidget {
             },
           )
         : SearchBar(
+            focusNode: focusNode,
             controller: controller,
             hintText: placeholder,
             onChanged: onChanged,
             onSubmitted: onChanged,
+            onTapOutside: (_) => focusNode?.unfocus(),
+            elevation: const WidgetStateProperty.fromMap(
+              {
+                WidgetState.hovered: 1,
+                WidgetState.focused: 2,
+                WidgetState.any: 0,
+              },
+            ),
             trailing: [
-              IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: onCancel,
-              ),
+              if (controller?.text.isNotEmpty ?? false)
+                IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: onCancel,
+                ),
             ],
           );
   }
@@ -143,12 +153,14 @@ class AdaptiveButton extends StatelessWidget {
   final Widget child;
   final bool filled;
   final bool textButton;
+  final bool small;
   final double? width;
   final EdgeInsetsGeometry? padding;
   const AdaptiveButton({
     super.key,
     this.filled = false,
     this.textButton = false,
+    this.small = false,
     this.width,
     this.padding,
     required this.onPressed,
@@ -187,7 +199,9 @@ class AdaptiveButton extends StatelessWidget {
               )
             : CupertinoButton(
                 padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
-                sizeStyle: CupertinoButtonSize.medium,
+                sizeStyle: small
+                    ? CupertinoButtonSize.small
+                    : CupertinoButtonSize.medium,
                 onPressed: onPressed,
                 child: child,
               ),
@@ -446,6 +460,8 @@ class AdaptiveListTile extends StatelessWidget {
   final Widget? subtitle;
   final Color? backgroundColor;
   final bool notched;
+  final bool dense;
+  final EdgeInsetsGeometry? padding;
   final VoidCallback? onTap;
 
   const AdaptiveListTile({
@@ -455,8 +471,10 @@ class AdaptiveListTile extends StatelessWidget {
     this.trailing,
     this.subtitle,
     this.backgroundColor,
+    this.padding,
     this.onTap,
     this.notched = false,
+    this.dense = false,
   });
 
   const AdaptiveListTile.notched({
@@ -466,15 +484,29 @@ class AdaptiveListTile extends StatelessWidget {
     this.trailing,
     this.subtitle,
     this.backgroundColor,
+    this.padding,
+    this.dense = false,
     this.onTap,
   }) : notched = true;
 
   @override
   Widget build(BuildContext context) {
+    final child = ListTile(
+      visualDensity: VisualDensity.compact,
+      dense: dense,
+      contentPadding: padding,
+      tileColor: backgroundColor,
+      title: title,
+      leading: leading,
+      trailing: trailing,
+      subtitle: subtitle,
+      onTap: onTap,
+    );
     return isApple()
         ? notched
             ? CupertinoListTile.notched(
                 leading: leading,
+                padding: padding,
                 title: title,
                 subtitle: subtitle,
                 trailing: trailing,
@@ -484,6 +516,7 @@ class AdaptiveListTile extends StatelessWidget {
                 onTap: onTap,
               )
             : CupertinoListTile(
+                padding: padding,
                 leading: leading,
                 trailing: trailing,
                 subtitle: subtitle,
@@ -493,14 +526,7 @@ class AdaptiveListTile extends StatelessWidget {
                         .resolveFrom(context),
                 onTap: onTap,
               )
-        : ListTile(
-            tileColor: backgroundColor,
-            title: title,
-            leading: leading,
-            trailing: trailing,
-            subtitle: subtitle,
-            onTap: onTap,
-          );
+        : child;
   }
 }
 
@@ -533,6 +559,16 @@ class AdaptiveListSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final groupedChildren = <Widget>[];
+    if (insetGrouped && !isApple()) {
+      for (var i = 0; i < children.length; i++) {
+        groupedChildren.add(children[i]);
+        if (i < children.length - 1) {
+          groupedChildren.add(const Divider(height: 1, thickness: 0.5));
+        }
+      }
+    }
+
     return isApple()
         ? insetGrouped
             ? CupertinoListSection.insetGrouped(
@@ -553,19 +589,38 @@ class AdaptiveListSection extends StatelessWidget {
                 margin: margin ?? const EdgeInsets.all(8),
                 children: children,
               )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: header,
-              ),
-              ...children,
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: footer,
-              ),
-            ],
+        : Container(
+            margin: margin,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8,
+                  ),
+                  child: header,
+                ),
+                ...insetGrouped
+                    ? [
+                        Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          elevation: 0,
+                          child: Column(children: groupedChildren),
+                        )
+                      ]
+                    : children,
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 4,
+                    bottom: 16,
+                  ),
+                  child: footer,
+                ),
+              ],
+            ),
           );
   }
 }
@@ -705,4 +760,40 @@ class _AdaptiveErrorWidgetState extends State<AdaptiveErrorWidget> {
       ],
     );
   }
+}
+
+class AdaptiveListTileChevron extends StatelessWidget {
+  const AdaptiveListTileChevron({
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return isApple()
+        ? const CupertinoListTileChevron()
+        : const Icon(Icons.chevron_right, size: 20);
+  }
+}
+
+TextStyle? adaptiveGroupedHeaderStyle(BuildContext context) {
+  if (isApple()) {
+    return null;
+  }
+  return Theme.of(context)
+      .textTheme
+      .titleLarge
+      ?.copyWith(fontWeight: FontWeight.bold);
+}
+
+TextStyle? adaptiveGroupedFooterStyle(BuildContext context) {
+  if (isApple()) {
+    return TextStyle(
+      fontSize: 12,
+      color: CupertinoColors.secondaryLabel.resolveFrom(context),
+    );
+  }
+  return Theme.of(context)
+      .textTheme
+      .bodySmall
+      ?.copyWith(fontWeight: FontWeight.w300);
 }

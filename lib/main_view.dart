@@ -63,6 +63,15 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildMaterialScaffold(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: _buildMaterialHeader(context, ref),
+      drawer: useNavigationRail(context)
+          ? null
+          : MainDrawer(
+              onNavigateToSettings: widget.onNavigateToSettings,
+              onNavigateToUserSwitch: widget.onNavigateToUserSwitcher,
+              onNavigateToExitNodes: widget.onNavigateToExitNodes,
+              onNavigateToHealth: widget.onNavigateToHealth,
+              onNavigateToAbout: widget.onNavigateToAbout,
+            ),
       body: SafeArea(
         child: Column(
           children: [
@@ -131,13 +140,13 @@ class _MainViewState extends ConsumerState<MainView> {
     }
   }
 
-  Widget _buildSwitch(BuildContext context, WidgetRef ref) {
+  Widget? _buildSwitch(BuildContext context, WidgetRef ref) {
     final ipnState = ref.watch(ipnStateNotifierProvider);
     final mdmState = ref.watch(mdmForceEnabledProvider);
     final isVPNPrepared = ref.watch(vpnPermissionStateProvider);
 
     if (!isVPNPrepared) {
-      return const SizedBox.shrink();
+      return null;
     }
 
     return ipnState.when(
@@ -171,11 +180,13 @@ class _MainViewState extends ConsumerState<MainView> {
     );
   }
 
-  Widget _buildLeading(BuildContext context, WidgetRef ref) {
+  Widget? _buildLeading(BuildContext context, WidgetRef ref) {
     final child = _buildSwitch(context, ref);
-    if (Platform.isMacOS && !useNavigationRail(context)) {
+    if (child != null) {
       return Padding(
-        padding: const EdgeInsets.only(left: 60),
+        padding: EdgeInsets.only(
+          left: Platform.isMacOS && !useNavigationRail(context) ? 60 : 16,
+        ),
         child: child,
       );
     }
@@ -206,35 +217,34 @@ class _MainViewState extends ConsumerState<MainView> {
     return AppBar(
       title: _buildTitle(context, ref),
       leading: _buildLeading(context, ref),
-      actions: useNavigationRail(context)
-          ? null
-          : [
-              _buildMaterialProfileButton(context, ref),
-            ],
+      actions: [
+        _buildToggleDeviceViewButton(context, ref),
+        if (!useNavigationRail(context))
+          _buildMaterialProfileButton(context, ref),
+      ],
     );
   }
 
   Widget _buildMaterialProfileButton(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProfileProvider);
     if (user == null) {
-      return IconButton(
-        icon: const Icon(Icons.settings),
-        onPressed: () => Scaffold.of(context).openDrawer(),
-      );
+      return const SizedBox.shrink();
     }
 
-    return InkWell(
-      onTap: () => Scaffold.of(context).openDrawer(),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: CircleAvatar(
-          radius: 20,
-          backgroundImage: user.profilePicURL.isNotEmpty
-              ? NetworkImage(user.profilePicURL)
-              : null,
-          child: user.profilePicURL.isEmpty
-              ? Text(user.displayName[0].toUpperCase())
-              : null,
+    return Builder(
+      builder: (c) => InkWell(
+        onTap: Scaffold.of(c).openEndDrawer,
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: CircleAvatar(
+            radius: 20,
+            backgroundImage: user.profilePicURL.isNotEmpty
+                ? NetworkImage(user.profilePicURL)
+                : null,
+            child: user.profilePicURL.isEmpty
+                ? Text(user.displayName[0].toUpperCase())
+                : null,
+          ),
         ),
       ),
     );
@@ -257,21 +267,6 @@ class _MainViewState extends ConsumerState<MainView> {
     );
   }
 
-  Widget _buildMaterialExpiryNotification(
-      BuildContext context, NetworkMap? netmap, WidgetRef ref) {
-    if (netmap == null) return const SizedBox.shrink();
-
-    return Card(
-      margin: const EdgeInsets.all(16),
-      color: Colors.amber.shade50,
-      child: ListTile(
-        title: Text(netmap.selfNode.expiryLabel()),
-        subtitle: const Text("Reauthenticate to remain connected"),
-        onTap: () => _login(context, ref),
-      ),
-    );
-  }
-
   Widget _buildToggleDeviceViewButton(BuildContext context, WidgetRef ref) {
     final state = ref.watch(backendStateProvider) ?? BackendState.noState;
     if (state != BackendState.running) {
@@ -280,6 +275,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
     final showDevices = ref.watch(showDevicesProvider);
     return AdaptiveButton(
+      textButton: !useNavigationRail(context),
       onPressed: () {
         ref.read(showDevicesProvider.notifier).setValue(!showDevices);
       },
@@ -308,9 +304,6 @@ class _MainViewState extends ConsumerState<MainView> {
             spacing: 16,
             children: [
               ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
-              if (!useNavigationRail(context)) ...[
-                _buildToggleDeviceViewButton(context, ref),
-              ],
               Expanded(
                 child: _buildCenteredWidget(const HealthStateWidget()),
               ),
@@ -318,14 +311,8 @@ class _MainViewState extends ConsumerState<MainView> {
           )
         : Column(
             children: [
-              if (isApple())
-                _buildExpiryNotification(context, netmap, ref)
-              else
-                _buildMaterialExpiryNotification(context, netmap, ref),
+              _buildExpiryNotification(context, netmap, ref),
               ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
-              if (!useNavigationRail(context)) ...[
-                _buildToggleDeviceViewButton(context, ref),
-              ],
               Expanded(
                 child: PeerList(
                   onPeerTap: widget.onNavigateToPeerDetails,
@@ -374,7 +361,7 @@ class _MainViewState extends ConsumerState<MainView> {
             Expanded(child: _buildTitle(context, ref)),
             _buildToggleDeviceViewButton(context, ref),
             const SizedBox(width: 16),
-          ],
+          ].nonNulls.toList(),
         ),
       );
     }
@@ -389,7 +376,7 @@ class _MainViewState extends ConsumerState<MainView> {
               children: [
                 _buildLeading(context, ref),
                 _buildTitle(context, ref),
-              ],
+              ].nonNulls.toList(),
             )
           : null,
       middle: showLeading
@@ -399,6 +386,7 @@ class _MainViewState extends ConsumerState<MainView> {
               children: [
                 const Text("Cylonix"),
                 _buildHealthButton(context, ref),
+                _buildToggleDeviceViewButton(context, ref),
               ],
             ),
       trailing: _buildCupertinoProfileButton(context, ref, user),
@@ -531,6 +519,12 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildConnectView(BuildContext context, WidgetRef ref) {
+    if (!isApple()) {
+      // Android asks for VPN permission ONLY afer backend is running.
+      // We don't need to check for vpn permission first.
+      return _buildVPNPreparedConnectView(context, ref);
+    }
+
     return ref.watch(vpnPermissionNotifierProvider).when(
           data: (state) {
             if (!state.hasBeenAsked && !state.isGranted) {

@@ -8,16 +8,6 @@ class MethodHandler {
 	private val LOG_TAG = "cylonix-net"
 	public fun handleMethod(call: MethodCall, result: Result): Boolean {
 		when (call.method) {
-			"start_login" -> {
-				val server = call.argument<String>("server")
-				val namespace = call.argument<String>("namespace")
-				val token = call.argument<String>("token")
-				val exitNodeID = call.argument<String>("exit_node_id")
-				Log.d(LOG_TAG, "start login: $server/$namespace/[${token?.take(5)}]/$exitNodeID")
-				//App.onStartLogin(server, namespace, token, exitNodeID)
-				result.success("DONE")
-				return true
-			}
 			"logout" -> {
 				Log.d(LOG_TAG, "user logout")
 				//App.onLogout()

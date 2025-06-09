@@ -51,6 +51,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
           children: [
             Text(node.displayName),
             Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: 8,
@@ -173,34 +174,24 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
   }
 
   Widget _buildAddressRow(BuildContext context, DisplayAddress address) {
-    if (isApple()) {
-      return AdaptiveListTile(
-        leading: switch (address.type) {
-          AddressType.v4 => const Icon(CupertinoIcons.globe),
-          AddressType.v6 => const Icon(CupertinoIcons.globe),
-          AddressType.magicDNS => const Icon(CupertinoIcons.doc_on_doc),
-        },
-        title: Text(
-          '${address.typeString}: ${address.address}',
+    return AdaptiveListTile(
+      leading: switch (address.type) {
+        AddressType.v4 => const Icon(CupertinoIcons.globe),
+        AddressType.v6 => const Icon(CupertinoIcons.globe),
+        AddressType.magicDNS => const Icon(CupertinoIcons.doc_on_doc),
+      },
+      title: Text(
+        address.typeString,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      ),
+      subtitle: Text(address.address),
+      trailing: CupertinoButton(
+        padding: EdgeInsets.zero,
+        child: const Icon(
+          CupertinoIcons.doc_on_doc,
+          size: 20,
         ),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          child: const Icon(
-            CupertinoIcons.doc_on_doc,
-            size: 20,
-          ),
-          onPressed: () => _copy(address.address),
-        ),
-      );
-    }
-
-    return ListTile(
-      leading: Text(address.typeString),
-      title: Text(address.address),
-      trailing: IconButton(
-        icon: const Icon(Icons.copy),
         onPressed: () => _copy(address.address),
-        tooltip: 'Copy address',
       ),
     );
   }
@@ -211,100 +202,69 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
 
   Widget _buildValue(BuildContext context, String label, String value) {
     final showValueAsTrailing = _showInfoValueAsTrailing(context, label);
-    if (isApple()) {
-      return AdaptiveListTile(
-        leading: switch (label) {
-          'os' => const Icon(CupertinoIcons.device_desktop),
-          'Key expiry' => const Icon(CupertinoIcons.clock),
-          _ => const Icon(CupertinoIcons.info),
-        },
-        title: Text(label),
-        subtitle: showValueAsTrailing ? null : Text(value),
-        trailing: showValueAsTrailing ? Text(value) : null,
-      );
-    }
-
-    final valueText = Text(
-      value,
-      style: Theme.of(context).textTheme.bodyLarge,
-    );
-    return ListTile(
+    return AdaptiveListTile(
       leading: switch (label) {
-        'os' => const Icon(Icons.computer),
-        'Key expiry' => const Icon(Icons.timer),
-        _ => const Icon(Icons.info),
+        'os' => const Icon(CupertinoIcons.device_desktop),
+        'Key expiry' => const Icon(CupertinoIcons.clock),
+        _ => const Icon(CupertinoIcons.info),
       },
-      title: Text(
-        label,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.secondary,
-            ),
-      ),
-      subtitle: showValueAsTrailing ? null : valueText,
-      trailing: showValueAsTrailing ? valueText : null,
+      title: Text(label),
+      subtitle: showValueAsTrailing ? null : Text(value),
+      trailing: showValueAsTrailing ? Text(value) : null,
     );
   }
 
   Widget _buildContent(BuildContext context, Node node) {
-    final List<Widget> children = [
-      ...node.displayAddresses.map((addr) => _buildAddressRow(context, addr)),
-      _buildDivider(),
-    ];
     final List<Widget> infos = [];
     _getInfos(node).forEach(
       (key, value) => infos.add(_buildValue(context, key, value)),
     );
 
-    return isApple()
-        ? ListView(
-            children: [
-              AdaptiveListSection.insetGrouped(
-                header: _buildSectionHeader(context, 'Addresses'),
-                children: [
-                  ...node.displayAddresses
-                      .map((addr) => _buildAddressRow(context, addr)),
-                ],
+    return ListView(
+      children: [
+        AdaptiveListSection.insetGrouped(
+          margin: const EdgeInsets.only(
+            top: 32,
+          ),
+          header: _buildSectionHeader(context, 'Addresses'),
+          children: [
+            ...node.displayAddresses
+                .map((addr) => _buildAddressRow(context, addr)),
+          ],
+        ),
+        AdaptiveListSection.insetGrouped(
+          children: infos,
+        ),
+        AdaptiveListSection.insetGrouped(
+          header: _buildSectionHeader(context, 'Node Data'),
+          footer: Text(
+            "View Node Data in JSON format for troubleshooting.",
+            style: adaptiveGroupedFooterStyle(context),
+          ),
+          children: [
+            AdaptiveListTile(
+              leading: const Icon(CupertinoIcons.info_circle),
+              title: Text(
+                _showNodeJson ? "Close" : "Open",
               ),
-              AdaptiveListSection.insetGrouped(
-                children: infos,
+              trailing: Icon(
+                _showNodeJson
+                    ? CupertinoIcons.chevron_up
+                    : CupertinoIcons.chevron_down,
               ),
-              AdaptiveListSection.insetGrouped(
-                header: _buildSectionHeader(context, 'Node Data'),
-                footer: const Text(
-                  "View Node Data in JSON format for troubleshooting.",
-                ),
-                children: [
-                  AdaptiveListTile(
-                    leading: const Icon(CupertinoIcons.info_circle),
-                    title: Text(
-                      _showNodeJson ? "Close" : "Open",
-                    ),
-                    trailing: Icon(
-                      _showNodeJson
-                          ? CupertinoIcons.chevron_up
-                          : CupertinoIcons.chevron_down,
-                    ),
-                    onTap: () => setState(
-                      () {
-                        _showNodeJson = !_showNodeJson;
-                      },
-                    ),
-                  ),
-                  if (_showNodeJson) ...[
-                    _buildNodeJson(context, node),
-                  ],
-                ],
+              onTap: () => setState(
+                () {
+                  _showNodeJson = !_showNodeJson;
+                },
               ),
+            ),
+            if (_showNodeJson) ...[
+              _buildNodeJson(context, node),
             ],
-          )
-        : ListView(children: [
-            _buildSectionHeader(context, 'Addresses'),
-            ...children,
-            ...infos,
-            ExpansionTile(
-                title: const Text("Inspect Node Details"),
-                children: [_buildNodeJson(context, node)]),
-          ]);
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _buildNodeJson(BuildContext context, Node node) {
@@ -325,26 +285,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
-    return isApple()
-        ? Text(title)
-        : Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.secondary,
-                  ),
-            ),
-          );
-  }
-
-  Widget _buildDivider() {
-    return isApple()
-        ? Container(
-            height: 8,
-            color: CupertinoColors.systemGroupedBackground,
-          )
-        : const Divider(height: 32, thickness: 8);
+    return Text(title, style: adaptiveGroupedHeaderStyle(context));
   }
 
   Widget _buildPingSheet(BuildContext context, Node node) {

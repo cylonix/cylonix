@@ -35,13 +35,13 @@ final darkCupertinoTheme = CupertinoThemeData(
 final List<ThemeData> themeList = [
   _lightTheme.copyWith(
     cupertinoOverrideTheme: lighCupertinoTheme,
-    listTileTheme: _lightTheme.listTileTheme.copyWith(
+    /*listTileTheme: _lightTheme.listTileTheme.copyWith(
       titleTextStyle: (_lightTheme.listTileTheme.titleTextStyle ??
               _lightTheme.textTheme.titleMedium)
           ?.copyWith(
         fontWeight: FontWeight.w500,
       ),
-    ),
+    ),*/
   ),
   _darkTheme.copyWith(
     cupertinoOverrideTheme: darkCupertinoTheme,

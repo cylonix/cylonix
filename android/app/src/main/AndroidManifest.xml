@@ -7,7 +7,6 @@
     <uses-permission android:name="android.permission.BLUETOOTH"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove"/>
     <uses-feature android:name="android.software.leanback"
         android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen"
@@ -21,20 +20,30 @@
             <data android:scheme="http" />
         </intent>
         <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="*/*" />
         </intent>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
     </queries>
     <application
+        tools:replace="android:allowBackup, android:icon, android:label, android:name, anroid:theme"
         android:name=".App"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:hasFragileUserData="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
+        android:theme="@style/LaunchTheme"
 		>
         <activity
+            tools:replace="anroid:theme"
             android:name=".MainActivity"
             android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
@@ -68,6 +77,9 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
             <intent-filter>
+				<action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+			</intent-filter>
+            <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
@@ -84,6 +96,24 @@
             android:name="flutterEmbedding"
             android:value="2"
 			/>
+	    <service android:name=".IPNService"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted"
+			android:permission="android.permission.BIND_VPN_SERVICE">
+			<intent-filter>
+				<action android:name="android.net.VpnService"/>
+			</intent-filter>
+		</service>
+		<service
+			android:name=".QuickToggleService"
+			android:icon="@mipmap/ic_launcher"
+			android:label="@string/tile_name"
+            android:exported="false"
+			android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+		    <intent-filter>
+			    <action android:name="android.service.quicksettings.action.QS_TILE"/>
+		    </intent-filter>
+	    </service>
         <profileable android:shell="true"/>
     </application>
 </manifest>

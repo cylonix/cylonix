@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'dart:io';
-import 'package:downloadsfolder/downloadsfolder.dart' as sse;
+//import 'package:downloadsfolder/downloadsfolder.dart' as sse;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -69,10 +69,9 @@ class LogFile {
 
   Future<String> _saveAndroid() async {
     final fileName = _fileName;
-    final dir = await sse.getDownloadDirectory();
+    final dir = await getApplicationDocumentsDirectory();
     final path = p.join(
       dir.path,
-      'cylonix',
       'logs',
       fileName,
     );

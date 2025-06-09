@@ -111,95 +111,16 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             ? BackButton(onPressed: widget.onNavigateBackHome)
             : null,
       ),
-      body: ListView(
-        children: [
-          if (isVPNPrepared) ...[
-            _buildUserTile(context, user),
-            const Divider(),
-            ListTile(
-              leading: Icon(
-                Icons.person_add,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              title: const Text('Custom Login'),
-              subtitle: const Text('Connect with auth key'),
-              onTap: widget.onNavigateToCustomLogin,
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.storage,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              title: const Text('Custom Server'),
-              subtitle: const Text('Set custom server URL'),
-              onTap: widget.onNavigateToCustomControlURL,
-            ),
-          ],
-          if (isAdmin) ...[
-            const Divider(),
-            _buildAdminTile(context),
-          ],
-          const Divider(height: 32, thickness: 8),
-          ListTile(
-            title: const Text('DNS Settings'),
-            subtitle: Text(
-                corpDNSEnabled ? 'Using Cylonix DNS' : 'Not using Cylonix DNS'),
-            onTap: widget.onNavigateToDNSSettings,
-          ),
-          const Divider(),
-          ListTile(
-            title: const Text('Split Tunneling'),
-            subtitle: const Text('Exclude certain apps from using Cylonix'),
-            onTap: widget.onNavigateToSplitTunneling,
-          ),
-          if (showTailnetLock) ...[
-            const Divider(),
-            ListTile(
-              title: const Text('Tailnet Lock'),
-              subtitle: Text(tailnetLockEnabled ? 'Enabled' : 'Disabled'),
-              onTap: widget.onNavigateToTailnetLock,
-            ),
-          ],
-          const Divider(),
-          ListTile(
-            title: const Text('Permissions'),
-            onTap: widget.onNavigateToPermissions,
-          ),
-          if (managedByOrg != null) ...[
-            const Divider(),
-            ListTile(
-              title: Text('Managed by $managedByOrg'),
-              onTap: widget.onNavigateToManagedBy,
-            ),
-          ],
-          const Divider(height: 32, thickness: 8),
-          ListTile(
-            title: const Text('Bug Report'),
-            onTap: widget.onNavigateToBugReport,
-          ),
-          const Divider(),
-          ListTile(
-            title: const Text('About Cylonix'),
-            subtitle: const Text(
-              'Version ${const String.fromEnvironment('VERSION')}',
-            ),
-            onTap: widget.onNavigateToAbout,
-          ),
-          if (const bool.fromEnvironment('DEBUG')) ...[
-            const Divider(height: 32, thickness: 8),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Internal Debug Options',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-            ListTile(
-              title: const Text('MDM Settings'),
-              onTap: widget.onNavigateToMDMSettings,
-            ),
-          ],
-        ],
+      body: _buildSettingsContent(
+        context,
+        ref,
+        user,
+        isAdmin,
+        managedByOrg,
+        tailnetLockEnabled,
+        corpDNSEnabled,
+        isVPNPrepared,
+        showTailnetLock,
       ),
     );
   }
@@ -274,9 +195,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     bool isVPNPrepared,
     bool showTailnetLock,
   ) {
-    final tailchatAutoStart = ref.watch(tailchatAutoStartProvider);
-    final tailchatRunning = ref.watch(tailchatServiceStateProvider);
-
     return CupertinoPageScaffold(
       backgroundColor:
           CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
@@ -292,182 +210,186 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             ? null
             : AppleBackButton(onPressed: widget.onNavigateBackHome),
       ),
+      child: _buildSettingsContent(
+        context,
+        ref,
+        user,
+        isAdmin,
+        managedByOrg,
+        tailnetLockEnabled,
+        corpDNSEnabled,
+        isVPNPrepared,
+        showTailnetLock,
+      ),
+    );
+  }
+
+  Widget _buildSettingsContent(
+    BuildContext context,
+    WidgetRef ref,
+    UserProfile? user,
+    bool isAdmin,
+    String? managedByOrg,
+    bool tailnetLockEnabled,
+    bool corpDNSEnabled,
+    bool isVPNPrepared,
+    bool showTailnetLock,
+  ) {
+    final tailchatAutoStart = ref.watch(tailchatAutoStartProvider);
+    final tailchatRunning = ref.watch(tailchatServiceStateProvider);
+    return Container(
+      alignment: Alignment.topCenter,
       child: Container(
-        alignment: Alignment.topCenter,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
-            children: [
-              if (isVPNPrepared) _buildCupertinoUserSection(context, ref, user),
-              if (isAdmin) _buildCupertinoAdminSection(context),
-              if (_isNetworkFeaturesReady)
-                AdaptiveListSection(
-                  header: const Text('NETWORK'),
-                  children: [
-                    AdaptiveListTile(
-                      title: const Text('DNS Settings'),
-                      subtitle: Text(corpDNSEnabled
-                          ? 'Using Cylonix DNS'
-                          : 'Not using Cylonix DNS'),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: widget.onNavigateToDNSSettings,
-                    ),
-                    AdaptiveListTile.notched(
-                      title: const Text('Split Tunneling'),
-                      subtitle:
-                          const Text('Exclude certain apps from using Cylonix'),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: widget.onNavigateToSplitTunneling,
-                    ),
-                    if (showTailnetLock)
-                      AdaptiveListTile.notched(
-                        title: const Text('Tailnet Lock'),
-                        subtitle:
-                            Text(tailnetLockEnabled ? 'Enabled' : 'Disabled'),
-                        trailing: const CupertinoListTileChevron(),
-                        onTap: widget.onNavigateToTailnetLock,
-                      ),
-                  ],
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: ListView(
+          children: [
+            if (isVPNPrepared) _buildUserSection(context, ref, user),
+            if (isAdmin) _buildAdminSection(context),
+            if (_isNetworkFeaturesReady)
+              AdaptiveListSection(
+                header: Text(
+                  'NETWORK',
+                  style:
+                      isApple() ? null : Theme.of(context).textTheme.titleLarge,
                 ),
-              AdaptiveListSection.insetGrouped(
                 children: [
-                  AdaptiveListTile.notched(
-                    title: const Text('Permissions'),
-                    trailing: const CupertinoListTileChevron(),
-                    onTap: widget.onNavigateToPermissions,
+                  AdaptiveListTile(
+                    title: const Text('DNS Settings'),
+                    subtitle: Text(corpDNSEnabled
+                        ? 'Using Cylonix DNS'
+                        : 'Not using Cylonix DNS'),
+                    trailing: _trailingIcon,
+                    onTap: widget.onNavigateToDNSSettings,
                   ),
-                  if (managedByOrg != null)
+                  AdaptiveListTile.notched(
+                    title: const Text('Split Tunneling'),
+                    subtitle:
+                        const Text('Exclude certain apps from using Cylonix'),
+                    trailing: _trailingIcon,
+                    onTap: widget.onNavigateToSplitTunneling,
+                  ),
+                  if (showTailnetLock)
                     AdaptiveListTile.notched(
-                      title: Text('Managed by $managedByOrg'),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: widget.onNavigateToManagedBy,
+                      title: const Text('Tailnet Lock'),
+                      subtitle:
+                          Text(tailnetLockEnabled ? 'Enabled' : 'Disabled'),
+                      trailing: _trailingIcon,
+                      onTap: widget.onNavigateToTailnetLock,
                     ),
                 ],
               ),
-              AdaptiveListSection.insetGrouped(
-                children: [
+            AdaptiveListSection.insetGrouped(
+              children: [
+                AdaptiveListTile.notched(
+                  title: const Text('Permissions'),
+                  trailing: _trailingIcon,
+                  onTap: widget.onNavigateToPermissions,
+                ),
+                if (managedByOrg != null)
                   AdaptiveListTile.notched(
-                    title: const Text('Report an Issue'),
-                    subtitle: const Text('Open GitHub issue tracker'),
-                    trailing: const CupertinoListTileChevron(),
-                    onTap: _launchBugReport,
+                    title: Text('Managed by $managedByOrg'),
+                    trailing: _trailingIcon,
+                    onTap: widget.onNavigateToManagedBy,
                   ),
+              ],
+            ),
+            AdaptiveListSection.insetGrouped(
+              children: [
+                AdaptiveListTile.notched(
+                  title: const Text('Report an Issue'),
+                  subtitle: const Text('Open GitHub issue tracker'),
+                  trailing: _trailingIcon,
+                  onTap: _launchBugReport,
+                ),
+                AdaptiveListTile.notched(
+                  title: const Text('About Cylonix'),
+                  subtitle: FutureBuilder<PackageInfo>(
+                    future: PackageInfo.fromPlatform(),
+                    builder: (context, snapshot) {
+                      final version = snapshot.data?.version ?? '';
+                      return Text('Version $version');
+                    },
+                  ),
+                  trailing: _trailingIcon,
+                  onTap: widget.onNavigateToAbout,
+                ),
+              ],
+            ),
+            AdaptiveListSection.insetGrouped(
+              header: Text(
+                'Advanced Options',
+                style: adaptiveGroupedHeaderStyle(context),
+              ),
+              children: [
+                UILogsWidget(
+                  onNavigateBack: widget.onNavigateBackToSettings,
+                  onNavigateToLogConsole: widget.onPushNewPage,
+                ),
+                IpnLogsWidget(
+                  onNavigateBack: widget.onNavigateBackToSettings,
+                  onNavigateToLogConsole: widget.onPushNewPage,
+                ),
+                AdaptiveListTile.notched(
+                  title: const Text('Always Use Relay'),
+                  subtitle: const Text('Force traffic through relay servers'),
+                  trailing: _isTogglingAlwaysUseDerp
+                      ? const CupertinoActivityIndicator()
+                      : AdaptiveSwitch(
+                          value: ref.watch(alwaysUseDerpProvider),
+                          onChanged: _toggleAlwaysUseDerp,
+                        ),
+                ),
+                if (Platform.isIOS) ...[
                   AdaptiveListTile.notched(
-                    title: const Text('About Cylonix'),
-                    subtitle: FutureBuilder<PackageInfo>(
-                      future: PackageInfo.fromPlatform(),
-                      builder: (context, snapshot) {
-                        final version = snapshot.data?.version ?? '';
-                        return Text('Version $version');
+                    title: const Text('Start Tailchat on Launch'),
+                    trailing: CupertinoSwitch(
+                      value: tailchatAutoStart,
+                      onChanged: (value) {
+                        ref
+                            .read(tailchatAutoStartProvider.notifier)
+                            .setValue(value);
                       },
                     ),
-                    trailing: const CupertinoListTileChevron(),
-                    onTap: widget.onNavigateToAbout,
-                  ),
-                ],
-              ),
-              AdaptiveListSection.insetGrouped(
-                header: const Text('Advanced Options'),
-                children: [
-                  UILogsWidget(
-                    onNavigateBack: widget.onNavigateBackToSettings,
-                    onNavigateToLogConsole: widget.onPushNewPage,
-                  ),
-                  IpnLogsWidget(
-                    onNavigateBack: widget.onNavigateBackToSettings,
-                    onNavigateToLogConsole: widget.onPushNewPage,
                   ),
                   AdaptiveListTile.notched(
-                    title: const Text('Always Use Relay'),
-                    subtitle: const Text('Force traffic through relay servers'),
-                    trailing: _isTogglingAlwaysUseDerp
+                    title: const Text('Tailchat Service'),
+                    subtitle: Text(tailchatRunning ? 'Running' : 'Stopped'),
+                    trailing: _isTogglingTailchat
                         ? const CupertinoActivityIndicator()
-                        : CupertinoSwitch(
-                            value: ref.watch(alwaysUseDerpProvider),
-                            onChanged: _toggleAlwaysUseDerp,
+                        : AdaptiveButton(
+                            padding: EdgeInsets.zero,
+                            child: Text(tailchatRunning ? 'Stop' : 'Start'),
+                            onPressed: _toggleTailchatService,
                           ),
                   ),
-                  if (Platform.isIOS) ...[
-                    AdaptiveListTile.notched(
-                      title: const Text('Start Tailchat on Launch'),
-                      trailing: CupertinoSwitch(
-                        value: tailchatAutoStart,
-                        onChanged: (value) {
-                          ref
-                              .read(tailchatAutoStartProvider.notifier)
-                              .setValue(value);
-                        },
-                      ),
-                    ),
-                    AdaptiveListTile.notched(
-                      title: const Text('Tailchat Service'),
-                      subtitle: Text(tailchatRunning ? 'Running' : 'Stopped'),
-                      trailing: _isTogglingTailchat
-                          ? const CupertinoActivityIndicator()
-                          : CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              child: Text(tailchatRunning ? 'Stop' : 'Start'),
-                              onPressed: _toggleTailchatService,
-                            ),
-                    ),
-                  ],
+                ],
+              ],
+            ),
+            if (const bool.fromEnvironment('DEBUG'))
+              AdaptiveListSection.insetGrouped(
+                header: const Text('INTERNAL DEBUG OPTIONS'),
+                children: [
+                  AdaptiveListTile.notched(
+                    title: const Text('MDM Settings'),
+                    trailing: _trailingIcon,
+                    onTap: widget.onNavigateToMDMSettings,
+                  ),
                 ],
               ),
-              if (const bool.fromEnvironment('DEBUG'))
-                AdaptiveListSection.insetGrouped(
-                  header: const Text('INTERNAL DEBUG OPTIONS'),
-                  children: [
-                    AdaptiveListTile.notched(
-                      title: const Text('MDM Settings'),
-                      trailing: const CupertinoListTileChevron(),
-                      onTap: widget.onNavigateToMDMSettings,
-                    ),
-                  ],
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildUserTile(BuildContext context, UserProfile? user) {
-    return ListTile(
-      title: Text(user?.displayName ?? ''),
-      subtitle: Text(user?.loginName ?? ''),
-      leading: CircleAvatar(
-        backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-        backgroundImage: (user?.profilePicURL.isNotEmpty ?? false)
-            ? NetworkImage(user!.profilePicURL)
-            : null,
-        child: !(user?.profilePicURL.isNotEmpty ?? false)
-            ? Text(
-                user?.displayName.characters.first.toUpperCase() ?? '',
-                style: Theme.of(context).textTheme.titleMedium,
-              )
-            : null,
-      ),
-      onTap: widget.onNavigateToUserSwitcher,
-    );
-  }
-
-  Widget _buildAdminTile(BuildContext context) {
-    return ListTile(
-      title: const Text('Admin Console'),
-      subtitle: const Text('Manage your organization'),
-      leading: Icon(
-        Icons.admin_panel_settings,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-      onTap: widget.onNavigateToManagedBy,
-    );
-  }
-
-  Widget _buildCupertinoUserSection(
+  Widget _buildUserSection(
       BuildContext context, WidgetRef ref, UserProfile? user) {
     final profiles = ref.watch(loginProfilesProvider);
     return AdaptiveListSection.insetGrouped(
-      header: const Text('ACCOUNT'),
+      header: Text(
+        'ACCOUNT',
+        style: adaptiveGroupedHeaderStyle(context),
+      ),
       children: [
         AdaptiveListTile.notched(
           leading: AdaptiveAvatar(
@@ -481,7 +403,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     : "Please Login"),
           ),
           subtitle: user?.loginName != null ? Text((user?.loginName)!) : null,
-          trailing: const CupertinoListTileChevron(),
+          trailing: _trailingIcon,
           onTap: profiles.isEmpty
               ? widget.onNavigateBackHome
               : widget.onNavigateToUserSwitcher,
@@ -493,7 +415,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           ),
           title: const Text('Custom Login'),
           subtitle: const Text('Connect with auth key'),
-          trailing: const CupertinoListTileChevron(),
+          trailing: _trailingIcon,
           onTap: widget.onNavigateToCustomLogin,
         ),
         AdaptiveListTile.notched(
@@ -503,16 +425,19 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           ),
           title: const Text('Custom Server'),
           subtitle: const Text('Set custom server URL'),
-          trailing: const CupertinoListTileChevron(),
+          trailing: _trailingIcon,
           onTap: widget.onNavigateToCustomControlURL,
         ),
       ],
     );
   }
 
-  Widget _buildCupertinoAdminSection(BuildContext context) {
+  Widget _buildAdminSection(BuildContext context) {
     return AdaptiveListSection.insetGrouped(
-      header: const Text('ADMIN'),
+      header: Text(
+        'ADMIN',
+        style: adaptiveGroupedHeaderStyle(context),
+      ),
       children: [
         AdaptiveListTile.notched(
           leading: const Icon(
@@ -521,10 +446,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           ),
           title: const Text('Admin Console'),
           subtitle: const Text('Manage your organization'),
-          trailing: const CupertinoListTileChevron(),
+          trailing: _trailingIcon,
           onTap: widget.onNavigateToManagedBy,
         ),
       ],
     );
+  }
+
+  Widget? get _trailingIcon {
+    return const AdaptiveListTileChevron();
   }
 }

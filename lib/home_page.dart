@@ -1,4 +1,4 @@
-import 'package:cylonix/widgets/adaptive_widgets.dart';
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,12 +12,14 @@ import 'main_view.dart';
 import 'models/ipn.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
+import 'providers/theme.dart';
 import 'settings_view.dart';
 import 'utils/applog.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'user_switcher_view.dart';
 import 'viewmodels/state_notifier.dart';
+import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/main_navigation_rail.dart';
 
@@ -39,6 +41,17 @@ class _HomePageState extends ConsumerState<HomePage> {
   void initState() {
     super.initState();
     _initLogger();
+    if (Platform.isAndroid) {
+      WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged =
+          () {
+        _logger.i("Platform brightness changed");
+        final brightness =
+            WidgetsBinding.instance.platformDispatcher.platformBrightness;
+        ref
+            .read(systemBrightnessProvider.notifier)
+            .updateBrightness(brightness);
+      };
+    }
   }
 
   void _initLogger() async {
@@ -59,7 +72,9 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   void _loginToURL(String url) async {
     _logger.d("Launching to URL $url");
-    final launched = await launchUrl(Uri.parse(url));
+    final launched = await launchUrl(
+      Uri.parse(url),
+    );
     if (!launched) {
       throw Exception("Failed to launch login URL at '$url'");
     }

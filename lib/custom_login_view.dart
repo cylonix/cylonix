@@ -111,7 +111,8 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
                 onPressed: widget.onNavigateBackToSettings,
               ),
       ),
-      body: Center(
+      body: Container(
+        alignment: Alignment.topCenter,
         child: Container(
           constraints: const BoxConstraints(maxWidth: 800),
           child: _buildContent(context, strings, false),
@@ -130,21 +131,14 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        if (isCupertino)
-          _buildCupertinoSection(strings)
-        else
-          _buildMaterialSection(strings),
+        _buildSection(strings),
         const SizedBox(height: 16),
         if (_showSubmitButton)
-          isCupertino
-              ? CupertinoButton.filled(
-                  onPressed: _handleSubmit,
-                  child: Text(strings.submitLabel),
-                )
-              : ElevatedButton(
-                  onPressed: _handleSubmit,
-                  child: Text(strings.submitLabel),
-                ),
+          AdaptiveButton(
+            filled: true,
+            onPressed: _handleSubmit,
+            child: Text(strings.submitLabel),
+          ),
       ],
     );
 
@@ -213,22 +207,28 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
         : null;
   }
 
-  Widget _buildCupertinoSection(LoginViewStrings strings) {
+  Widget _buildSection(LoginViewStrings strings) {
     final controlURL = ref.watch(controlURLProvider);
 
     return Column(
       children: [
         if (!widget.isAuthKey) ...[
           AdaptiveListSection.insetGrouped(
-            header: const Text('CONTROL SERVER'),
-            footer: Text(strings.explanation),
+            header: Text(
+              'CONTROL SERVER',
+              style: adaptiveGroupedHeaderStyle(context),
+            ),
+            footer: Text(
+              strings.explanation,
+              style: adaptiveGroupedFooterStyle(context),
+            ),
             children: [
               AdaptiveListTile.notched(
                 title: const Text('Default (Cylonix)'),
                 subtitle: const Text(cylonixURL),
-                leading: const Icon(
+                leading: Icon(
                   CupertinoIcons.cloud,
-                  color: CupertinoColors.activeBlue,
+                  color: CupertinoColors.activeBlue.resolveFrom(context),
                 ),
                 trailing: _appleControlURLTrailing(cylonixURL, controlURL),
                 onTap: () {
@@ -241,9 +241,9 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
               AdaptiveListTile.notched(
                 title: const Text('Tailscale'),
                 subtitle: const Text(tailscaleURL),
-                leading: const Icon(
+                leading: Icon(
                   CupertinoIcons.cloud_fill,
-                  color: CupertinoColors.activeBlue,
+                  color: CupertinoColors.activeBlue.resolveFrom(context),
                 ),
                 trailing: _appleControlURLTrailing(tailscaleURL, controlURL),
                 onTap: () {
@@ -256,14 +256,14 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
               AdaptiveListTile.notched(
                 title: const Text('Custom'),
                 subtitle: const Text('Enter your own control server URL'),
-                leading: const Icon(
+                leading: Icon(
                   CupertinoIcons.gear,
-                  color: CupertinoColors.activeBlue,
+                  color: CupertinoColors.activeBlue.resolveFrom(context),
                 ),
                 trailing: controlURL != cylonixURL && controlURL != tailscaleURL
-                    ? const Icon(
+                    ? Icon(
                         CupertinoIcons.checkmark_circle_fill,
-                        color: CupertinoColors.activeBlue,
+                        color: CupertinoColors.activeBlue.resolveFrom(context),
                       )
                     : null,
                 onTap: () {
@@ -306,130 +306,6 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
             ],
           ),
         ],
-      ],
-    );
-  }
-
-  Widget _buildMaterialSection(LoginViewStrings strings) {
-    if (widget.isAuthKey) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              strings.title,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              strings.explanation,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _textController,
-              decoration: InputDecoration(
-                labelText: strings.inputTitle,
-                hintText: strings.placeholder,
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final controlURL = ref.watch(controlURLProvider);
-    final selectedIndex = _customURL
-        ? 2
-        : controlURL == cylonixURL
-            ? 0
-            : controlURL == tailscaleURL
-                ? 1
-                : 2;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              RadioListTile(
-                value: 0,
-                groupValue: selectedIndex,
-                title: const Text('Default (Cylonix)'),
-                subtitle: const Text(cylonixURL),
-                secondary: Icon(
-                  Icons.cloud,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                onChanged: (value) {
-                  _setController(cylonixURL);
-                },
-              ),
-              const Divider(height: 1),
-              RadioListTile(
-                value: 1,
-                groupValue: selectedIndex,
-                title: const Text('Tailscale'),
-                subtitle: const Text(tailscaleURL),
-                secondary: Icon(
-                  Icons.cloud_queue,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                onChanged: (value) {
-                  _setController(tailscaleURL);
-                },
-              ),
-              const Divider(height: 1),
-              RadioListTile(
-                value: 2,
-                groupValue: selectedIndex,
-                title: const Text('Custom'),
-                subtitle: const Text('Enter your own control server URL'),
-                secondary: Icon(
-                  Icons.settings,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    _customURL = true;
-                    _textController.text = '';
-                  });
-                },
-              ),
-            ],
-          ),
-        ),
-        if (_customURL) ...[
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              controller: _textController,
-              decoration: InputDecoration(
-                labelText: 'Custom URL',
-                hintText: strings.placeholder,
-                border: const OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.url,
-            ),
-          ),
-        ],
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Text(
-            strings.explanation,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.color
-                      ?.withValues(alpha: 0.7),
-                ),
-          ),
-        ),
       ],
     );
   }

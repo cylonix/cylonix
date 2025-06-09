@@ -51,9 +51,7 @@ class _PeerListState extends State<PeerList> {
               showNoResults
                   ? _buildNoResults(context)
                   : Expanded(
-                      child: isApple()
-                          ? _buildCupertinoPeersList(context, filteredSets, ref)
-                          : _buildMaterialPeersList(context, filteredSets, ref),
+                      child: _buildPeersList(context, filteredSets, ref),
                     ),
             ],
           ),
@@ -134,7 +132,13 @@ class _PeerListState extends State<PeerList> {
     );
   }
 
-  Widget _buildCupertinoPeersList(
+  Color get _onlineColor =>
+      isApple() ? CupertinoColors.systemGreen : Colors.green;
+
+  Color get _offlineColor =>
+      isApple() ? CupertinoColors.systemGrey : Theme.of(context).disabledColor;
+
+  Widget _buildPeersList(
       BuildContext context, List<PeerSet> peerSets, WidgetRef ref) {
     final isConnected =
         ref.watch(ipnStateProvider)?.vpnState == VpnState.connected;
@@ -145,15 +149,19 @@ class _PeerListState extends State<PeerList> {
         for (final peerSet in peerSets)
           if (peerSet.peers.isNotEmpty) ...[
             SliverAppBar(
+              automaticallyImplyLeading: false,
               expandedHeight: 120.0,
               backgroundColor: Colors.transparent,
               flexibleSpace: FlexibleSpaceBar(
                 centerTitle: !useNavigationRail(context),
                 title: Text(peerSet.user?.displayName ?? "",
                     style: TextStyle(
-                      color: CupertinoColors.label.resolveFrom(context),
+                      color: isApple()
+                          ? CupertinoColors.label.resolveFrom(context)
+                          : null,
                     )),
               ),
+              actions: const [SizedBox.shrink()],
             ),
             SliverList(
               delegate: SliverChildBuilderDelegate(
@@ -161,28 +169,42 @@ class _PeerListState extends State<PeerList> {
                   final peer = peerSet.peers[index];
                   final online = (peer.online == true) ||
                       (peer.stableID == selfNode?.stableID && isConnected);
-                  return CupertinoListTile(
-                    title: Text(peer.name),
-                    subtitle: Text(peer.addresses.join(', ')),
+                  return AdaptiveListTile(
+                    title: Text(peer.name,
+                        style: isApple()
+                            ? null
+                            : Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w500)),
+                    subtitle: Text(
+                      peer.addresses.join(', '),
+                      style: isApple()
+                          ? null
+                          : Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(fontWeight: FontWeight.w300),
+                    ),
                     leading: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (peer.isExitNode)
-                          Icon(CupertinoIcons.arrow_up_right_circle,
-                              color: online
-                                  ? CupertinoColors.systemGreen
-                                  : CupertinoColors.systemGrey,
-                              size: 12),
+                          Icon(
+                            isApple()
+                                ? CupertinoIcons.arrow_up_right_circle
+                                : Icons.exit_to_app,
+                            color: online ? _onlineColor : _offlineColor,
+                            size: 12,
+                          ),
                         const SizedBox(width: 4),
-                        Icon(
-                          CupertinoIcons.circle_fill,
-                          size: 12,
-                          color: online
-                              ? CupertinoColors.systemGreen
-                              : CupertinoColors.systemGrey,
+                        AdaptiveOnlineIcon(
+                          online: online,
+                          disabledColor: Theme.of(context).disabledColor,
                         ),
                       ],
                     ),
+                    dense: true,
                     onTap: () => widget.onPeerTap(peer),
                   );
                 },
@@ -191,53 +213,6 @@ class _PeerListState extends State<PeerList> {
             ),
           ],
       ],
-    );
-  }
-
-  Widget _buildMaterialPeersList(
-      BuildContext context, List<PeerSet> peerSets, WidgetRef ref) {
-    final isConnected =
-        ref.watch(ipnStateProvider)?.vpnState == VpnState.connected;
-    final selfNode = ref.watch(ipnStateProvider)?.netmap?.selfNode;
-
-    return ListView.builder(
-      itemCount: peerSets.length,
-      itemBuilder: (context, setIndex) {
-        final peerSet = peerSets[setIndex];
-        if (peerSet.peers.isEmpty) return const SizedBox.shrink();
-        return ExpansionTile(
-          title: Text(
-            peerSet.user?.displayName ?? "",
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          initiallyExpanded: true,
-          children: peerSet.peers.map((peer) {
-            final online = (peer.online == true) ||
-                (peer.stableID == selfNode?.stableID && isConnected);
-
-            return ListTile(
-              title: Text(peer.name),
-              subtitle: Text(peer.addresses.join(', ')),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (peer.isExitNode)
-                    Icon(
-                      Icons.exit_to_app,
-                      color: Theme.of(context).disabledColor,
-                    ),
-                  const SizedBox(width: 8),
-                  AdaptiveOnlineIcon(
-                    online: online,
-                    disabledColor: Theme.of(context).disabledColor,
-                  ),
-                ],
-              ),
-              onTap: () => widget.onPeerTap(peer),
-            );
-          }).toList(),
-        );
-      },
     );
   }
 }

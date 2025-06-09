@@ -27,7 +27,7 @@ class IpnLogsWidget extends ConsumerWidget {
     return logs.when(
       data: (_) => AdaptiveListTile.notched(
         title: const Text("View Network Extension Logs"),
-        trailing: const CupertinoListTileChevron(),
+        trailing: const AdaptiveListTileChevron(),
         onTap: () => _showLogConsole(context, ref),
       ),
       loading: () => const AdaptiveListTile.notched(

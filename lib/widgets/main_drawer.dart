@@ -36,7 +36,6 @@ class MainDrawer extends ConsumerWidget {
         child: Column(
           children: [
             _buildHeader(context, user),
-            const Divider(),
             Expanded(
               child: ListView(
                 children: [
@@ -51,7 +50,10 @@ class MainDrawer extends ConsumerWidget {
                     context,
                     title: 'Settings',
                     icon: isApple() ? CupertinoIcons.settings : Icons.settings,
-                    onTap: onNavigateToSettings,
+                    onTap: () => {
+                      Navigator.of(context).pop(), // Close the drawer
+                      onNavigateToSettings(),
+                    },
                   ),
                   if (onNavigateToExitNodes != null)
                     _buildDrawerItem(
@@ -118,8 +120,11 @@ class MainDrawer extends ConsumerWidget {
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-          onTap: onNavigateToUserSwitch,
-          child: child,
+          onTap: () {
+            Navigator.of(context).pop(); // Close the drawer
+            onNavigateToUserSwitch();
+          },
+          child: SizedBox(width: double.infinity, child: child),
         ),
       ),
     );
@@ -198,38 +203,8 @@ class MainDrawer extends ConsumerWidget {
               ref.read(themeProvider.notifier).toggleTheme();
             },
           ),
-          IconButton(
-            icon: Icon(
-              isApple() ? CupertinoIcons.info : Icons.info,
-            ),
-            onPressed: () => _showAboutDialog(context),
-          ),
         ],
       ),
     );
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    if (isApple()) {
-      showCupertinoDialog(
-        context: context,
-        builder: (context) => CupertinoAlertDialog(
-          title: const Text('About Cylonix SASE'),
-          content: const Text('Version 1.0.0'),
-          actions: [
-            CupertinoDialogAction(
-              child: const Text('OK'),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
-        ),
-      );
-    } else {
-      showAboutDialog(
-        context: context,
-        applicationName: 'Cylonix SASE',
-        applicationVersion: '1.0.0',
-      );
-    }
   }
 }

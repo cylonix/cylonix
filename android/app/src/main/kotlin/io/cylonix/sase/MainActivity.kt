@@ -23,17 +23,24 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel;
 import java.util.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 import com.tailscale.ipn.R as IPNR
 import com.tailscale.ipn.ui.model.Ipn
+import com.tailscale.ipn.ui.model.Ipn.Notify
 import com.tailscale.ipn.ui.viewModel.VpnViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModelFactory
 
 class MainActivity: FlutterFragmentActivity() {
-	private val CHANNEL = "io.cylonix.sase/ts"
-	private val LOG_TAG = "cylonix: MainActivity"
+    companion object {
+	    private const val CHANNEL = "io.cylonix.sase/wg"
+	    private const val LOG_TAG = "cylonix: MainActivity"
+        private const val START_AT_ROOT = "startAtRoot"
+    }
 	private val callbackByString: MutableMap<String, String> = HashMap()
+    private var methodChannel: MethodChannel? = null
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		if (intent.getIntExtra("org.chromium.chrome.extra.TASK_ID", -1) == this.taskId) {
@@ -45,6 +52,8 @@ class MainActivity: FlutterFragmentActivity() {
 		super.onCreate(savedInstanceState)
 
         App.get().setStateNotifyCallback(::stateNotify)
+        App.get().setNotificationCallback(::onNotificationReceived)
+        Log.d(LOG_TAG, "onCreate: setting up VPN permission launcher")
         setVpnPermissionLauncher()
 	}
 
@@ -152,18 +161,17 @@ class MainActivity: FlutterFragmentActivity() {
 
 	override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
 		super.configureFlutterEngine(flutterEngine)
-		MethodChannel(
-			flutterEngine.dartExecutor.binaryMessenger,
-			CHANNEL
-		).setMethodCallHandler { call, result ->
+        methodChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL
+        )
+
+		methodChannel?.setMethodCallHandler { call, result ->
 			when (call.method) {
 				"check_app_update" -> {
 					val url = call.argument<String>("url")
 					var showDialog = call.argument<Boolean>("show_dialog") ?: true
 					var showProgress = call.argument<Boolean>("show_progress") ?: true
-					result.success("DONE")
-				}
-				"register_voice" -> {
 					result.success("DONE")
 				}
 				"get_bluetooth_name" -> {
@@ -198,6 +206,39 @@ class MainActivity: FlutterFragmentActivity() {
 					Log.d(LOG_TAG, "set portrait mode")
 					result.success("DONE")
 				}
+                "checkVPNPermission" -> {
+                    Log.d(LOG_TAG, "checkVPNPermission")
+                    try {
+                        val id = call.arguments as String
+                        Log.d(LOG_TAG, "Checking VPN permission for id: $id")
+                        val state = vpnViewModel.vpnPrepared.value ?: false
+                        methodChannel?.invokeMethod("tunnelCreated", mapOf(
+                            "isCreated" to state,
+                            "id" to id
+                        ))
+                        result.success("Success")
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Error in checkVPNPermission: ${e.message}")
+                        result.error(
+                            "INVALID_ARGUMENT",
+                            "Failed to process VPN permission check: ${e.message}",
+                            null
+                        )
+                    }
+                }
+                "sendCommand" -> {
+                    val command = call.argument<String>("cmd")
+                    val id = call.argument<String>("id")
+                    val args = call.argument<String>("args")
+                    Log.d(LOG_TAG, "sendCommand: cmd=$command, id=$id, ars=$args")
+                    handleSendCommand(command, id, args)
+                    result.success("Success")
+                }
+                "loginComplete" -> {
+                    Log.d(LOG_TAG, "loginComplete called")
+                    loginComplete()
+                    result.success("Success")
+                }
 				else -> {
 					if (!MethodHandler().handleMethod(call, result)) {
 						Log.e(LOG_TAG, call.method + " is not implemented.")
@@ -207,6 +248,74 @@ class MainActivity: FlutterFragmentActivity() {
 			}
 		}
 	}
+
+    private fun handleSendCommand(command: String?, id: String?, args: String?) {
+        if (command == null || command.isEmpty()) {
+            Log.e(LOG_TAG, "Invalid arguments for sendCommand: command=$command")
+            return
+        }
+        Log.d(LOG_TAG, "Handling sendCommand: command=$command, id=$id, args=$args")
+        // Fork a thread to handle the command
+        Thread {
+            var cmdResult: String? = null
+            try {
+                cmdResult = when (command) {
+                    "watch_notifications" -> {
+                        if (lastNotification != null) {
+                            Log.d(LOG_TAG, "Returning last notification: $lastNotification")
+                            onNotificationReceived(lastNotification!!)
+                        } else {
+                            Log.d(LOG_TAG, "No last notification to return")
+                        }
+                        // App already running notifer.
+                        // Skip this command.
+                        "Success"
+                    }
+                    else -> {
+                        App.get().sendCommand(command, args ?: "")
+                    }
+                }
+            } catch (e: Exception) {
+                cmdResult = "Error executing command: ${e.message}"
+            }
+            Log.e(LOG_TAG, "command result: $cmdResult")
+            // If we have an ID, send the result back through method channel
+            if (!id.isNullOrEmpty()) {
+                runOnUiThread {
+                    methodChannel?.invokeMethod("commandResult", mapOf(
+                        "id" to id,
+                        "cmd" to command,
+                        "result" to cmdResult
+                    ))
+                }
+            }
+        }.start()
+    }
+
+    private var lastNotification: Notify? = null
+    private fun onNotificationReceived(notification: Notify) {
+        Log.d(LOG_TAG, "Notification received: $notification")
+        lastNotification = notification
+        runOnUiThread {
+            methodChannel?.invokeMethod("notification", Json.encodeToString(notification))
+        }
+    }
+
+    private fun loginComplete() {
+        Log.d(LOG_TAG, "Login completion")
+        try {
+            val intent =
+            Intent(applicationContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                action = Intent.ACTION_MAIN
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                putExtra(START_AT_ROOT, true)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Login: failed to start MainActivity: $e")
+        }
+    }
 }
 
 class VpnPermissionContract : ActivityResultContract<Intent, Boolean>() {

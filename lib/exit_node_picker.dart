@@ -90,7 +90,6 @@ class ExitNodePicker extends ConsumerWidget {
         ),
       if (model.showRunAsExitNode)
         _buildRunAsExitNodeItem(context, ref, model, isCupertino),
-      _buildDivider(isCupertino),
       ...model.tailnetExitNodes.map(
         (node) => ExitNodeItem(
           node: node,
@@ -100,24 +99,19 @@ class ExitNodePicker extends ConsumerWidget {
         ),
       ),
       if (model.mullvadExitNodeCount > 0) ...[
-        _buildDivider(isCupertino),
         _buildMullvadItem(context, model, isCupertino),
       ] else if (model.shouldShowMullvadInfo) ...[
-        _buildDivider(isCupertino),
         _buildMullvadInfoItem(context, isCupertino),
       ],
       if (!model.isLanAccessHidden) ...[
-        _buildDivider(isCupertino),
         _buildAllowLanAccess(context, ref, model, isCupertino),
       ],
     ];
-    if (isCupertino) {
       children = [
         AdaptiveListSection.insetGrouped(
           children: children,
         ),
-      ];
-    }
+    ];
     return Container(
       padding: const EdgeInsets.all(16.0),
       alignment: Alignment.topCenter,
@@ -128,10 +122,6 @@ class ExitNodePicker extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Widget _buildDivider(bool isCupertino) {
-    return isCupertino ? const SizedBox.shrink() : const Divider();
   }
 
   Widget _buildManagedByOrgText(
@@ -273,10 +263,13 @@ class ExitNodeItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = node.online && !node.isRunningExitNode;
 
-    if (isCupertino) {
       return AdaptiveListTile.notched(
         leading: CircleAvatar(
-          backgroundColor: node.online ? CupertinoColors.activeGreen : null,
+        backgroundColor: node.online
+            ? isCupertino
+                ? CupertinoColors.activeGreen.resolveFrom(context)
+                : Colors.green
+            : null,
           child: Text(
             (node.city.isEmpty ? node.label : node.city)
                 .substring(0, 1)
@@ -286,18 +279,10 @@ class ExitNodeItem extends StatelessWidget {
         title: Text(node.city.isEmpty ? node.label : node.city),
         subtitle: !node.online ? const Text('Offline') : null,
         trailing: node.selected
-            ? const Icon(CupertinoIcons.check_mark_circled)
+          ? Icon(isCupertino ? CupertinoIcons.check_mark_circled : Icons.check)
             : null,
         onTap: enabled ? onTap : null,
-      );
-    }
-
-    return ListTile(
-      title: Text(node.city.isEmpty ? node.label : node.city),
-      subtitle: !node.online ? const Text('Offline') : null,
-      trailing: node.selected ? const Icon(Icons.check) : null,
-      enabled: enabled,
-      onTap: enabled ? onTap : null,
     );
+
   }
 }

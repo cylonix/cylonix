@@ -164,9 +164,12 @@ class AlertDialogWidget extends StatelessWidget {
             },
           ),
       ],
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(32.0)),
+      shape: isApple()
+          ? null
+          : const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(8.0)),
       ),
+      actionsAlignment: isApple() ? null : MainAxisAlignment.center,
     );
   }
 }

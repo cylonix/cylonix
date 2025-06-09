@@ -55,7 +55,7 @@ class HealthView extends ConsumerWidget {
             : null,
         title: const Text('Health Status'),
       ),
-      body: const Center(child: HealthStateWidget()),
+      body: const HealthStateWidget(),
     );
   }
 }
@@ -74,7 +74,7 @@ class HealthStateWidget extends ConsumerWidget {
 
   Widget _buildHealthState(BuildContext context, HealthState healthState) {
     if (healthState.warnings?.isEmpty ?? true) {
-      return _buildHealthyState(context);
+      return Center(child: _buildHealthyState(context));
     }
     return const HealthWarningList();
   }
@@ -172,71 +172,61 @@ class _HealthWarningTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isCylonixController = ref.watch(isCylonixControllerProvider);
     final isUserWithCylonixController = user?.controlURL.contains("cylonix.io");
-    if (isApple()) {
-      return CupertinoListTile(
-        padding: const EdgeInsets.all(8),
-        leading: warning.severity == Severity.high
-            ? const Icon(
-                CupertinoIcons.exclamationmark_triangle_fill,
-                color: CupertinoColors.systemRed,
-              )
-            : warning.severity == Severity.medium
-                ? const Icon(
-                    CupertinoIcons.exclamationmark_circle_fill,
-                    color: CupertinoColors.systemOrange,
-                  )
-                : const Icon(
-                    CupertinoIcons.exclamationmark_circle,
-                    color: CupertinoColors.systemGrey,
-                  ),
-        backgroundColor: _getBackgroundColor(context),
-        title: Text(
-          isUserWithCylonixController ?? isCylonixController
-              ? warning.title.replaceAll("Tailscale", "Cylonix")
-              : warning.title,
-          style: CupertinoTheme.of(context)
-              .textTheme
-              .textStyle
-              .copyWith(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
-          child: Text(
-            isUserWithCylonixController ?? isCylonixController
-                ? warning.text.replaceAll("Tailscale", "Cylonix")
-                : warning.text,
-            style: CupertinoTheme.of(context)
+    return AdaptiveListTile(
+      padding: const EdgeInsets.all(8),
+      leading: warning.severity == Severity.high
+          ? Icon(
+              isApple()
+                  ? CupertinoIcons.exclamationmark_triangle_fill
+                  : Icons.error,
+              color: isApple()
+                  ? CupertinoColors.systemRed.resolveFrom(context)
+                  : Colors.red,
+            )
+          : warning.severity == Severity.medium
+              ? Icon(
+                  isApple()
+                      ? CupertinoIcons.exclamationmark_circle_fill
+                      : Icons.warning,
+                  color: isApple()
+                      ? CupertinoColors.systemOrange.resolveFrom(context)
+                      : Colors.orange,
+                )
+              : Icon(
+                  isApple()
+                      ? CupertinoIcons.exclamationmark_circle
+                      : Icons.info_outline,
+                  color: isApple()
+                      ? CupertinoColors.systemGrey.resolveFrom(context)
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+      backgroundColor: _getBackgroundColor(context),
+      title: Text(
+        isUserWithCylonixController ?? isCylonixController
+            ? warning.title.replaceAll("Tailscale", "Cylonix")
+            : warning.title,
+        style: isApple()
+            ? CupertinoTheme.of(context)
                 .textTheme
                 .textStyle
-                .copyWith(fontSize: 13, fontWeight: FontWeight.w200),
-            maxLines: 100, // Allow unlimited lines
-            overflow: TextOverflow.visible, // Don't truncate with ellipsis
-          ),
+                .copyWith(fontSize: 16, fontWeight: FontWeight.w600)
+            : Theme.of(context).textTheme.titleSmall,
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
+        child: Text(
+          isUserWithCylonixController ?? isCylonixController
+              ? warning.text.replaceAll("Tailscale", "Cylonix")
+              : warning.text,
+          style: isApple()
+              ? CupertinoTheme.of(context)
+                  .textTheme
+                  .textStyle
+                  .copyWith(fontSize: 13, fontWeight: FontWeight.w200)
+              : Theme.of(context).textTheme.bodySmall,
+          maxLines: 100, // Allow unlimited lines
+          overflow: TextOverflow.visible, // Don't truncate with ellipsis
         ),
-      );
-    }
-    return Card(
-      margin: const EdgeInsets.only(left: 8, right: 8),
-      color: _getBackgroundColor(context),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (warning.title.isNotEmpty)
-            Text(
-              warning.title,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
-            child: Text(
-              warning.text,
-              style: Theme.of(context).textTheme.bodyMedium,
-              maxLines: null, // Allow unlimited lines
-              overflow: TextOverflow.visible, // Don't truncate with ellipsis
-            ),
-          ),
-        ],
       ),
     );
   }

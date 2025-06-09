@@ -30,7 +30,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "io.cylonix.sase"
-    compileSdkVersion 34
+    compileSdkVersion 35
     ndkVersion "25.1.8937393"
 
     sourceSets {
@@ -44,7 +44,7 @@ android {
     defaultConfig {
         applicationId "io.cylonix.sase"
         minSdkVersion 26
-        targetSdkVersion 34
+        targetSdkVersion 35
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
@@ -71,40 +71,10 @@ android {
             minifyEnabled false // Delete useless code
             shrinkResources false // Delete useless resources
             //useProguard true
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            //proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 
-    flavorDimensions "version"
-    productFlavors {
-        net {
-            // Network only version. No meet, no remote desktop, et al.
-            // Assigns this product flavor to the "version" flavor dimension.
-            // If you are using only one dimension, this property is optional,
-            // and the plugin automatically assigns all the module's flavors to
-            // that dimension.
-            dimension "version"
-            applicationIdSuffix ".net"
-            versionNameSuffix "-net"
-        }
-        full {
-            dimension "version"
-            //applicationIdSuffix ".full"
-            versionNameSuffix "-full"
-        }
-    }
-    sourceSets {
-        net {
-            java.srcDirs = ['src/net/kotlin/io/cylonix/sase']
-            res.srcDirs = ['src/net/res']
-            manifest.srcFile 'src/net/AndroidManifest.xml'
-        }
-        full {
-            java.srcDirs = ['src/net/kotlin/io/cylonix/sase']
-            res.srcDirs = ['src/net/res']
-            manifest.srcFile 'src/full/AndroidManifest.xml'
-        }
-    }
     packagingOptions {
     }
 
@@ -142,10 +112,8 @@ kotlin {
 dependencies {
     implementation "androidx.browser:browser:1.2.0"
 	implementation "androidx.security:security-crypto:1.1.0-alpha03"
-    netImplementation ':ipn@aar'
-    fullImplementation ':ipn@aar'
-    netImplementation ':ipn_app@aar'
-    fullImplementation ':ipn_app@aar'
+    implementation ':ipn@aar'
+    implementation ':ipn_app@aar'
 
     implementation "androidx.work:work-runtime:2.9.0"
 
@@ -177,4 +145,7 @@ dependencies {
 
     // https://pub.dev/packages/flutter_local_notifications#gradle-setup
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
+
+    // Material Design Components
+    implementation 'com.google.android.material:material:1.11.0'
 }

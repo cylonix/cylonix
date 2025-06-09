@@ -21,7 +21,7 @@ class UILogsWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return AdaptiveListTile.notched(
       title: const Text("View App Logs"),
-      trailing: const CupertinoListTileChevron(),
+      trailing: const AdaptiveListTileChevron(),
       onTap: () => _showLogConsole(context),
     );
   }

@@ -161,7 +161,28 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     bool loading = false,
   }) {
     if (loading) {
-      return const Center(child: CircularProgressIndicator.adaptive());
+      return Center(
+        child: Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              const Expanded(
+                flex: 3,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  spacing: 16,
+                  children: [
+                    Text("Cylonix is starting..."),
+                    Text("Please log in if you haven't already."),
+                  ],
+                ),
+              ),
+              Expanded(child: Container()),
+            ],
+          ),
+        ),
+      );
     }
 
     final loginProfile = ref.watch(currentLoginProfileProvider);
@@ -179,164 +200,144 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
       return const Center(child: CircularProgressIndicator.adaptive());
     }
 
-    if (isApple()) {
-      return ListView(
-        children: [
-          if (users.length > 1 && _hiddenSections.isNotEmpty) ...[
-            CupertinoButton(
-              padding: const EdgeInsets.all(8),
-              child: const Text('Show All'),
-              onPressed: () async {
-                setState(() => _hiddenSections.clear());
-                await UserSectionPreferences.setHiddenSections([]);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (cylonixUsers.isNotEmpty &&
-              !_hiddenSections.contains('cylonix')) ...[
-            AdaptiveListSection.insetGrouped(
-              header: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Cylonix'),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    child: const Text("Don't Show"),
-                    onPressed: () => _toggleSectionVisibility('cylonix'),
-                  ),
-                ],
-              ),
-              footer: Text(
-                'Select a Cylonix users to access Cylonix services and features.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                ),
-              ),
+    return ListView(
+      children: [
+        if (users.length > 1 && _hiddenSections.isNotEmpty) ...[
+          AdaptiveButton(
+            padding: const EdgeInsets.all(8),
+            child: const Text('Show All'),
+            onPressed: () async {
+              setState(() => _hiddenSections.clear());
+              await UserSectionPreferences.setHiddenSections([]);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (cylonixUsers.isNotEmpty &&
+            !_hiddenSections.contains('cylonix')) ...[
+          AdaptiveListSection.insetGrouped(
+            header: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                ...cylonixUsers
-                    .map((user) => _buildUserTile(context, user, loginProfile)),
-              ],
-            ),
-          ],
-          if (tailscaleUsers.isNotEmpty &&
-              !_hiddenSections.contains('tailscale')) ...[
-            AdaptiveListSection.insetGrouped(
-              header: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Tailscale'),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    child: const Text('Don\'t Show'),
-                    onPressed: () => _toggleSectionVisibility('tailscale'),
-                  ),
-                ],
-              ),
-              footer: Text(
-                'Select a Tailscale user to to switch to.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                Text(
+                  'Cylonix',
+                  style: adaptiveGroupedHeaderStyle(context),
                 ),
-              ),
-              children: [
-                ...tailscaleUsers
-                    .map((user) => _buildUserTile(context, user, loginProfile)),
-              ],
-            ),
-          ],
-          if (otherUsers.isNotEmpty && !_hiddenSections.contains('others')) ...[
-            AdaptiveListSection.insetGrouped(
-              header: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Other'),
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    child: const Text('Don\'t Show'),
-                    onPressed: () => _toggleSectionVisibility('other'),
-                  ),
-                ],
-              ),
-              footer: Text(
-                'Select a user to switch to.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                ),
-              ),
-              children: [
-                ...otherUsers.map(
-                  (user) => _buildUserTile(
-                    context,
-                    user,
-                    loginProfile,
-                    showControlURL: true,
-                  ),
+                AdaptiveButton(
+                  padding: EdgeInsets.zero,
+                  child: const Text("Don't Show"),
+                  onPressed: () => _toggleSectionVisibility('cylonix'),
                 ),
               ],
             ),
+            footer: Text(
+              'Select a Cylonix user to access Cylonix services and features.',
+              style: adaptiveGroupedFooterStyle(context),
+            ),
+            children: [
+              ...cylonixUsers
+                  .map((user) => _buildUserTile(context, user, loginProfile)),
+            ],
+          ),
+        ],
+        if (tailscaleUsers.isNotEmpty &&
+            !_hiddenSections.contains('tailscale')) ...[
+          AdaptiveListSection.insetGrouped(
+            header: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Tailscale',
+                  style: adaptiveGroupedHeaderStyle(context),
+                ),
+                CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  child: const Text('Don\'t Show'),
+                  onPressed: () => _toggleSectionVisibility('tailscale'),
+                ),
+              ],
+            ),
+            footer: Text(
+              'Select a Tailscale user to to switch to.',
+              style: adaptiveGroupedFooterStyle(context),
+            ),
+            children: [
+              ...tailscaleUsers
+                  .map((user) => _buildUserTile(context, user, loginProfile)),
+            ],
+          ),
+        ],
+        if (otherUsers.isNotEmpty && !_hiddenSections.contains('others')) ...[
+          AdaptiveListSection.insetGrouped(
+            header: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Other', style: adaptiveGroupedHeaderStyle(context)),
+                AdaptiveButton(
+                  padding: EdgeInsets.zero,
+                  child: const Text('Don\'t Show'),
+                  onPressed: () => _toggleSectionVisibility('other'),
+                ),
+              ],
+            ),
+            footer: Text(
+              'Select a user to switch to.',
+              style: TextStyle(
+                fontSize: 12,
+                color: isApple()
+                    ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                    : null,
+              ),
+            ),
+            children: [
+              ...otherUsers.map(
+                (user) => _buildUserTile(
+                  context,
+                  user,
+                  loginProfile,
+                  showControlURL: true,
+                ),
+              ),
+            ],
+          ),
+        ],
+        AdaptiveListSection.insetGrouped(
+          children: [
+            _buildActionTile(
+              context,
+              leading: const Icon(CupertinoIcons.add),
+              title: 'Add Account',
+              onTap: _handleAddProfile,
+            ),
+            _buildActionTile(
+              context,
+              leading: const Icon(CupertinoIcons.arrow_right_circle),
+              title: 'Reauthenticate',
+              onTap: _handleReauthenticate,
+            ),
+            if (loginProfile != null) ...[
+              _buildActionTile(
+                context,
+                leading: const Icon(CupertinoIcons.arrow_turn_up_left),
+                title: 'Log Out',
+                isDestructive: true,
+                onTap: _handleLogout,
+              ),
+            ],
           ],
+        ),
+        if (loginProfile != null) ...[
+          const SizedBox(height: 32),
           AdaptiveListSection.insetGrouped(
             children: [
               _buildActionTile(
                 context,
-                leading: const Icon(CupertinoIcons.add),
-                title: 'Add Account',
-                onTap: _handleAddProfile,
+                leading: const Icon(CupertinoIcons.info_circle),
+                title: 'Delete Account',
+                isDestructive: true,
+                onTap: () => _handleDeleteAccount(loginProfile),
               ),
-              _buildActionTile(
-                context,
-                leading: const Icon(CupertinoIcons.arrow_right_circle),
-                title: 'Reauthenticate',
-                onTap: _handleReauthenticate,
-              ),
-              if (loginProfile != null) ...[
-                _buildActionTile(
-                  context,
-                  leading: const Icon(CupertinoIcons.arrow_turn_up_left),
-                  title: 'Log Out',
-                  isDestructive: true,
-                  onTap: _handleLogout,
-                ),
-                const SizedBox(height: 32),
-                _buildActionTile(
-                  context,
-                  leading: const Icon(CupertinoIcons.info_circle),
-                  title: 'Delete Account',
-                  isDestructive: true,
-                  onTap: () => _handleDeleteAccount(loginProfile),
-                ),
-              ],
             ],
-          ),
-        ],
-      );
-    }
-    return ListView(
-      children: [
-        ...users.map((user) => _buildUserTile(context, user, loginProfile)),
-        _buildDivider(),
-        _buildActionTile(
-          context,
-          title: 'Add Account',
-          onTap: _handleAddProfile,
-        ),
-        _buildDivider(),
-        _buildActionTile(
-          context,
-          title: 'Reauthenticate',
-          onTap: _handleReauthenticate,
-        ),
-        if (loginProfile != null) ...[
-          _buildDivider(),
-          _buildActionTile(
-            context,
-            title: 'Log Out',
-            isDestructive: true,
-            onTap: _handleLogout,
           ),
         ],
       ],
@@ -349,53 +350,36 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     final isCurrentUser = user.id == currentUser?.id;
     final isSwitching = user.id == _switchingUserId;
     final u = user.userProfile;
-    if (isApple()) {
-      return AdaptiveListTile(
-        title: Text(u.displayName),
-        subtitle: Text(
-          u.loginName + (showControlURL ? "\n(${user.controlURL})" : ""),
-        ),
-        leading: CircleAvatar(
-          backgroundColor: CupertinoColors.systemGrey5,
-          backgroundImage:
-              u.profilePicURL.isNotEmpty ? NetworkImage(u.profilePicURL) : null,
-          child: u.profilePicURL.isEmpty
-              ? Text(
-                  u.displayName.characters.first.toUpperCase(),
-                  style: const TextStyle(color: CupertinoColors.label),
-                )
-              : null,
-        ),
-        trailing: isSwitching
-            ? const CupertinoActivityIndicator()
-            : isCurrentUser
-                ? const Icon(
-                    CupertinoIcons.check_mark,
-                    color: CupertinoColors.activeBlue,
-                  )
-                : const CupertinoListTileChevron(),
-        onTap: isCurrentUser ? null : () => _handleSwitchProfile(user),
-      );
-    }
-
-    return ListTile(
+    return AdaptiveListTile(
       title: Text(u.displayName),
-      subtitle: Text(u.loginName),
+      subtitle: Text(
+        u.loginName + (showControlURL ? "\n(${user.controlURL})" : ""),
+      ),
       leading: CircleAvatar(
+        backgroundColor: isApple() ? CupertinoColors.systemGrey5 : null,
         backgroundImage:
             u.profilePicURL.isNotEmpty ? NetworkImage(u.profilePicURL) : null,
         child: u.profilePicURL.isEmpty
-            ? Text(u.displayName.characters.first.toUpperCase())
+            ? Text(
+                u.displayName.characters.first.toUpperCase(),
+                style: TextStyle(
+                  color: isApple()
+                      ? CupertinoColors.label.resolveFrom(context)
+                      : null,
+                ),
+              )
             : null,
       ),
       trailing: isSwitching
-          ? const CircularProgressIndicator()
+          ? const AdaptiveLoadingWidget()
           : isCurrentUser
               ? Icon(
-                  Icons.check,
-                  color: Theme.of(context).colorScheme.primary,
+                  isApple() ? CupertinoIcons.check_mark : Icons.check,
+                  color: isApple()
+                      ? CupertinoColors.activeBlue.resolveFrom(context)
+                      : Theme.of(context).colorScheme.primary,
                 )
-              : null,
+              : const CupertinoListTileChevron(),
       onTap: isCurrentUser ? null : () => _handleSwitchProfile(user),
     );
   }
@@ -407,46 +391,23 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     required VoidCallback onTap,
     bool isDestructive = false,
   }) {
-    if (isApple()) {
-      return AdaptiveListTile(
-        leading: leading,
-        title: Text(
-          title,
-          style: TextStyle(
-            color: isDestructive ? CupertinoColors.destructiveRed : null,
-          ),
-        ),
-        trailing: title == 'Add Account' && _isAddingProfile
-            ? const CupertinoActivityIndicator()
-            : const CupertinoListTileChevron(),
-        onTap: _isAddingProfile ? null : onTap,
-      );
-    }
-
-    return ListTile(
+    return AdaptiveListTile(
       leading: leading,
       title: Text(
         title,
         style: TextStyle(
-          color: isDestructive ? Theme.of(context).colorScheme.error : null,
+          color: isDestructive
+              ? isApple()
+                  ? CupertinoColors.destructiveRed.resolveFrom(context)
+                  : Colors.red
+              : null,
         ),
       ),
       trailing: title == 'Add Account' && _isAddingProfile
-          ? const CircularProgressIndicator()
-          : null,
+          ? const AdaptiveLoadingWidget()
+          : const AdaptiveListTileChevron(),
       onTap: _isAddingProfile ? null : onTap,
     );
-  }
-
-  Widget _buildDivider() {
-    if (isApple()) {
-      return Container(
-        height: 1,
-        color: CupertinoColors.separator,
-      );
-    }
-
-    return const Divider();
   }
 
   Widget _buildErrorView(BuildContext context, Object error) {
@@ -561,10 +522,12 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     );
   }
 
-  Future<void> _launchURL(String url) async {
-    _logger.d("Launching to URL $url");
+  Future<void> _launchLoginURL(String url) async {
+    _logger.d("Launching to login URL $url");
     try {
-      final launched = await launchUrl(Uri.parse(url));
+      final launched = await launchUrl(
+        Uri.parse(url),
+      );
       if (!launched) {
         throw Exception("cannot launch");
       }
@@ -587,7 +550,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                 .d("\n\n\n****Got browse URL: ${state.browseToURL}****\n\n\n");
             completer.complete();
             setState(() => _isAddingProfile = false);
-            _launchURL(state.browseToURL!);
+            _launchLoginURL(state.browseToURL!);
             ref.read(ipnStateNotifierProvider.notifier).urlBrowsed =
                 state.browseToURL;
           }

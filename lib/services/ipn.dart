@@ -173,6 +173,10 @@ class IpnService {
     });
   }
 
+  void loginComplete() {
+    _channel.invokeMethod("loginComplete");
+  }
+
   static void returnToPreviousApp() {
     _channel.invokeMethod("returnToPreviousApp");
   }
@@ -226,6 +230,9 @@ class IpnService {
   }
 
   Future<void> createTunnelsManager(String id) async {
+    if (!isApple()) {
+      return;
+    }
     final result = await _channel.invokeMethod('create_tunnels_manager', id);
     _logger.d("create tunnels manager: $result");
     if (result != "Success") {
@@ -412,7 +419,7 @@ class IpnService {
       wantRunning: false,
       wantRunningSet: true,
     ));
-    await _turnOffVPN();
+    if (isApple()) await _turnOffVPN();
   }
 
   Future<void> setControlURL(String controlURL) async {
@@ -651,20 +658,23 @@ class IpnService {
       }
     });
     try {
-      try {
-        await createTunnelsManager(/* don't care about the result */ "");
-        final e = await completer.future.timeout(const Duration(seconds: 15));
-        tunnelStatusSub.cancel();
-        if (e.status == TunnelStatus.inactive) {
-          throw "tunnel inactive: ${e.error}";
+      if (isApple()) {
+        try {
+          await createTunnelsManager(/* don't care about the result */ "");
+          final e = await completer.future.timeout(const Duration(seconds: 15));
+          tunnelStatusSub.cancel();
+          if (e.status == TunnelStatus.inactive) {
+            throw "tunnel inactive: ${e.error}";
+          }
+          _logger.d("Tunnel setup success. Proceed to start VPN engine.");
+        } on TimeoutException {
+          _logger.e("Timeout waiting for tunnel being active");
+          throw "Timeout waiting for VPN tunnel to be ready for configuration";
+        } catch (e) {
+          throw Exception("Failed to setup VPN: $e");
         }
-        _logger.d("Tunnel setup success. Proceed to start VPN engine.");
-      } on TimeoutException {
-        _logger.e("Timeout waiting for tunnel being active");
-        throw "Timeout waiting for VPN tunnel to be ready for configuration";
-      } catch (e) {
-        throw Exception("Failed to setup VPN: $e");
       }
+      _logger.d("Starting VPN engine...");
       try {
         final ret = await status(light: true, fast: true);
         _logger.d("status: $ret");

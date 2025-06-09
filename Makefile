@@ -55,6 +55,8 @@ apk: copy_ipn_aar
 	$(call build,apk,--split-per-abi --target-platform android-arm64)
 appbundle: copy_ipn_aar
 	$(call build,appbundle)
+ipn_aar:
+	cd tailscale-android && make libtailscale android/libs/ipn_app.aar
 copy_ipn_aar:
 	mkdir -p android/app/libs/
 	cp tailscale-android/android/libs/ipn_app.aar android/app/libs/.

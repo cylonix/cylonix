@@ -7,6 +7,7 @@ import 'models/ipn.dart';
 import 'utils/utils.dart';
 import 'viewmodels/peer_details.dart' as pd;
 import 'viewmodels/ping_view.dart';
+import 'widgets/adaptive_widgets.dart';
 
 class PingView extends ConsumerWidget {
   const PingView({super.key, required this.peer});
@@ -42,18 +43,7 @@ class PingView extends ConsumerWidget {
         automaticallyImplyLeading: false,
         transitionBetweenRoutes: false,
         middle: Text('Ping ${peer.computedName}'),
-        trailing: CupertinoButton(
-          padding: EdgeInsets.zero,
-          child: isPinging ? const Text("Stop") : const Text("Close"),
-          onPressed: () {
-            if (isPinging) {
-              ref.read(pingStateProvider.notifier).stopPing();
-            } else {
-              ref.read(pd.peerDetailsViewModelProvider.notifier).close();
-              Navigator.of(context).pop();
-            }
-          },
-        ),
+        trailing: _actionButton(isPinging, ref, context),
       ),
       child: SafeArea(
         child: _buildPingContent(context, data, true),
@@ -69,20 +59,26 @@ class PingView extends ConsumerWidget {
         automaticallyImplyLeading: false,
         title: Text('Ping ${peer.computedName}'),
         actions: [
-          IconButton(
-            icon: isPinging ? const Icon(Icons.stop) : const Icon(Icons.close),
-            onPressed: () {
-              if (isPinging) {
-                ref.read(pingStateProvider.notifier).stopPing();
-              } else {
-                ref.read(pd.peerDetailsViewModelProvider.notifier).close();
-                Navigator.of(context).pop();
-              }
-            },
-          ),
+          _actionButton(isPinging, ref, context),
         ],
       ),
       body: _buildPingContent(context, data, false),
+    );
+  }
+
+  Widget _actionButton(bool isPinging, WidgetRef ref, BuildContext context) {
+    return AdaptiveButton(
+      textButton: true,
+      small: true,
+      child: isPinging ? const Text("Stop") : const Text("Close"),
+      onPressed: () {
+        if (isPinging) {
+          ref.read(pingStateProvider.notifier).stopPing();
+        } else {
+          ref.read(pd.peerDetailsViewModelProvider.notifier).close();
+          Navigator.of(context).pop();
+        }
+      },
     );
   }
 

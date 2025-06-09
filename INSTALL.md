@@ -6,23 +6,61 @@ This document explains how to build and run the Cylonix client on all supported 
 
 ## Prerequisites
 
-- Git  
-- Go (version pinned in `tailscale/go.toolchain.rev`)  
-- Flutter & Dart SDK  
-- Xcode (for iOS/macOS)  
-- Android SDK (for Android)  
-- NSIS & SignTool (for Windows installer)  
+- Git
+- Go (version pinned in `tailscale/go.toolchain.rev`)
+- Flutter & Dart SDK
+- Xcode (for iOS/macOS)
+- Android SDK (for Android)
+- NSIS & SignTool (for Windows installer)
 - Docker (optional, for reproducible builds)
 
 ---
 
 ## Repository Setup
 
+- Setup before building app
+
 ```bash
 git clone https://github.com/cylonix/cylonix.git
 cd cylonix
-make app-icons       # generate launcher icons
-make config          # create/update local .env
+git submodule update --init --recursive
+make config
+```
+
+- For android, please generate your release app signing key first
+
+```bash
+# Generate a keystore file
+keytool -genkey -v -keystore ~/cylonix.keystore -keyalg RSA -keysize 2048 -validity 10000 -alias cylonix
+
+# Create key.properties file
+cat << EOF > android/key.properties
+storePassword=<password from previous step>
+keyPassword=<password from previous step>
+keyAlias=cylonix
+storeFile=${HOME}/cylonix.keystore
+EOF
+
+# Secure the key.properties file
+chmod 600 android/key.properties
+```
+
+```text
+    Note:
+    - Replace `<password>` with the password you entered during keystore generation
+    - Keep your keystore file and passwords secure - they're required to publish app updates
+    - The keystore file path can be changed but must match in key.properties
+```
+
+- To update app icons
+
+```bash
+make app-icons       # generate app icons
+```
+
+- To update models after changing the model files
+
+```bash
 make models          # build codegen models
 ```
 
@@ -74,9 +112,9 @@ Internally copies Tailscale AARs into `android/app/libs` before build.
 make debian
 ```
 
-- Cleans `build/`  
-- `flutter build linux`  
-- `make -C tailscale deb`  
+- Cleans `build/`
+- `flutter build linux`
+- `make -C tailscale deb`
 - Runs the packaging script in `tools/packaging/linux`
 
 ### macOS & iOS
