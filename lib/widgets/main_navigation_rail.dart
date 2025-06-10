@@ -106,7 +106,8 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
           top: Platform.isMacOS || _isIpad ? 32 : 0,
         ),
         children: [
-          _buildLeading(context, user),
+          if (MediaQuery.of(context).size.height > 500)
+            _buildLeading(context, user),
           if (Platform.isMacOS || _isIpad) ...[
             const SizedBox(height: 32),
             const Text(
@@ -166,7 +167,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
       backgroundColor: isApple()
           ? CupertinoColors.secondarySystemFill
           : Theme.of(context).navigationRailTheme.backgroundColor,
-      leading: _buildLeading(context, user),
+      leading: (MediaQuery.of(context).size.height > 500)
+          ? _buildLeading(context, user)
+          : null,
       useIndicator: !isApple(), // Material 3 indicator style
       indicatorColor: isApple()
           ? CupertinoColors.activeBlue.withOpacity(0.1)

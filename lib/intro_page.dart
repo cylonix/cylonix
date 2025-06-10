@@ -312,10 +312,8 @@ class _State extends ConsumerState<IntroPage> {
   ) {
     var maxHeight = 0.0;
     final height = MediaQuery.of(context).size.height;
-    if (height <= 500) {
+    if (height <= 1000) {
       _logger.w("Screen height is too small: $height. Using minimum height.");
-    } else if (height < 900) {
-      maxHeight = 400;
     } else if (height < 1200) {
       maxHeight = 600;
     } else {
@@ -356,7 +354,9 @@ class _State extends ConsumerState<IntroPage> {
                   constraints: BoxConstraints(maxHeight: maxHeight),
                   child: Column(
                     children: [
-                      Expanded(child: topBody),
+                      Expanded(
+                        child: SingleChildScrollView(child: topBody),
+                      ),
                       bottomBody,
                       const SizedBox(height: 32),
                     ],

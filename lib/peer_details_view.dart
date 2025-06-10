@@ -48,6 +48,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
       appBar: AppBar(
         title: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(node.displayName),
             Row(
@@ -89,7 +90,6 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
             : null,
       ),
       body: _buildContent(context, node),
-      bottomSheet: isPinging ? _buildPingSheet(context, node) : null,
     );
   }
 
@@ -285,49 +285,19 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
   }
 
   Widget _buildSectionHeader(BuildContext context, String title) {
-    return Text(title, style: adaptiveGroupedHeaderStyle(context));
+    return AdaptiveGroupedHeader(title);
   }
 
-  Widget _buildPingSheet(BuildContext context, Node node) {
-    return PingView(peer: node);
-  }
-
-// Add this method to show the ping sheet:
-  void _startPing(Node node) {
+  void _startPing(Node node) async {
     ref.read(peerDetailsViewModelProvider.notifier).startPing(node);
-    showCupertinoModalPopup(
-      context: context,
-      builder: (BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color: CupertinoColors.systemBackground.resolveFrom(context),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        height: MediaQuery.of(context).size.height * 0.7,
-        padding: const EdgeInsets.all(8),
-        margin: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Container(
-                height: 6,
-                width: 40,
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  color: CupertinoColors.separator,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-              Expanded(
-                child: PingView(peer: node),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    var height = MediaQuery.of(context).size.height * 0.7;
+    if (height < 380) {
+      height = 380;
+    }
+    await AdaptiveModalPopup(
+      height: height,
+      child: PingView(peer: node),
+    ).show(context);
   }
 
   bool _isNodeOnline(Node node, Node selfNode) {

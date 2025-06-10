@@ -137,26 +137,13 @@ class HealthWarningList extends ConsumerWidget {
         );
       }
     });
-    if (isApple()) {
-      return AdaptiveListSection.insetGrouped(
-        backgroundColor: Colors.transparent,
-        margin: const EdgeInsets.only(left: 16, right: 16, top: 32),
-        children: [
-          AdaptiveListSection.insetGrouped(
-            header: const Text("Warnings"),
-            backgroundColor: Colors.transparent,
-            children: list,
-          ),
-        ],
-      );
-    }
     return ListView(
       shrinkWrap: true,
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 32),
       children: [
-        const SizedBox(height: 16),
-        Text("Warnings", style: Theme.of(context).textTheme.titleMedium),
-        ...list,
+        AdaptiveListSection.insetGrouped(
+          header: const AdaptiveGroupedHeader("Warnings"),
+          children: list,
+        ),
       ],
     );
   }

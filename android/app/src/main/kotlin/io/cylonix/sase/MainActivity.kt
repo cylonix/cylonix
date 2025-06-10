@@ -27,6 +27,10 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 import com.tailscale.ipn.R as IPNR
+import com.tailscale.ipn.setIpnStateChangeCallback
+import com.tailscale.ipn.setNotificationCallback
+import com.tailscale.ipn.getLogContent
+import com.tailscale.ipn.sendCommand
 import com.tailscale.ipn.ui.model.Ipn
 import com.tailscale.ipn.ui.model.Ipn.Notify
 import com.tailscale.ipn.ui.viewModel.VpnViewModel
@@ -51,7 +55,7 @@ class MainActivity: FlutterFragmentActivity() {
         Log.d(LOG_TAG, "Starting cylonix activity")
 		super.onCreate(savedInstanceState)
 
-        App.get().setStateNotifyCallback(::stateNotify)
+        App.get().setIpnStateChangeCallback(::onIpnStateChanged)
         App.get().setNotificationCallback(::onNotificationReceived)
         Log.d(LOG_TAG, "onCreate: setting up VPN permission launcher")
         setVpnPermissionLauncher()
@@ -114,7 +118,7 @@ class MainActivity: FlutterFragmentActivity() {
     }
 
     private var ipnState: Ipn.State = Ipn.State.NoState
-    fun stateNotify(state: Ipn.State) {
+    fun onIpnStateChanged(state: Ipn.State) {
         val isPrepared = vpnViewModel.vpnPrepared.value
         Log.d(LOG_TAG, "$ipnState -> $state vpn isPrepared=$isPrepared")
         if (ipnState != state && state == Ipn.State.Running) {
@@ -227,11 +231,21 @@ class MainActivity: FlutterFragmentActivity() {
                     }
                 }
                 "sendCommand" -> {
-                    val command = call.argument<String>("cmd")
-                    val id = call.argument<String>("id")
-                    val args = call.argument<String>("args")
-                    Log.d(LOG_TAG, "sendCommand: cmd=$command, id=$id, ars=$args")
-                    handleSendCommand(command, id, args)
+                    try {
+                        val command = call.argument<String>("cmd")
+                        val id = call.argument<String>("id")
+                        val args = call.argument<String>("args")
+                        Log.d(LOG_TAG, "sendCommand: cmd=$command, id=$id, ars=$args")
+                        handleSendCommand(command, id, args)
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Error in sendCommand: ${e.message}")
+                        result.error(
+                            "INVALID_ARGUMENT",
+                            "Failed to process sendCommand request: ${e.message}",
+                            null
+                        )
+                        return@setMethodCallHandler
+                    }
                     result.success("Success")
                 }
                 "loginComplete" -> {
@@ -239,11 +253,31 @@ class MainActivity: FlutterFragmentActivity() {
                     loginComplete()
                     result.success("Success")
                 }
+                "getLogs" -> {
+                    Log.d(LOG_TAG, "logs called")
+                    try {
+                        val id = call.arguments as String
+                        Log.d(LOG_TAG, "Fetching logs for id: $id")
+                        val logContent = App.get().getLogContent(true)
+                        val logLines = logContent.split("\n").filter { it.isNotEmpty() }
+                        methodChannel?.invokeMethod("logs", mapOf(
+                            "logs" to logLines,
+                            "id" to id
+                        ))
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Error in logs: ${e.message}")
+                        result.error(
+                            "INVALID_ARGUMENT",
+                            "Failed to process logs request: ${e.message}",
+                            null
+                        )
+                        return@setMethodCallHandler
+                    }
+                    result.success("Success")
+                }
 				else -> {
-					if (!MethodHandler().handleMethod(call, result)) {
-						Log.e(LOG_TAG, call.method + " is not implemented.")
-						result.notImplemented()
-					}
+					Log.e(LOG_TAG, call.method + " is not implemented.")
+					result.notImplemented()
 				}
 			}
 		}

@@ -85,7 +85,7 @@ class PingView extends ConsumerWidget {
   Widget _buildPingContent(
       BuildContext context, PingState data, bool isCupertino) {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.only(bottom: 16.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,7 +164,9 @@ class PingView extends ConsumerWidget {
 
     return LineChart(
       LineChartData(
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
+        backgroundColor: isApple()
+            ? CupertinoColors.systemBackground.resolveFrom(context)
+            : Theme.of(context).colorScheme.surface,
         minY: 0,
         maxY: maxY,
         gridData: FlGridData(
@@ -181,9 +183,17 @@ class PingView extends ConsumerWidget {
         ),
         titlesData: FlTitlesData(
           topTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              const AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: false,
+            ),
+          ),
           rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              const AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: false,
+            ),
+          ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,

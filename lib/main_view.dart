@@ -14,7 +14,6 @@ import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/exit_node_status.dart';
-import 'widgets/main_drawer.dart';
 import 'widgets/peer_list.dart';
 
 class MainView extends ConsumerStatefulWidget {
@@ -61,17 +60,9 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildMaterialScaffold(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(userProfileProvider);
     return Scaffold(
-      appBar: _buildMaterialHeader(context, ref),
-      drawer: useNavigationRail(context)
-          ? null
-          : MainDrawer(
-              onNavigateToSettings: widget.onNavigateToSettings,
-              onNavigateToUserSwitch: widget.onNavigateToUserSwitcher,
-              onNavigateToExitNodes: widget.onNavigateToExitNodes,
-              onNavigateToHealth: widget.onNavigateToHealth,
-              onNavigateToAbout: widget.onNavigateToAbout,
-            ),
+      appBar: _buildMaterialHeader(context, ref, user),
       body: SafeArea(
         child: Column(
           children: [
@@ -83,15 +74,6 @@ class _MainViewState extends ConsumerState<MainView> {
           ],
         ),
       ),
-      endDrawer: useNavigationRail(context)
-          ? null
-          : MainDrawer(
-              onNavigateToSettings: widget.onNavigateToSettings,
-              onNavigateToUserSwitch: widget.onNavigateToUserSwitcher,
-              onNavigateToExitNodes: widget.onNavigateToExitNodes,
-              onNavigateToHealth: widget.onNavigateToHealth,
-              onNavigateToAbout: widget.onNavigateToAbout,
-            ),
     );
   }
 
@@ -185,7 +167,7 @@ class _MainViewState extends ConsumerState<MainView> {
     if (child != null) {
       return Padding(
         padding: EdgeInsets.only(
-          left: Platform.isMacOS && !useNavigationRail(context) ? 60 : 16,
+          left: Platform.isMacOS && !useNavigationRail(context) ? 60 : 24,
         ),
         child: child,
       );
@@ -213,40 +195,17 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   PreferredSizeWidget _buildMaterialHeader(
-      BuildContext context, WidgetRef ref) {
+      BuildContext context, WidgetRef ref, UserProfile? user) {
     return AppBar(
       title: _buildTitle(context, ref),
+      titleSpacing: 24,
       leading: _buildLeading(context, ref),
       actions: [
         _buildToggleDeviceViewButton(context, ref),
         if (!useNavigationRail(context))
-          _buildMaterialProfileButton(context, ref),
+          _buildProfileButton(context, ref, user),
+        const SizedBox(width: 16),
       ],
-    );
-  }
-
-  Widget _buildMaterialProfileButton(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(userProfileProvider);
-    if (user == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Builder(
-      builder: (c) => InkWell(
-        onTap: Scaffold.of(c).openEndDrawer,
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: CircleAvatar(
-            radius: 20,
-            backgroundImage: user.profilePicURL.isNotEmpty
-                ? NetworkImage(user.profilePicURL)
-                : null,
-            child: user.profilePicURL.isEmpty
-                ? Text(user.displayName[0].toUpperCase())
-                : null,
-          ),
-        ),
-      ),
     );
   }
 
@@ -268,18 +227,23 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildToggleDeviceViewButton(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(backendStateProvider) ?? BackendState.noState;
-    if (state != BackendState.running) {
+    final state = ref.watch(vpnStateProvider);
+    if (state != VpnState.connected) {
       return const SizedBox.shrink();
     }
 
     final showDevices = ref.watch(showDevicesProvider);
     return AdaptiveButton(
+      padding: useNavigationRail(context) ? null : EdgeInsets.zero,
       textButton: !useNavigationRail(context),
       onPressed: () {
         ref.read(showDevicesProvider.notifier).setValue(!showDevices);
       },
-      child: Text(showDevices ? "Hide Devices" : "Show Devices"),
+      child: Text(
+        showDevices ? "Hide Devices" : "Show Devices",
+        style:
+            useNavigationRail(context) ? null : const TextStyle(fontSize: 12),
+      ),
     );
   }
 
@@ -287,6 +251,10 @@ class _MainViewState extends ConsumerState<MainView> {
     final netmap = ref.watch(netmapProvider);
     final state = ref.watch(backendStateProvider) ?? BackendState.noState;
     final showDevices = ref.watch(showDevicesProvider);
+    final vpnState = ref.watch(vpnStateProvider);
+    if (vpnState == VpnState.connecting || vpnState == VpnState.disconnecting) {
+      return _buildConnectingView(context, vpnState == VpnState.connecting);
+    }
     switch (state) {
       case BackendState.running:
         break;
@@ -389,39 +357,92 @@ class _MainViewState extends ConsumerState<MainView> {
                 _buildToggleDeviceViewButton(context, ref),
               ],
             ),
-      trailing: _buildCupertinoProfileButton(context, ref, user),
+      trailing: _buildProfileButton(context, ref, user),
     );
   }
 
-  Widget _buildCupertinoProfileButton(
+  Widget _buildProfileButton(
       BuildContext context, WidgetRef ref, UserProfile? user) {
     if (useNavigationRail(context)) return const SizedBox.shrink();
 
-    return CupertinoButton(
-      padding: EdgeInsets.zero,
-      onPressed: () => _showCupertinoMenu(context, ref),
-      child: user == null
+    return IconButton(
+      padding: const EdgeInsets.all(0),
+      onPressed: () => isApple()
+          ? _showCupertinoMenu(context, ref, user)
+          : _showMaterialMenu(context, ref, user),
+      icon: user == null
           ? const Icon(CupertinoIcons.ellipsis_circle)
-          : CircleAvatar(
-              radius: 18,
-              backgroundColor: CupertinoColors.systemGrey5,
-              backgroundImage: user.profilePicURL.isNotEmpty
-                  ? NetworkImage(user.profilePicURL)
-                  : null,
-              child: user.profilePicURL.isEmpty
-                  ? Text(
-                      user.displayName[0].toUpperCase(),
-                      style: const TextStyle(
-                        color: CupertinoColors.label,
-                        fontSize: 16,
-                      ),
-                    )
-                  : null,
-            ),
+          : AdaptiveAvatar(radius: 18, user: user),
     );
   }
 
-  void _showCupertinoMenu(BuildContext context, WidgetRef ref) {
+  void _showMaterialMenu(
+      BuildContext context, WidgetRef ref, UserProfile? user) {
+    final healthSeverity = ref.watch(healthSeverityProvider);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet<void>(
+      isScrollControlled: true,
+      constraints: const BoxConstraints(maxWidth: double.infinity),
+      context: context,
+      builder: (BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: AdaptiveAvatar(radius: 12, user: user),
+                title: const Text('Account'),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.onNavigateToUserSwitcher();
+                },
+              ),
+              ListTile(
+                leading: AdaptiveSettingsIcon(size: 24),
+                title: const Text('Settings'),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.onNavigateToSettings();
+                },
+              ),
+              ListTile(
+                leading: (healthSeverity == null)
+                    ? AdaptiveHealthyIcon(size: 24)
+                    : healthSeverity == Severity.high
+                        ? AdaptiveErrorIcon(size: 24)
+                        : AdaptiveWarningIcon(size: 24),
+                title: const Text('Health'),
+                textColor: healthSeverity == Severity.high ? Colors.red : null,
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.onNavigateToHealth();
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  isDarkMode ? Icons.light_mode : Icons.dark_mode,
+                  size: 24,
+                ),
+                title: Text(isDarkMode ? 'Light Mode' : 'Dark Mode'),
+                onTap: () {
+                  Navigator.pop(context);
+                  ref.read(themeProvider.notifier).toggleTheme();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+    );
+  }
+
+  void _showCupertinoMenu(
+      BuildContext context, WidgetRef ref, UserProfile? user) {
     final healthSeverity = ref.watch(healthSeverityProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -429,6 +450,20 @@ class _MainViewState extends ConsumerState<MainView> {
       context: context,
       builder: (BuildContext context) => CupertinoActionSheet(
         actions: <CupertinoActionSheetAction>[
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              widget.onNavigateToUserSwitcher();
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              spacing: 8,
+              children: [
+                const Text('Account'),
+                AdaptiveAvatar(radius: 12, user: user),
+              ],
+            ),
+          ),
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
@@ -483,7 +518,6 @@ class _MainViewState extends ConsumerState<MainView> {
           ),
         ],
         cancelButton: CupertinoActionSheetAction(
-          isDestructiveAction: true,
           onPressed: () {
             Navigator.pop(context);
           },

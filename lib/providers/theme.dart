@@ -36,31 +36,19 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
   ThemeNotifier(this.ref) : super(ThemeMode.system) {
     _loadTheme();
     ref.listen(systemBrightnessProvider, (previous, current) {
-      print("System brightness changed: $current");
       _handleSystemChange(current.$1, current.$2);
     });
   }
 
   Future<void> _loadTheme() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedTheme = prefs.getString(_themePreferenceKey);
-    final timestamp = prefs.getInt(_themeTimestampKey);
-
-    if (savedTheme != null && timestamp != null) {
-      _lastLocalChange = DateTime.fromMillisecondsSinceEpoch(timestamp);
-      state = ThemeMode.values.firstWhere(
-        (mode) => mode.toString() == savedTheme,
-        orElse: () => ThemeMode.system,
-      );
-    }
+    // On loading up, use system theme as priority.
+    state = ThemeMode.system;
   }
 
   void _handleSystemChange(Brightness brightness, DateTime systemChangeTime) {
     // Only apply system change if it's more recent than local change
-    print("Handling system change: $brightness at $systemChangeTime");
     if (_lastLocalChange == null ||
         systemChangeTime.isAfter(_lastLocalChange!)) {
-      print("Applying system brightness change to theme");
       state = brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light;
     }
   }

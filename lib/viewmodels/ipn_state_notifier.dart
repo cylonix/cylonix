@@ -431,6 +431,15 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
+  void setConnecting() {
+    _logger.d("Setting state to connecting");
+    state = AsyncValue.data(
+      (state.valueOrNull ?? const IpnState()).copyWith(
+        vpnState: VpnState.connecting,
+      ),
+    );
+  }
+
   bool _initializingTailchat = false;
   Future<void> _initTailchat() async {
     if (_initializingTailchat) return;

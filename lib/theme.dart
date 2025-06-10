@@ -61,7 +61,6 @@ final List<ThemeData> themeList = [
   ),
 ];
 
-// Add this extension to handle CupertinoListTile theming
 class CupertinoListTileData extends ThemeExtension<CupertinoListTileData> {
   final Color? backgroundColor;
   final TextStyle? titleTextStyle;

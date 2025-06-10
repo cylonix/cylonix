@@ -214,9 +214,8 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
       children: [
         if (!widget.isAuthKey) ...[
           AdaptiveListSection.insetGrouped(
-            header: Text(
+            header: const AdaptiveGroupedHeader(
               'CONTROL SERVER',
-              style: adaptiveGroupedHeaderStyle(context),
             ),
             footer: Text(
               strings.explanation,
@@ -276,7 +275,7 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
           ),
           if (_customURL)
             AdaptiveListSection.insetGrouped(
-              header: const Text('CUSTOM URL'),
+              header: const AdaptiveGroupedHeader('CUSTOM URL'),
               children: [
                 AdaptiveListTile(
                   title: CupertinoTextField.borderless(

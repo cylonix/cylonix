@@ -26,16 +26,22 @@ class IpnLogsWidget extends ConsumerWidget {
     final logs = ref.watch(ipnLogsProvider);
     return logs.when(
       data: (_) => AdaptiveListTile.notched(
-        title: const Text("View Network Extension Logs"),
+        title: Text(isApple()
+            ? "View Network Extension Logs"
+            : "View Network Service Logs"),
         trailing: const AdaptiveListTileChevron(),
         onTap: () => _showLogConsole(context, ref),
       ),
-      loading: () => const AdaptiveListTile.notched(
-        title: Text("Loading Network Extension Logs"),
-        trailing: CircularProgressIndicator.adaptive(),
+      loading: () => AdaptiveListTile.notched(
+        title: Text(isApple()
+            ? "Loading Network Extension Logs"
+            : "Loading Network Service Logs"),
+        trailing: const AdaptiveLoadingWidget(),
       ),
       error: (error, stackTrace) => AdaptiveListTile.notched(
-        title: const Text("Error Loading Network Extension Logs"),
+        title: Text(isApple()
+            ? "Error Loading Network Extension Logs"
+            : "Error Loading Network Service Logs"),
         subtitle: Text(
           "$error",
           style: const TextStyle(color: Colors.red),

@@ -256,7 +256,7 @@ class AdaptiveSwitch extends StatelessWidget {
         : Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: activeColor ?? Theme.of(context).primaryColor,
+            activeColor: activeColor,
             inactiveThumbColor: inactiveThumbColor,
             inactiveTrackColor: inactiveTrackColor,
           );
@@ -266,8 +266,10 @@ class AdaptiveSwitch extends StatelessWidget {
 class AdaptiveLoadingWidget extends StatelessWidget {
   final double? size;
   final Color? color;
+  final double? maxWidth;
 
-  const AdaptiveLoadingWidget({super.key, this.size, this.color});
+  const AdaptiveLoadingWidget(
+      {super.key, this.size, this.color, this.maxWidth});
 
   @override
   Widget build(BuildContext context) {
@@ -275,6 +277,12 @@ class AdaptiveLoadingWidget extends StatelessWidget {
         ? const CupertinoActivityIndicator()
         : CircularProgressIndicator(
             strokeWidth: size ?? 4.0,
+            constraints: maxWidth != null
+                ? BoxConstraints(
+                    maxWidth: maxWidth!,
+                    maxHeight: maxWidth!,
+                  )
+                : null,
             valueColor: AlwaysStoppedAnimation<Color>(
               color ?? Theme.of(context).primaryColor,
             ),
@@ -604,6 +612,7 @@ class AdaptiveListSection extends StatelessWidget {
                 ...insetGrouped
                     ? [
                         Card(
+                          clipBehavior: Clip.antiAlias,
                           margin: const EdgeInsets.symmetric(horizontal: 16),
                           elevation: 0,
                           child: Column(children: groupedChildren),
@@ -639,52 +648,57 @@ class AdaptiveModalPopup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return isApple()
-        ? Container(
-            decoration: BoxDecoration(
-              color: CupertinoColors.systemBackground.resolveFrom(context),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            height: height ?? MediaQuery.of(context).size.height * 0.7,
-            padding: const EdgeInsets.all(8),
-            margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: SafeArea(
-              top: false,
-              child: Column(
-                children: [
-                  Container(
-                    height: 6,
-                    width: 40,
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: CupertinoColors.separator,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                  Expanded(
-                    child: child,
-                  ),
-                ],
+    return Container(
+      decoration: BoxDecoration(
+        color: isApple()
+            ? CupertinoColors.systemBackground.resolveFrom(context)
+            : Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      width: double.infinity,
+      height: height ?? MediaQuery.of(context).size.height * 0.7,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              height: 6,
+              width: 40,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: CupertinoColors.separator,
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
-          )
-        : AlertDialog(
-            content: child,
-            actions: [
-              TextButton(
-                onPressed: () {
-                  if (onDismiss != null) {
-                    onDismiss!();
-                  }
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Close'),
-              ),
-            ],
-          );
+            Expanded(
+              child: child,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> show(BuildContext context) async {
+    if (isApple()) {
+      await showCupertinoModalPopup(
+        context: context,
+        builder: (context) => this,
+      );
+    } else {
+      await showModalBottomSheet(
+        constraints: const BoxConstraints(
+          maxWidth: double.infinity,
+        ),
+        isScrollControlled: true,
+        useSafeArea: true,
+        context: context,
+        builder: (context) => this,
+      );
+    }
   }
 }
 
@@ -781,7 +795,7 @@ TextStyle? adaptiveGroupedHeaderStyle(BuildContext context) {
   }
   return Theme.of(context)
       .textTheme
-      .titleLarge
+      .titleMedium
       ?.copyWith(fontWeight: FontWeight.bold);
 }
 
@@ -796,4 +810,21 @@ TextStyle? adaptiveGroupedFooterStyle(BuildContext context) {
       .textTheme
       .bodySmall
       ?.copyWith(fontWeight: FontWeight.w300);
+}
+
+class AdaptiveGroupedHeader extends StatelessWidget {
+  final String title;
+
+  const AdaptiveGroupedHeader(
+    this.title, {
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title.toUpperCase(),
+      style: adaptiveGroupedHeaderStyle(context),
+    );
+  }
 }

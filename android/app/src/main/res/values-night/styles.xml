@@ -4,6 +4,7 @@
     <style name="LaunchTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:forceDarkAllowed">true</item>
+        <item name="android:windowFullscreen">true</item>
     </style>
     
     <style name="NormalTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">

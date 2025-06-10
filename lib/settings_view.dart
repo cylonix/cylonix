@@ -246,7 +246,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             if (isVPNPrepared) _buildUserSection(context, ref, user),
             if (isAdmin) _buildAdminSection(context),
             if (_isNetworkFeaturesReady)
-              AdaptiveListSection(
+              AdaptiveListSection.insetGrouped(
                 header: Text(
                   'NETWORK',
                   style:
@@ -316,9 +316,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               ],
             ),
             AdaptiveListSection.insetGrouped(
-              header: Text(
+              header: const AdaptiveGroupedHeader(
                 'Advanced Options',
-                style: adaptiveGroupedHeaderStyle(context),
               ),
               children: [
                 UILogsWidget(
@@ -386,9 +385,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       BuildContext context, WidgetRef ref, UserProfile? user) {
     final profiles = ref.watch(loginProfilesProvider);
     return AdaptiveListSection.insetGrouped(
-      header: Text(
+      header: const AdaptiveGroupedHeader(
         'ACCOUNT',
-        style: adaptiveGroupedHeaderStyle(context),
       ),
       children: [
         AdaptiveListTile.notched(
@@ -434,9 +432,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   Widget _buildAdminSection(BuildContext context) {
     return AdaptiveListSection.insetGrouped(
-      header: Text(
+      header: const AdaptiveGroupedHeader(
         'ADMIN',
-        style: adaptiveGroupedHeaderStyle(context),
       ),
       children: [
         AdaptiveListTile.notched(

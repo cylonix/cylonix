@@ -153,6 +153,9 @@ class _PeerListState extends State<PeerList> {
               expandedHeight: 120.0,
               backgroundColor: Colors.transparent,
               flexibleSpace: FlexibleSpaceBar(
+                titlePadding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                ),
                 centerTitle: !useNavigationRail(context),
                 title: Text(peerSet.user?.displayName ?? "",
                     style: TextStyle(

@@ -202,8 +202,9 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
 
     return ListView(
       children: [
-        if (users.length > 1 && _hiddenSections.isNotEmpty) ...[
+        if (_hiddenSections.isNotEmpty) ...[
           AdaptiveButton(
+            textButton: !isApple(),
             padding: const EdgeInsets.all(8),
             child: const Text('Show All'),
             onPressed: () async {
@@ -219,15 +220,16 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
             header: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                const AdaptiveGroupedHeader(
                   'Cylonix',
-                  style: adaptiveGroupedHeaderStyle(context),
                 ),
-                AdaptiveButton(
-                  padding: EdgeInsets.zero,
-                  child: const Text("Don't Show"),
-                  onPressed: () => _toggleSectionVisibility('cylonix'),
-                ),
+                if (users.length > 1)
+                  AdaptiveButton(
+                    textButton: !isApple(),
+                    padding: EdgeInsets.zero,
+                    child: const Text("Don't Show"),
+                    onPressed: () => _toggleSectionVisibility('cylonix'),
+                  ),
               ],
             ),
             footer: Text(
@@ -246,9 +248,8 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
             header: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                const AdaptiveGroupedHeader(
                   'Tailscale',
-                  style: adaptiveGroupedHeaderStyle(context),
                 ),
                 CupertinoButton(
                   padding: EdgeInsets.zero,
@@ -371,7 +372,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
             : null,
       ),
       trailing: isSwitching
-          ? const AdaptiveLoadingWidget()
+          ? const AdaptiveLoadingWidget(maxWidth: 24)
           : isCurrentUser
               ? Icon(
                   isApple() ? CupertinoIcons.check_mark : Icons.check,
@@ -404,7 +405,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         ),
       ),
       trailing: title == 'Add Account' && _isAddingProfile
-          ? const AdaptiveLoadingWidget()
+          ? const AdaptiveLoadingWidget(maxWidth: 24)
           : const AdaptiveListTileChevron(),
       onTap: _isAddingProfile ? null : onTap,
     );
@@ -553,6 +554,8 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
             _launchLoginURL(state.browseToURL!);
             ref.read(ipnStateNotifierProvider.notifier).urlBrowsed =
                 state.browseToURL;
+            ref.read(ipnStateNotifierProvider.notifier).setConnecting();
+            widget.onNavigateToHome();
           }
         });
       });
@@ -682,56 +685,72 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   }
 
   void _handleDeleteAccount(LoginProfile profile) async {
-    await showCupertinoModalPopup(
-      context: context,
-      builder: (_) => AdaptiveModalPopup(
+    Widget text(String t) {
+      return Text(
+        t,
+        textAlign: TextAlign.justify,
+        style: TextStyle(
+          fontSize: 16,
+          color: isApple() ? CupertinoColors.label.resolveFrom(context) : null,
+        ),
+      );
+    }
+
+    var height = MediaQuery.of(context).size.height * 0.7;
+    if (height < 380) {
+      height = 380;
+    }
+
+    await AdaptiveModalPopup(
+      height: height,
+      child: Container(
+        constraints: const BoxConstraints(
+          maxWidth: 600,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           spacing: 16,
           children: [
             AdaptiveListTile(
               leading: Icon(
-                CupertinoIcons.trash,
-                color: CupertinoColors.destructiveRed.resolveFrom(context),
+                isApple() ? CupertinoIcons.info_circle : Icons.info_outline,
               ),
               title: const Text(
                 'Delete Account',
                 textAlign: TextAlign.center,
               ),
               trailing: AdaptiveButton(
-                onPressed: () => Navigator.pop(_),
+                textButton: !isApple(),
+                onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
               ),
             ),
             Expanded(
               child: SingleChildScrollView(
-                child: Container(
-                  constraints: const BoxConstraints(
-                    maxWidth: 600,
-                  ),
-                  child: Text(
-                    'Delete Account will delete all the data associated with '
-                    'this account including the user profile and devices. If '
-                    'the account is an admin account, it will also delete all '
-                    'the users associated with the organization and its '
-                    'security settings. If you still want to proceed to delete '
-                    '"${profile.userProfile.displayName}". Please send a '
-                    'request to contact@cylonix.io. After the request is '
-                    'processed, you will receive an email with a link to '
-                    'delete your account.',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: isApple()
-                          ? CupertinoColors.label.resolveFrom(context)
-                          : null,
+                child: Column(
+                  spacing: 16,
+                  children: [
+                    text(
+                      'Delete Account will delete all the data associated with '
+                      'this account including the user profile and devices. If '
+                      'the account is an admin account, it will also delete all '
+                      'the users associated with the organization and its '
+                      'security settings.',
                     ),
-                  ),
+                    text(
+                      'If you still want to proceed to delete '
+                      '"${profile.userProfile.displayName}". Please send a '
+                      'request to contact@cylonix.io. After the request is '
+                      'processed, you will receive an email with a link to '
+                      'delete your account.',
+                    ),
+                  ],
                 ),
               ),
             ),
           ],
         ),
       ),
-    );
+    ).show(context);
   }
 }

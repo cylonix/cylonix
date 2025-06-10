@@ -2,11 +2,13 @@ import 'dart:collection';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'ansi_parser.dart';
 
@@ -506,7 +508,9 @@ class _LogConsoleState extends State<LogConsole> {
     return Builder(
       builder: (c) => IconButton(
         icon: Icon(
-          _isCupertino ? CupertinoIcons.folder : Icons.folder,
+          _isCupertino
+              ? CupertinoIcons.download_circle
+              : Icons.download_rounded,
           color: _buttonColor,
           size: 20,
         ),
@@ -515,25 +519,39 @@ class _LogConsoleState extends State<LogConsole> {
       ),
     );
   }
-
-  void _save(BuildContext c) async {
+void _save(BuildContext c) async {
     try {
       final path = await widget.saveFile?.call(_allEvents);
       if (path == null) {
+        if (mounted) {
+          await _showAlertDialog(
+            "Error",
+            "Failed to save logs.",
+          );
+        }
         return;
       }
+
       var filesApp = "";
+      var filesAppUri = "";
       if (Platform.isAndroid) {
         filesApp = "the Files app";
+        filesAppUri = "content://com.android.externalstorage.documents"
+            "/root/downloads";
       } else if (Platform.isIOS) {
         filesApp = "the Files app";
+        filesAppUri = "shareddocuments://";
       } else if (Platform.isMacOS) {
         filesApp = "Finder";
+        filesAppUri = "file://$path";
       } else if (Platform.isWindows) {
         filesApp = "File Explorer";
+        filesAppUri = "file://$path";
       } else if (Platform.isLinux) {
         filesApp = "File Manager";
+        filesAppUri = "file://$path";
       }
+
       showTopSnackBar(
         context,
         Card(
@@ -563,9 +581,26 @@ class _LogConsoleState extends State<LogConsole> {
                     TextSpan(
                       text: filesApp,
                       style: const TextStyle(
+                        decoration: TextDecoration.underline,
                         color: Colors.blue,
                         fontWeight: FontWeight.bold,
                       ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = () async {
+                          try {
+                            final uri = Uri.parse(filesAppUri);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri);
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              await _showAlertDialog(
+                                "Error",
+                                "Failed to open files app: $e",
+                              );
+                            }
+                          }
+                        },
                     ),
                   ],
                 ],
@@ -573,11 +608,11 @@ class _LogConsoleState extends State<LogConsole> {
             ),
           ),
         ),
-        displayDuration: const Duration(seconds: 5),
+        displayDuration: const Duration(seconds: 10),
       );
     } catch (e) {
       if (mounted) {
-        _showAlertDialog("Error", "Failed to save logs: $e");
+        await _showAlertDialog("Error", "Failed to save logs: $e");
       }
     }
   }
@@ -604,8 +639,8 @@ class _LogConsoleState extends State<LogConsole> {
     }
   }
 
-  void _showAlertDialog(String title, String message) {
-    showDialog(
+  Future<void> _showAlertDialog(String title, String message) async {
+    await showDialog(
       context: context,
       builder: (_) {
         return AlertDialog.adaptive(
@@ -729,13 +764,13 @@ class _LogConsoleState extends State<LogConsole> {
       if (widget.saveFile != null)
         PopupMenuItem<String>(
           value: "save as file",
-          onTap: () => widget.saveFile?.call(_allEvents),
+          onTap: () => _save(context),
           child: Row(children: [_saveAsFile, Text(_saveText)]),
         ),
       if (widget.shareFile != null)
         PopupMenuItem<String>(
           value: "share as file",
-          onTap: () => widget.shareFile?.call(_allEvents),
+          onTap: () => _share(),
           child: Row(children: [_shareAsFile, Text(_shareText)]),
         ),
       if (widget.showCloseButton)
