@@ -37,6 +37,12 @@ enum BackendState {
     return BackendState.values.firstWhere((state) => state.value == value,
         orElse: () => BackendState.noState);
   }
+
+  static BackendState fromString(String value) {
+    return BackendState.values.firstWhere(
+        (state) => state.name.toLowerCase() == value.toLowerCase(),
+        orElse: () => BackendState.noState);
+  }
 }
 
 @freezed
@@ -479,10 +485,15 @@ class UserProfile with _$UserProfile {
       'msn.com',
       'protonmail.com',
       'proton.me',
+      'privaterelay.appleid.com',
     };
 
     // Return full loginName if domain is a public email provider
     if (publicDomains.contains(tailnet.toLowerCase())) {
+      if (tailnet.toLowerCase() == 'privaterelay.appleid.com') {
+        // Special case for Apple Private Relay
+        return 'Apple Private Relay';
+      }
       return loginName;
     }
 

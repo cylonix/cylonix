@@ -2,6 +2,7 @@
     import Flutter
     import UIKit
 #elseif os(macOS)
+    import AuthenticationServices
     import Cocoa
     import FlutterMacOS
 #endif
@@ -16,10 +17,9 @@ import UserNotifications
     var methodChannel: FlutterMethodChannel?
     var tunnelsManager: TunnelsManager?
 
-    let channel: String = "io.cylonix.sase/wg"
-    let tunnelName: String = "Cylonix Tunnel"
-    let serverAddress: String = "Cylonix Mesh"
-    var inStartLogin: Bool = false
+    private let channel: String = "io.cylonix.sase/wg"
+    private let tunnelName: String = "Cylonix Tunnel"
+    private let serverAddress: String = "Cylonix Mesh"
 
     private func getCylonixTunnelConfiguration() -> TunnelConfiguration {
         let interface = InterfaceConfiguration(privateKey: PrivateKey())
@@ -216,90 +216,100 @@ import UserNotifications
 
         methodChannel!.setMethodCallHandler {
             (call: FlutterMethodCall, result: FlutterResult) in
-            if call.method == "create_tunnels_manager" {
-                self.setupTunnelsManager(call.arguments as? String ?? "")
-                result("Success")
-                return
-            }
-            if call.method == "checkVPNPermission" {
-                self.checkVPNPermission(call.arguments as? String ?? "")
-                result("Success")
-                return
-            }
-
-            // All cylonixd related calls should go through packet tunnel
-            // provider as it is a separate process.
-            guard let tunnelsMgr = self.tunnelsManager else {
-                let message = "FAILED: tunnels manager is nil. command: \(call.method)"
-                wg_log(.error, message: message)
-                result(message)
-                return
-            }
-
-            switch call.method {
-            case "getLogs":
-                result(self.handleGetWgLogs(tunnelsMgr, call.arguments as? String ?? ""))
-            case "getSharedFolderPath":
-                let sharedFolderURL = FileManager.sharedFolderURL
-                wg_log(.debug, message: "Shared folder URL: \(String(describing: sharedFolderURL?.path))")
-                result(sharedFolderURL?.path)
-            case "sendCommand":
-                // "sendCommand" is used to send command to the tunnel
-                // provider. The command is sent to the tunnel provider
-                // process and the result is sent back to the flutter
-                // app. Setting the 'id' to empty string means that the
-                // result is not needed.
-                guard let arguments = call.arguments as? [String: String]
-                else {
-                    let message = "Invalid arguments: \(String(describing: call.arguments))"
-                    wg_log(.error, message: message)
-                    result(message)
+                if call.method == "create_tunnels_manager" {
+                    self.setupTunnelsManager(call.arguments as? String ?? "")
+                    result("Success")
                     return
                 }
-
-                guard let cmd = arguments["cmd"], let id = arguments["id"], let args = arguments["args"] else {
-                    let message = "Invalid arguments: \(arguments)"
-                    wg_log(.error, message: message)
-                    result(message)
+                if call.method == "checkVPNPermission" {
+                    self.checkVPNPermission(call.arguments as? String ?? "")
+                    result("Success")
                     return
                 }
-
-                tunnelsMgr.sendCommand(self.tunnelName, cmd, args) { result in
-                    // wg_log(.debug, message: "sendCommand result: \(result)")
-                    if id == "" {
-                        // No need to send result back to flutter
+                if call.method == "startWebAuth" {
+                    guard let url = call.arguments as? String else {
+                        wg_log(.error, message: "Invalid URL for web auth")
+                        result("Error: Invalid URL")
                         return
                     }
-                    self.invokeMethod("commandResult", arguments: ["cmd": cmd, "id": id, "result": result])
-
-                    // Save tailchat service state if command succeeds
-                    if result == "Success" && (cmd == "start_tailchat" || cmd == "stop_tailchat") {
-                        if let appGroupId = FileManager.appGroupId,
-                           let groupDefaults = UserDefaults(suiteName: appGroupId)
-                        {
-                            let state = cmd == "start_tailchat" ? "enabled" : "disabled"
-                            groupDefaults.set(cmd == "start_tailchat", forKey: "tailchat_service_enabled")
-                            // Post Darwin notification for state change
-                            let center = CFNotificationCenterGetDarwinNotifyCenter()
-                            let name = "io.cylonix.sase.tailchat.stateChange" as CFString
-                            CFNotificationCenterPostNotification(
-                                center,
-                                CFNotificationName(name),
-                                nil,
-                                nil,
-                                true
-                            )
-                            wg_log(.debug, message: "Saved tailchat service state as '\(state)' in app group defaults and notified")
-                        } else {
-                            wg_log(.error, message: "Failed to access app group defaults")
-                        }
-                    }
+                    self.startWebAuth(url: url)
+                    result("Success")
+                    return
                 }
 
-                result("Success")
-            default:
-                result("Error: unknown method \(call.method)")
-            }
+                // All cylonixd related calls should go through packet tunnel
+                // provider as it is a separate process.
+                guard let tunnelsMgr = self.tunnelsManager else {
+                    let message = "FAILED: tunnels manager is nil. command: \(call.method)"
+                    wg_log(.error, message: message)
+                    result(message)
+                    return
+                }
+
+                switch call.method {
+                case "getLogs":
+                    result(self.handleGetWgLogs(tunnelsMgr, call.arguments as? String ?? ""))
+                case "getSharedFolderPath":
+                    let sharedFolderURL = FileManager.sharedFolderURL
+                    wg_log(.debug, message: "Shared folder URL: \(String(describing: sharedFolderURL?.path))")
+                    result(sharedFolderURL?.path)
+                case "sendCommand":
+                    // "sendCommand" is used to send command to the tunnel
+                    // provider. The command is sent to the tunnel provider
+                    // process and the result is sent back to the flutter
+                    // app. Setting the 'id' to empty string means that the
+                    // result is not needed.
+                    guard let arguments = call.arguments as? [String: String]
+                    else {
+                        let message = "Invalid arguments: \(String(describing: call.arguments))"
+                        wg_log(.error, message: message)
+                        result(message)
+                        return
+                    }
+
+                    guard let cmd = arguments["cmd"], let id = arguments["id"], let args = arguments["args"] else {
+                        let message = "Invalid arguments: \(arguments)"
+                        wg_log(.error, message: message)
+                        result(message)
+                        return
+                    }
+
+                    tunnelsMgr.sendCommand(self.tunnelName, cmd, args) { result in
+                        // wg_log(.debug, message: "sendCommand result: \(result)")
+                        if id == "" {
+                            // No need to send result back to flutter
+                            return
+                        }
+                        self.invokeMethod("commandResult", arguments: ["cmd": cmd, "id": id, "result": result])
+
+                        // Save tailchat service state if command succeeds
+                        if result == "Success", cmd == "start_tailchat" || cmd == "stop_tailchat" {
+                            if let appGroupId = FileManager.appGroupId,
+                               let groupDefaults = UserDefaults(suiteName: appGroupId)
+                            {
+                                let state = cmd == "start_tailchat" ? "enabled" : "disabled"
+                                groupDefaults.set(cmd == "start_tailchat", forKey: "tailchat_service_enabled")
+                                // Post Darwin notification for state change
+                                let center = CFNotificationCenterGetDarwinNotifyCenter()
+                                let name = "io.cylonix.sase.tailchat.stateChange" as CFString
+                                CFNotificationCenterPostNotification(
+                                    center,
+                                    CFNotificationName(name),
+                                    nil,
+                                    nil,
+                                    true
+                                )
+                                wg_log(.debug, message: "Saved tailchat service state as '\(state)' in app group defaults and notified")
+                            } else {
+                                wg_log(.error, message: "Failed to access app group defaults")
+                            }
+                        }
+                    }
+
+                    result("Success")
+                default:
+                    result("Error: unknown method \(call.method)")
+                }
         }
         #if os(iOS)
             GeneratedPluginRegistrant.register(with: self)
@@ -535,6 +545,54 @@ import UserNotifications
         wg_log(.debug, message: "Sending shared content to Flutter")
         invokeMethod("sharedContent", arguments: jsonString)
     }
+
+    private var authSession: ASWebAuthenticationSession?
+
+    func startWebAuth(url: String) {
+        guard let authURL = URL(string: url) else {
+            wg_log(.error, message: "Invalid auth URL")
+            return
+        }
+
+        if let existingSession = authSession {
+            wg_log(.debug, message: "Invalidating existing auth session")
+            existingSession.cancel()
+        }
+
+        authSession = ASWebAuthenticationSession(
+            url: authURL,
+            callbackURLScheme: "cylonixauth"
+        ) { callbackURL, error in
+
+            if let error = error {
+                wg_log(.error, message: "Web auth failed: \(error.localizedDescription)")
+                self.invokeMethod("webAuthDone", arguments: [
+                    "success": false,
+                    "error": error.localizedDescription,
+                ])
+                return
+            }
+
+            guard let callbackURL = callbackURL else {
+                wg_log(.error, message: "No callback URL received")
+                self.invokeMethod("webAuthDone", arguments: [
+                    "success": false,
+                    "error": "No callback URL received",
+                ])
+                return
+            }
+
+            wg_log(.debug, message: "Web auth succeeded with callback: \(callbackURL)")
+            self.invokeMethod("webAuthDone", arguments: [
+                "success": true,
+                "url": callbackURL.absoluteString,
+            ])
+        }
+
+        // Present the auth session
+        authSession?.presentationContextProvider = self
+        authSession?.start()
+    }
 }
 
 extension AppDelegate {
@@ -652,5 +710,15 @@ extension AppDelegate {
             "path": components.path,
             "params": params,
         ])
+    }
+}
+
+extension AppDelegate: ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        #if os(iOS)
+            return UIApplication.shared.windows.first!
+        #else
+            return mainFlutterWindow ?? NSWindow()
+        #endif
     }
 }

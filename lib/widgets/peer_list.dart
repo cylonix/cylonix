@@ -138,6 +138,37 @@ class _PeerListState extends State<PeerList> {
   Color get _offlineColor =>
       isApple() ? CupertinoColors.systemGrey : Theme.of(context).disabledColor;
 
+  Widget userTitle(UserProfile? user) {
+    final style = isApple()
+        ? TextStyle(color: CupertinoColors.label.resolveFrom(context))
+        : null;
+    if (user == null) {
+      return Text('Unknown User', style: style);
+    }
+    if (user.displayName.toLowerCase().endsWith('@privaterelay.appleid.com')) {
+      return Row(
+        spacing: 8,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(user.displayName.split('@').first, style: style),
+          Text(
+            'Apple Private Relay',
+            style: style?.copyWith(
+              fontSize: 12,
+              color: isApple()
+                  ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                  : Colors.grey,
+            ),
+          ),
+        ],
+      );
+    }
+    return Text(
+      user.displayName.isNotEmpty ? user.displayName : 'Unknown User',
+      style: style,
+    );
+  }
+
   Widget _buildPeersList(
       BuildContext context, List<PeerSet> peerSets, WidgetRef ref) {
     final isConnected =
@@ -157,12 +188,7 @@ class _PeerListState extends State<PeerList> {
                   horizontal: 16.0,
                 ),
                 centerTitle: !useNavigationRail(context),
-                title: Text(peerSet.user?.displayName ?? "",
-                    style: TextStyle(
-                      color: isApple()
-                          ? CupertinoColors.label.resolveFrom(context)
-                          : null,
-                    )),
+                title: userTitle(peerSet.user),
               ),
               actions: const [SizedBox.shrink()],
             ),
@@ -173,6 +199,7 @@ class _PeerListState extends State<PeerList> {
                   final online = (peer.online == true) ||
                       (peer.stableID == selfNode?.stableID && isConnected);
                   return AdaptiveListTile(
+                    backgroundColor: Colors.transparent,
                     title: Text(peer.name,
                         style: isApple()
                             ? null

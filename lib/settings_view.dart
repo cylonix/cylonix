@@ -196,10 +196,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     bool showTailnetLock,
   ) {
     return CupertinoPageScaffold(
-      backgroundColor:
-          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
+      backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
         backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
@@ -400,7 +397,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     ? "Select Profile or Login"
                     : "Please Login"),
           ),
-          subtitle: user?.loginName != null ? Text((user?.loginName)!) : null,
+          subtitle:
+              user?.loginName != null && user?.loginName != user?.displayName
+                  ? Text((user?.loginName)!)
+                  : null,
           trailing: _trailingIcon,
           onTap: profiles.isEmpty
               ? widget.onNavigateBackHome

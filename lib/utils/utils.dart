@@ -66,6 +66,13 @@ Offset getPopupMenuOffset() {
 }
 
 bool isDarkMode(BuildContext context) {
+  if (isApple()) {
+    // Use native platform channel to get system dark mode setting
+    final window = WidgetsBinding.instance.platformDispatcher;
+    if (window.platformBrightness == Brightness.dark) {
+      return true;
+    }
+  }
   return Theme.of(context).brightness == Brightness.dark;
 }
 

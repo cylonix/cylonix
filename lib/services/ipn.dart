@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:event_bus/event_bus.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../models/backend_notify_event.dart';
@@ -157,7 +159,8 @@ class IpnService {
           try {
             final id = call.arguments['id'] as String;
             if (id.isEmpty) {
-              throw Exception("missing tunnel creation result id");
+              _logger.d("missing tunnel creation result id, skipping");
+              return;
             }
             _commandCompleters[id]
                 ?.complete(call.arguments['isCreated'] as bool);
@@ -165,6 +168,10 @@ class IpnService {
           } catch (e) {
             _logger.e("Invalid tunnel creation result: $e");
           }
+          break;
+        case "webAuthDone":
+          _logger.d("Web auth done: ${call.arguments}");
+          // Nothing to do here for now.
           break;
         default:
           _logger.d("unknown method call: ${call.method}");
@@ -678,16 +685,20 @@ class IpnService {
       try {
         final ret = await status(light: true, fast: true);
         _logger.d("status: $ret");
-        if (ret.backendState.toLowerCase() !=
-            BackendState.noState.name.toLowerCase()) {
+        final state = BackendState.fromString(ret.backendState);
+        _watchNotifications();
+        if (state.value > BackendState.needsLogin.value) {
           _logger.i(
             "Tunnel already started with state: ${ret.backendState} "
-            "!= ${BackendState.noState.name}",
+            "> ${BackendState.needsLogin.name}",
           );
-          // If tunnel is already started, we can just watch notifications
-          _watchNotifications();
-          return;
+        } else {
+          _logger.i(
+            "Starting tunnel with state: ${ret.backendState}",
+          );
+          await _start(const IpnOptions());
         }
+        return;
       } catch (e) {
         _logger.e("Failed to get status: $e. Wait for notification to start.");
       }
@@ -710,5 +721,88 @@ class IpnService {
       "sendCommand",
       <String, String>{"cmd": "log", 'id': "", "args": log},
     );
+  }
+
+  Future<void> startWebAuth(String url) async {
+    _logger.d("Starting web auth with URL: $url");
+    final result = await _channel.invokeMethod('startWebAuth', url);
+    if (result != "Success") {
+      throw Exception("Failed to start web auth: $result");
+    }
+  }
+
+  Future<http.Response?> signinWithApple(String url) async {
+    _logger.d("Starting Sign in with Apple with URL: $url");
+    try {
+      // Extract state from second path element
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isEmpty || pathSegments.length < 2) {
+        throw Exception("Invalid URL: missing state in path");
+      }
+      final state = pathSegments[1];
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+      final addTokenEndpoint = Uri.https(
+        'manage.cylonix.io',
+        '/manager/v2/login/oauth/token',
+        {
+          'provider': 'apple',
+          'session_id': state,
+        },
+      );
+      final response = await http.post(
+        addTokenEndpoint,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'token': credential.identityToken,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        if (response.statusCode == 302) {
+          _logger
+              .d("Redirect response received: ${response.headers['location']}");
+          return response;
+        }
+        throw Exception(
+          "Failed to add Apple token: ${response.statusCode} ${response.body}",
+        );
+      }
+      return null;
+    } catch (e) {
+      _logger.e("Apple Sign In setup failed: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> confirmDeviceConnection(
+      http.Response resp, String sessionID) async {
+    _logger.d("Confirming device connection for session $sessionID");
+    final headers = resp.headers;
+    headers['content-length'] = '0';
+    headers['content-type'] = 'plain/text';
+    headers['cookie'] = resp.headers['set-cookie'] ?? '';
+    final r = await http.post(
+      Uri.https(
+        "manage.cylonix.io",
+        "/manager/v2/login/confirm-session",
+        {
+          "session_id": sessionID,
+        },
+      ),
+      headers: headers,
+      body: "",
+    );
+    if (r.statusCode != 200) {
+      final msg = "Failed to confirm Apple signin: ${r.statusCode} ${r.body}";
+      throw Exception(msg);
+    }
   }
 }

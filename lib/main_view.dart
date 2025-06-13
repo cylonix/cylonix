@@ -1,8 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:top_snackbar_flutter/top_snack_bar.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import 'health_view.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
@@ -17,7 +23,6 @@ import 'widgets/exit_node_status.dart';
 import 'widgets/peer_list.dart';
 
 class MainView extends ConsumerStatefulWidget {
-  final Function(String) onLoginAtUrl;
   final Function() onNavigateToSettings;
   final Function() onNavigateToUserSwitcher;
   final Function(Node) onNavigateToPeerDetails;
@@ -27,7 +32,6 @@ class MainView extends ConsumerStatefulWidget {
 
   const MainView({
     Key? key,
-    required this.onLoginAtUrl,
     required this.onNavigateToSettings,
     required this.onNavigateToUserSwitcher,
     required this.onNavigateToPeerDetails,
@@ -43,8 +47,11 @@ class MainView extends ConsumerStatefulWidget {
 class _MainViewState extends ConsumerState<MainView> {
   static final _logger = Logger(tag: "MainView");
   Timer? _autoLaunchTimer;
-  String? _urlLaunched;
+  String? _urlToLaunch;
   bool _waitingForURL = false;
+  int _launchCountDown = 10;
+  bool _signingInWithApple = false;
+  bool _signInWithAppSuccess = false;
 
   @override
   void dispose() {
@@ -180,7 +187,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final profiles = ref.watch(loginProfilesProvider);
     final title = Text(
       user?.tailnetTitle ??
-          (profiles.isNotEmpty ? "Select Profile" : "Needs Login"),
+          (profiles.isNotEmpty ? "Select Profile" : "Needs Signin"),
       style: useNavigationRail(context)
           ? null
           : isApple()
@@ -253,7 +260,9 @@ class _MainViewState extends ConsumerState<MainView> {
     final showDevices = ref.watch(showDevicesProvider);
     final vpnState = ref.watch(vpnStateProvider);
     if (vpnState == VpnState.connecting || vpnState == VpnState.disconnecting) {
-      return _buildConnectingView(context, vpnState == VpnState.connecting);
+      return _buildCenteredWidget(
+        _buildConnectingView(context, vpnState == VpnState.connecting),
+      );
     }
     switch (state) {
       case BackendState.running:
@@ -299,10 +308,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildCupertinoScaffold(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor:
-          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
+      backgroundColor: appleScaffoldBackgroundColor(context),
       appBar: _buildCupertinoHeader(context, ref),
       body: _buildContent(context, ref),
     );
@@ -460,7 +466,7 @@ class _MainViewState extends ConsumerState<MainView> {
               spacing: 8,
               children: [
                 const Text('Account'),
-                AdaptiveAvatar(radius: 12, user: user),
+                AdaptiveAvatar(radius: 8, user: user),
               ],
             ),
           ),
@@ -546,7 +552,7 @@ class _MainViewState extends ConsumerState<MainView> {
           title: Text(netmap.selfNode.expiryLabel()),
           subtitle: const Text("Reauthenticate to remain connected"),
           backgroundColor: CupertinoColors.systemYellow.withOpacity(0.2),
-          onTap: () => _login(context, ref),
+          onTap: () => _startSignin(context, ref),
         ),
       ],
     );
@@ -554,7 +560,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildConnectView(BuildContext context, WidgetRef ref) {
     if (!isApple()) {
-      // Android asks for VPN permission ONLY afer backend is running.
+      // Android asks for VPN permission ONLY after backend is running.
       // We don't need to check for vpn permission first.
       return _buildVPNPreparedConnectView(context, ref);
     }
@@ -591,27 +597,54 @@ class _MainViewState extends ConsumerState<MainView> {
     _autoLaunchTimer = null;
   }
 
-  void _launchUrl(String url, {bool force = false}) {
+  void _launchUrl(String url, {bool force = false}) async {
     if (!force &&
         ref.read(ipnStateNotifierProvider.notifier).urlBrowsed == url) {
       _logger.d("URL already launched: $url");
       return;
     }
+    _cancelAutoLaunchTimer();
     if (mounted) {
       setState(() {
-        _urlLaunched = url;
+        // Reset the state to trigger UI update
       });
-      ref.read(ipnStateNotifierProvider.notifier).urlBrowsed = url;
-      _cancelAutoLaunchTimer();
-      widget.onLoginAtUrl(url);
+    }
+    if (mounted) {
+      try {
+        await ref.read(ipnStateNotifierProvider.notifier).startWebAuth(url);
+      } catch (e) {
+        _logger.e("Failed to sign in with '$url': $e");
+        if (mounted) {
+          await showAlertDialog(
+            context,
+            "Error",
+            "Failed to sign in with '$url': $e",
+          );
+        }
+      } finally {
+        _urlToLaunch = null;
+        _launchCountDown = 10;
+      }
     }
   }
 
   void _setAutoLaunchUrl(String url) {
-    if (_urlLaunched != url) {
+    final urlLaunched = ref.read(ipnStateNotifierProvider.notifier).urlBrowsed;
+    if (urlLaunched != url && _urlToLaunch != url) {
+      _logger.d("Setting auto-launch URL: $url");
+      _urlToLaunch = url;
       _cancelAutoLaunchTimer();
-      _autoLaunchTimer = Timer(const Duration(seconds: 10), () {
-        _launchUrl(url);
+      _launchCountDown = 10;
+      _autoLaunchTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        _launchCountDown--;
+        if (_launchCountDown <= 0) {
+          _cancelAutoLaunchTimer();
+          _urlToLaunch = null;
+          _launchUrl(url);
+        }
+        if (mounted) {
+          setState(() {});
+        }
       });
     }
   }
@@ -628,7 +661,8 @@ class _MainViewState extends ConsumerState<MainView> {
       ),
       data: (state) {
         if (state.browseToURL != null) {
-          _setAutoLaunchUrl(state.browseToURL!);
+          // Apple user to choose manually open the URL or sign in with apple.
+          if (!isApple()) _setAutoLaunchUrl(state.browseToURL!);
           _waitingForURL = false;
         }
         if (state.vpnState == VpnState.connecting ||
@@ -902,11 +936,21 @@ class _MainViewState extends ConsumerState<MainView> {
         const SizedBox(height: 16),
         if (adminURL != null)
           AdaptiveButton(
-            onPressed: () => widget.onLoginAtUrl(adminURL),
+            onPressed: () => _loginToAdminURL(adminURL),
             child: const Text('Open Admin Console'),
           ),
       ],
     );
+  }
+
+  void _loginToAdminURL(String url) async {
+    _logger.d("Launching to URL $url");
+    final launched = await launchUrl(
+      Uri.parse(url),
+    );
+    if (!launched) {
+      throw Exception("Failed to launch admin URL at '$url'");
+    }
   }
 
   Future<void> _onConnect(BuildContext context, ref) async {
@@ -969,7 +1013,7 @@ class _MainViewState extends ConsumerState<MainView> {
     );
   }
 
-  void _login(BuildContext context, WidgetRef ref) async {
+  void _startSignin(BuildContext context, WidgetRef ref) async {
     setState(() {
       _waitingForURL = true;
     });
@@ -978,14 +1022,203 @@ class _MainViewState extends ConsumerState<MainView> {
           .read(ipnStateNotifierProvider.notifier)
           .login(controlURL: ref.read(controlURLProvider));
     } catch (e) {
-      _logger.e("Failed to login: $e");
-      await showAlertDialog(context, "Error", "Failed to start login: $e");
+      _logger.e("Failed to start signin: $e");
+      await showAlertDialog(context, "Error", "Failed to start signin: $e");
     }
+  }
+
+  void _signinWithApple(String loginURL) async {
+    _logger.d("Signing in with Apple: $loginURL");
+    try {
+      setState(() {
+        _signingInWithApple = true;
+        _signInWithAppSuccess = false;
+      });
+      final uri = Uri.parse(loginURL);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isEmpty || pathSegments.length < 2) {
+        throw Exception("Invalid URL: missing state in path");
+      }
+      final state = pathSegments[1];
+      final resp = await ref
+          .read(ipnStateNotifierProvider.notifier)
+          .signinWithApple(loginURL);
+      setState(() {
+        _signInWithAppSuccess = true;
+      });
+      if (resp == null) {
+        return;
+      }
+      // Need to further process the response.
+      if (resp.statusCode == 302) {
+        Map<Object, Object?> details = {};
+        try {
+          print("Apple signin response: ${resp.body} ${resp.headers}");
+          final v = jsonDecode(resp.body) as Map<Object, Object?>;
+          details = v['confirm_session'] as Map<Object, Object?>? ?? {};
+          if (details.isEmpty) {
+            _logger
+                .d("Apple signin response is empty, no confirmation needed.");
+            throw "No confirmation details.";
+          }
+        } catch (e) {
+          _logger.e("Failed to parse Apple signin response: $e");
+          throw "Failed to handle signin result: $e";
+        }
+        _logger.d(
+          "Successfully signed in with Apple but needs user confirmation.",
+        );
+        final confirmed = await confirmDeviceConnection(resp, state, details);
+        if (confirmed != true) {
+          _logger.d(
+              "User didn't confirmed Apple signin, proceeding to disconnect.");
+          ref.read(ipnStateNotifierProvider.notifier).clearBrowseToURL();
+          await ref.read(ipnStateNotifierProvider.notifier).logout();
+          if (mounted) {
+            showTopSnackBar(
+              context,
+              const Text("Apple signin was cancelled."),
+            );
+          }
+        } else {
+          _logger.d("User confirmed device connection.");
+        }
+      }
+    } catch (e) {
+      _logger.e("Failed to sign in with Apple: $e");
+      if (mounted) {
+        await showAlertDialog(
+          context,
+          "Error",
+          "Failed to sign in with Apple: $e",
+        );
+      }
+    } finally {
+      _urlToLaunch = null;
+      _signingInWithApple = false;
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  List<Widget> _buildConnectionDetails(Map<Object, Object?> details) {
+    return details.entries
+        .map(
+          (e) => Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 160, // Fixed width for keys
+                  child: Text(
+                    "${e.key}:",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color:
+                          CupertinoColors.secondaryLabel.resolveFrom(context),
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text("${e.value}"),
+                ),
+              ],
+            ),
+          ),
+        )
+        .toList();
+  }
+
+  Future<bool?> confirmDeviceConnection(
+    http.Response resp,
+    String state,
+    Map<Object, Object?> details,
+  ) async {
+    return await showCupertinoModalPopup(
+      context: context,
+      builder: (c) => AdaptiveModalPopup(
+        height: MediaQuery.of(c).size.height * 0.9,
+        child: Container(
+          alignment: Alignment.topCenter,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(
+              spacing: 16,
+              children: [
+                CupertinoListTile(
+                  leading: Icon(
+                    CupertinoIcons.check_mark_circled,
+                    color: CupertinoColors.systemGreen.resolveFrom(c),
+                  ),
+                  title: const Text('Apple Signin Success'),
+                  trailing: AdaptiveButton(
+                    onPressed: () => Navigator.pop(c, false),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                Text(
+                  "Please confirm to connect this device to the network.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: CupertinoColors.secondaryLabel.resolveFrom(c),
+                  ),
+                ),
+                AdaptiveButton(
+                  filled: true,
+                  onPressed: () async {
+                    try {
+                      ref
+                          .read(ipnStateNotifierProvider.notifier)
+                          .confirmDeviceConnection(resp, state);
+                    } catch (e) {
+                      _logger.e("Failed to confirm Apple signin: $e");
+                      await showAlertDialog(
+                        context,
+                        "Error",
+                        "Failed to confirm Apple signin: $e",
+                      );
+                    }
+                    Navigator.pop(c, true);
+                  },
+                  child: const Text('Connect Device'),
+                ),
+                const Text(
+                  "Device Details",
+                ),
+                Expanded(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      const SizedBox(height: 8),
+                      ..._buildConnectionDetails(details),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool get _canSignInWithAppleInApp {
+    final isCylonixController = ref.watch(isCylonixControllerProvider);
+    return isApple() && isCylonixController;
   }
 
   Widget _buildLoginRequiredView(
       BuildContext context, WidgetRef ref, String? loginURL) {
     final profiles = ref.watch(loginProfilesProvider);
+    final urlLaunched = ref.watch(ipnStateNotifierProvider.notifier).urlBrowsed;
+    print("Login URL: $loginURL, Launched: $urlLaunched");
     return Column(
       spacing: 16,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1007,13 +1240,13 @@ class _MainViewState extends ConsumerState<MainView> {
           if (!_waitingForURL)
             AdaptiveButton(
               filled: true,
-              onPressed: () => _login(context, ref),
-              child: const Text('Sign In'),
+              onPressed: () => _startSignin(context, ref),
+              child: const Text('Start Signin'),
             ),
           if (_waitingForURL) ...[
             const SizedBox(height: 16),
             Text(
-              'Waiting for backend to send the login URL...',
+              'Waiting for backend to start the signin process...',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.apply(
                     color: isApple()
@@ -1025,16 +1258,45 @@ class _MainViewState extends ConsumerState<MainView> {
             const CircularProgressIndicator.adaptive(),
           ],
         ],
-        if (loginURL != null) ...[
-          if (_urlLaunched == loginURL) ...[
+        if (loginURL != null && _canSignInWithAppleInApp) ...[
+          if (_signingInWithApple || urlLaunched == loginURL) ...[
             const AdaptiveLoadingWidget(),
+            _signInWithAppSuccess
+                ? const Text(
+                    "Signed in with Apple. Starting cylonix network. "
+                    "Please wait...",
+                  )
+                : const Text("Signing in with Apple. Please wait..."),
           ],
+          if (!_signingInWithApple && urlLaunched != loginURL) ...[
+            SizedBox(
+              width: 300,
+              child: SignInWithAppleButton(
+                height: 40,
+                style: isDarkMode(context)
+                    ? SignInWithAppleButtonStyle.whiteOutlined
+                    : SignInWithAppleButtonStyle.black,
+                onPressed: () => _signinWithApple(loginURL),
+              ),
+            ),
+            AdaptiveButton(
+              width: 300,
+              height: 40,
+              onPressed: () => _launchUrl(loginURL, force: true),
+              child: const Text('Sign in with more methods'),
+            ),
+          ],
+        ],
+        if (loginURL != null && !_canSignInWithAppleInApp) ...[
+          urlLaunched == loginURL
+              ? const AdaptiveLoadingWidget()
+              : Text("$_launchCountDown seconds until auto-launch"),
           Text(
-            _urlLaunched != loginURL
+            urlLaunched != loginURL
                 ? "Please press the button below to be redirected to the "
-                    "following web page to login. Or you will be redirected in "
-                    "10 seconds."
-                : "Waiting for login to complete on the following web page. ",
+                    "following web page to signin. Or you will be redirected in "
+                    "a few seconds automatically."
+                : "Waiting for signin to complete on the following web page. ",
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.apply(
                   color: isApple()
@@ -1056,13 +1318,13 @@ class _MainViewState extends ConsumerState<MainView> {
           AdaptiveButton(
             filled: true,
             onPressed: () => _launchUrl(loginURL, force: true),
-            child: const Text('Go to Login Page'),
+            child: const Text('Go to Signin Page'),
           ),
         ],
         if (profiles.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text(
-            "Or select a profile to login.",
+            "Or select a profile to sign in.",
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleMedium?.apply(
                   color: isApple()
@@ -1081,7 +1343,13 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildCenteredWidget(Widget child) {
-    if (MediaQuery.of(context).size.height < 500) {
+    final height = MediaQuery.of(context).size.height;
+    if (height <= 400) {
+      return SingleChildScrollView(
+        child: Center(child: child),
+      );
+    }
+    if (height < 700) {
       return Center(child: child);
     }
     return Column(

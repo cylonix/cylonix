@@ -519,16 +519,12 @@ class _LogConsoleState extends State<LogConsole> {
       ),
     );
   }
-void _save(BuildContext c) async {
+
+  void _save(BuildContext c) async {
     try {
       final path = await widget.saveFile?.call(_allEvents);
       if (path == null) {
-        if (mounted) {
-          await _showAlertDialog(
-            "Error",
-            "Failed to save logs.",
-          );
-        }
+        // Save canceled
         return;
       }
 

@@ -1,5 +1,4 @@
 import 'dart:collection';
-import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,84 +76,12 @@ class IpnLogsWidget extends ConsumerWidget {
     }
   }
 
-  Future<ListQueue<OutputEvent>> _getLogs(WidgetRef ref) async {
-    final viewModel = ref.read(ipnLogsProvider.notifier);
-    ListQueue<OutputEvent> events = ListQueue();
-    final timestampRegex = RegExp(
-        r'^(\[[\d\-]+T[\d:\.]+Z\]|\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})');
-
-    try {
-      var logs = await viewModel.fetchLogs();
-      _logger.d("Logs ${logs.length} lines.");
-      if (logs.length > 5000) {
-        logs = logs.sublist(logs.length - 5000);
-      }
-
-      LogEvent? currentLogEvent;
-      List<String> currentLines = [];
-
-      for (var line in logs) {
-        line = line.trim();
-        if (line.isEmpty) continue;
-
-        final timestampMatch = timestampRegex.firstMatch(line);
-
-        if (Platform.isLinux || timestampMatch != null) {
-          // New log entry starts
-          if (currentLogEvent != null) {
-            // Add previous log entry
-            events.add(OutputEvent(currentLogEvent, currentLines));
-            currentLines = [];
-          }
-
-          // Extract timestamp
-          final timestamp = timestampMatch?.group(1)!;
-          //line = line.substring(timestampMatch.end).trim();
-
-          // Determine log level and clean up line.
-          // Multiple tags can be present, so we check for each one
-          // with higher priority for more severe levels.
-          var level = Level.info;
-          if (line.contains("[FATAL]")) {
-            level = Level.fatal;
-          } else if (line.contains("[ERROR]")) {
-            level = Level.error;
-          } else if (line.contains("[WARNING]")) {
-            level = Level.warning;
-          } else if (line.contains("INFO")) {
-            level = Level.info;
-          } else if (line.contains("[DEBUG]")) {
-            level = Level.debug;
-          }
-          // Create new log event
-          currentLogEvent = LogEvent(
-            level,
-            "",
-            time: timestamp != null ? DateTime.parse(timestamp) : null,
-          );
-          currentLines.add(line.trim());
-        } else if (currentLogEvent != null) {
-          // Continue previous log entry
-          currentLines.add(line);
-        }
-      }
-
-      // Add the last log entry
-      if (currentLogEvent != null && currentLines.isNotEmpty) {
-        events.add(OutputEvent(currentLogEvent, currentLines));
-      }
-    } catch (e) {
-      _logger.e("Failed to get logs: $e");
-    }
-    _logger.d("Logs ${events.length} events.");
-    return events;
-  }
-
   Widget _buildLogConsole(
     BuildContext context,
     WidgetRef ref,
     ListQueue<OutputEvent> events,
   ) {
+    final viewModel = ref.read(ipnLogsProvider.notifier);
     return LogConsole(
       backButton: isApple() && onNavigateBack != null
           ? AppleBackButton(
@@ -162,7 +89,7 @@ class IpnLogsWidget extends ConsumerWidget {
             )
           : null,
       events: events,
-      getLogOutputEvents: () => _getLogs(ref),
+      getLogOutputEvents: viewModel.getLogs,
       showRefreshButton: true,
       dark: Theme.of(context).brightness == Brightness.dark,
       saveFile: _save,
@@ -172,7 +99,8 @@ class IpnLogsWidget extends ConsumerWidget {
   }
 
   void _showLogConsole(BuildContext context, WidgetRef ref) async {
-    final events = await _getLogs(ref);
+    final viewModel = ref.read(ipnLogsProvider.notifier);
+    final events = await viewModel.getLogs();
     LogConsole.init();
     if (onNavigateToLogConsole != null) {
       onNavigateToLogConsole!(_buildLogConsole(context, ref, events));

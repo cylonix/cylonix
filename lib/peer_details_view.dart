@@ -136,10 +136,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
           )
         : null;
     return CupertinoPageScaffold(
-      backgroundColor:
-          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
+      backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
         backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
@@ -222,10 +219,8 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
 
     return ListView(
       children: [
+        const SizedBox(height: 32),
         AdaptiveListSection.insetGrouped(
-          margin: const EdgeInsets.only(
-            top: 32,
-          ),
           header: _buildSectionHeader(context, 'Addresses'),
           children: [
             ...node.displayAddresses

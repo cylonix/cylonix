@@ -299,13 +299,20 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
   }
 
   Widget _buildLeading(BuildContext context, UserProfile? user) {
+    final profiles = ref.watch(loginProfilesProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(height: Platform.isIOS && !_isIpad ? 16 : 32),
         // Avatar and name
         GestureDetector(
-          onTap: widget.onNavigateToUserSwitcher,
+          onTap: () {
+            if (profiles.isNotEmpty) {
+              widget.onNavigateToUserSwitcher();
+            } else {
+              widget.onNavigateToHome();
+            }
+          },
           onDoubleTap: () => setState(() => _isExtended = !_isExtended),
           child: Column(
             children: [

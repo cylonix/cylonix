@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../models/ipn.dart';
 import '../services/ipn.dart';
@@ -153,6 +154,9 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       _logger.d("\n\n******** VPN state -> $vpnState **********\n\n");
     }
 
+    print("browseToURL=${notification.browseToURL} "
+        "currentState.browseToURL=${currentState?.browseToURL}");
+    // Determine browseToURL
     var browseToURL = notification.browseToURL ?? currentState?.browseToURL;
     if (backendState.value > BackendState.needsLogin.index) {
       browseToURL = null;
@@ -294,6 +298,20 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
+  Future<void> stopVpn() async {
+    _logger.d("Stopping VPN. Set ipn state to disconnecting");
+    state = AsyncValue.data(
+      (state.valueOrNull ?? const IpnState()).copyWith(
+        vpnState: VpnState.disconnecting,
+      ),
+    );
+    try {
+      await _ipnService.stopVpn();
+    } catch (error, stack) {
+      state = AsyncValue.error(error, stack);
+    }
+  }
+
   Future<List<dynamic>> getLogs() async {
     _logger.d("Getting logs");
     return await _ipnService.getLogs();
@@ -308,8 +326,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
   Future<void> login({String? authKey, String? controlURL}) async {
     _logger.d(
-      "Logging in with authKey: $authKey, controlURL: $controlURL. "
-      "Set ipn state to connecting",
+      "\n\n***Logging in with authKey: $authKey, controlURL: $controlURL. "
+      "Set ipn state to connecting***\n\n",
     );
     state = AsyncValue.data(
       (state.valueOrNull ?? const IpnState()).copyWith(
@@ -325,6 +343,13 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
   Future<void> logout() async {
     await _ipnService.logout();
+  }
+
+  void clearBrowseToURL() {
+    _logger.d("Clearing browseToURL");
+    state = AsyncValue.data(
+      (state.valueOrNull ?? const IpnState()).copyWith(browseToURL: null),
+    );
   }
 
   Future<List<LoginProfile>?> getProfiles() async {
@@ -503,6 +528,55 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       // TODO: add a derp state to handle the error
     } finally {
       _initializingAlwaysUseDerp = false;
+    }
+  }
+
+  Future<void> startWebAuth(String url) async {
+    _logger.d("Starting web auth with URL: $url");
+    try {
+      if (Platform.isMacOS) {
+        // On macOS, we use the native side to handle web auth
+        _logger.d("Launching web auth on macOS");
+        await _ipnService.startWebAuth(url);
+        urlBrowsed = url;
+        return;
+      }
+      _logger.d("Launching to URL $url");
+      final launched = await launchUrl(
+        Uri.parse(url),
+      );
+      if (!launched) {
+        throw Exception("Failed to launch login URL at '$url'");
+      }
+      urlBrowsed = url;
+    } catch (error, stack) {
+      _logger.e("Failed to start web auth: $error, stackTrace: $stack");
+      state = AsyncValue.error(error, stack);
+    }
+  }
+
+  Future<http.Response?> signinWithApple(String url) async {
+    _logger.d("Signing in with Apple using URL: $url");
+    try {
+      final resp = await _ipnService.signinWithApple(url);
+      urlBrowsed = url;
+      return resp;
+    } catch (error, stack) {
+      _logger.e("Failed to sign in with Apple: $error, stackTrace: $stack");
+      state = AsyncValue.error(error, stack);
+    }
+    return null;
+  }
+
+  Future<void> confirmDeviceConnection(
+      http.Response resp, String sessionID) async {
+    _logger.d("Confirming device connection with state: $sessionID");
+    try {
+      await _ipnService.confirmDeviceConnection(resp, sessionID);
+    } catch (error, stack) {
+      _logger
+          .e("Failed to confirm device connection: $error, stackTrace: $stack");
+      state = AsyncValue.error(error, stack);
     }
   }
 }

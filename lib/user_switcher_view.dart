@@ -5,7 +5,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
 import 'utils/logger.dart';
@@ -129,10 +128,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   Widget _buildCupertinoScaffold(BuildContext context, List<LoginProfile> users,
       {bool loading = false}) {
     return CupertinoPageScaffold(
-      backgroundColor:
-          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
+      backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
         backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
@@ -167,14 +163,19 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              const Expanded(
+              Expanded(
                 flex: 3,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   spacing: 16,
                   children: [
-                    Text("Cylonix is starting..."),
-                    Text("Please log in if you haven't already."),
+                    const Text("Cylonix is starting..."),
+                    const Text("Please log in if you haven't already."),
+                    const SizedBox(height: 32),
+                    AdaptiveButton(
+                      onPressed: widget.onNavigateToHome,
+                      child: const Text("OK"),
+                    ),
                   ],
                 ),
               ),
@@ -226,7 +227,6 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                 if (users.length > 1)
                   AdaptiveButton(
                     textButton: !isApple(),
-                    padding: EdgeInsets.zero,
                     child: const Text("Don't Show"),
                     onPressed: () => _toggleSectionVisibility('cylonix'),
                   ),
@@ -320,7 +320,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               _buildActionTile(
                 context,
                 leading: const Icon(CupertinoIcons.arrow_turn_up_left),
-                title: 'Log Out',
+                title: 'Sign Out',
                 isDestructive: true,
                 onTap: _handleLogout,
               ),
@@ -351,11 +351,11 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     final isCurrentUser = user.id == currentUser?.id;
     final isSwitching = user.id == _switchingUserId;
     final u = user.userProfile;
+    var subtitle = u.loginName != u.displayName ? u.loginName : '';
+    subtitle += showControlURL ? "\n(${user.controlURL})" : '';
     return AdaptiveListTile(
       title: Text(u.displayName),
-      subtitle: Text(
-        u.loginName + (showControlURL ? "\n(${user.controlURL})" : ""),
-      ),
+      subtitle: subtitle.isEmpty ? null : Text(subtitle),
       leading: CircleAvatar(
         backgroundColor: isApple() ? CupertinoColors.systemGrey5 : null,
         backgroundImage:
@@ -523,64 +523,23 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     );
   }
 
-  Future<void> _launchLoginURL(String url) async {
-    _logger.d("Launching to login URL $url");
-    try {
-      final launched = await launchUrl(
-        Uri.parse(url),
-      );
-      if (!launched) {
-        throw Exception("cannot launch");
-      }
-    } catch (e) {
-      _showError("Failed to launch login URL at '$url': $e");
-    }
-  }
-
   Future<void> _handleAddProfile() async {
     if (_isAddingProfile) return;
     setState(() => _isAddingProfile = true);
 
     try {
-      // Set up the listener before triggering the add profile
-      final completer = Completer<void>();
-      final sub = ref.listenManual(ipnStateNotifierProvider, (previous, next) {
-        next.whenData((state) {
-          if (state.browseToURL != null && !completer.isCompleted) {
-            _logger
-                .d("\n\n\n****Got browse URL: ${state.browseToURL}****\n\n\n");
-            completer.complete();
-            setState(() => _isAddingProfile = false);
-            _launchLoginURL(state.browseToURL!);
-            ref.read(ipnStateNotifierProvider.notifier).urlBrowsed =
-                state.browseToURL;
-            ref.read(ipnStateNotifierProvider.notifier).setConnecting();
-            widget.onNavigateToHome();
-          }
-        });
-      });
-
       // Start add profile process
       await ref.read(ipnStateNotifierProvider.notifier).addProfile(
             ref.read(controlURLProvider),
           );
-
-      // Wait for the URL or timeout
-      await completer.future.timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          sub.close();
-          _logger.e("Timeout waiting for browse URL");
-          throw TimeoutException("Timeout waiting for login URL");
-        },
-      );
-
-      // Clean up listener
-      sub.close();
+      // Navigate to home after adding profile
+      widget.onNavigateToHome();
     } catch (e) {
       _logger.e("Failed to add profile: $e");
       _showError('Failed to add profile: $e');
-      setState(() => _isAddingProfile = false);
+    } finally {
+      _isAddingProfile = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -595,7 +554,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
       await ref.read(ipnStateNotifierProvider.notifier).logout();
       widget.onNavigateToHome();
     } catch (e) {
-      _showError('Failed to log out: $e');
+      _showError('Failed to sign out: $e');
     }
   }
 

@@ -76,10 +76,7 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
 
   Widget _buildCupertinoView(BuildContext context, LoginViewStrings strings) {
     return CupertinoPageScaffold(
-      backgroundColor:
-          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
+      backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
         backgroundColor: Colors.transparent,
         middle: Text(strings.title),

@@ -26,9 +26,7 @@ class HealthView extends ConsumerWidget {
   Widget _buildApple(BuildContext context, WidgetRef ref) {
     return CupertinoPageScaffold(
       backgroundColor:
-          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
+          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context),
       navigationBar: CupertinoNavigationBar(
         backgroundColor: Colors.transparent,
         automaticBackgroundVisibility: false,
@@ -40,7 +38,14 @@ class HealthView extends ConsumerWidget {
             : null,
         middle: const Text('Health Status'),
       ),
-      child: const Center(child: HealthStateWidget()),
+      child: Container(
+        padding: const EdgeInsets.all(16.0),
+        alignment: Alignment.topCenter,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: const HealthStateWidget(),
+        ),
+      ),
     );
   }
 

@@ -154,20 +154,28 @@ class AdaptiveButton extends StatelessWidget {
   final bool filled;
   final bool textButton;
   final bool small;
+  final bool large;
   final double? width;
+  final double? height;
   final EdgeInsetsGeometry? padding;
   const AdaptiveButton({
     super.key,
     this.filled = false,
     this.textButton = false,
     this.small = false,
+    this.large = false,
     this.width,
+    this.height,
     this.padding,
     required this.onPressed,
     required this.child,
-  }) : assert(
+  })  : assert(
           !filled || !textButton,
           "Cannot use both filled and textButton at the same time",
+        ),
+        assert(
+          !small || !large,
+          "Cannot use both small and large at the same time",
         );
   @override
   Widget build(BuildContext context) {
@@ -179,32 +187,40 @@ class AdaptiveButton extends StatelessWidget {
           child: child,
         );
       }
+      final style = large
+          ? CupertinoButtonSize.large
+          : small
+              ? CupertinoButtonSize.small
+              : CupertinoButtonSize.medium;
+      if (filled) {
+        return SizedBox(
+          width: width,
+          height: height,
+          child: CupertinoButton.filled(
+            padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
+            onPressed: onPressed,
+            child: child,
+            borderRadius: BorderRadius.circular(8),
+            sizeStyle: style,
+          ),
+        );
+      }
       return Container(
         width: width,
-        decoration: filled
-            ? null
-            : BoxDecoration(
-                border: Border.all(
-                  color: CupertinoColors.systemGrey3.resolveFrom(context),
-                  width: 0.5,
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-        child: filled
-            ? CupertinoButton.filled(
-                padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
-                //sizeStyle: CupertinoButtonSize.medium,
-                onPressed: onPressed,
-                child: child,
-              )
-            : CupertinoButton(
-                padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
-                sizeStyle: small
-                    ? CupertinoButtonSize.small
-                    : CupertinoButtonSize.medium,
-                onPressed: onPressed,
-                child: child,
-              ),
+        height: height,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: CupertinoColors.systemGrey3.resolveFrom(context),
+            width: 0.5,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: CupertinoButton(
+          padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
+          sizeStyle: style,
+          onPressed: onPressed,
+          child: child,
+        ),
       );
     }
     if (textButton) {
@@ -228,7 +244,7 @@ class AdaptiveButton extends StatelessWidget {
   }
 }
 
-/// Cannot use Switch.adaptive because it requires a Material paraent
+/// Cannot use Switch.adaptive because it requires a Material parent
 class AdaptiveSwitch extends StatelessWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
@@ -324,7 +340,10 @@ class AdaptiveAvatar extends StatelessWidget {
                             fontSize: radius * 0.6,
                           ),
                 )
-              : AdaptiveAccountIcon(size: radius * 0.6)
+              : AdaptiveAccountIcon(
+                  size: radius * 1.2,
+                  color: color,
+                )
           : null,
     );
   }
@@ -637,12 +656,14 @@ class AdaptiveListSection extends StatelessWidget {
 class AdaptiveModalPopup extends StatelessWidget {
   final Widget child;
   final double? height;
+  final double? maxWidth;
   final VoidCallback? onDismiss;
 
   const AdaptiveModalPopup({
     super.key,
     required this.child,
     this.height,
+    this.maxWidth,
     this.onDismiss,
   });
 
@@ -655,7 +676,7 @@ class AdaptiveModalPopup extends StatelessWidget {
             : Theme.of(context).colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      width: double.infinity,
+      width: maxWidth ?? double.infinity,
       height: height ?? MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       margin: EdgeInsets.only(
@@ -827,4 +848,8 @@ class AdaptiveGroupedHeader extends StatelessWidget {
       style: adaptiveGroupedHeaderStyle(context),
     );
   }
+}
+
+Color? appleScaffoldBackgroundColor(BuildContext context) {
+  return CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context);
 }

@@ -37,10 +37,7 @@ class ExitNodePicker extends ConsumerWidget {
   Widget _buildCupertinoView(
       BuildContext context, WidgetRef ref, ExitNodeState model) {
     return CupertinoPageScaffold(
-      backgroundColor:
-          CupertinoColors.secondarySystemGroupedBackground.resolveFrom(
-        context,
-      ),
+      backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
         automaticBackgroundVisibility: false,
         backgroundColor: Colors.transparent,
@@ -107,10 +104,10 @@ class ExitNodePicker extends ConsumerWidget {
         _buildAllowLanAccess(context, ref, model, isCupertino),
       ],
     ];
-      children = [
-        AdaptiveListSection.insetGrouped(
-          children: children,
-        ),
+    children = [
+      AdaptiveListSection.insetGrouped(
+        children: children,
+      ),
     ];
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -263,26 +260,25 @@ class ExitNodeItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = node.online && !node.isRunningExitNode;
 
-      return AdaptiveListTile.notched(
-        leading: CircleAvatar(
+    return AdaptiveListTile.notched(
+      leading: CircleAvatar(
         backgroundColor: node.online
             ? isCupertino
                 ? CupertinoColors.activeGreen.resolveFrom(context)
                 : Colors.green
             : null,
-          child: Text(
-            (node.city.isEmpty ? node.label : node.city)
-                .substring(0, 1)
-                .capitalize(),
-          ),
+        child: Text(
+          (node.city.isEmpty ? node.label : node.city)
+              .substring(0, 1)
+              .capitalize(),
         ),
-        title: Text(node.city.isEmpty ? node.label : node.city),
-        subtitle: !node.online ? const Text('Offline') : null,
-        trailing: node.selected
+      ),
+      title: Text(node.city.isEmpty ? node.label : node.city),
+      subtitle: !node.online ? const Text('Offline') : null,
+      trailing: node.selected
           ? Icon(isCupertino ? CupertinoIcons.check_mark_circled : Icons.check)
-            : null,
-        onTap: enabled ? onTap : null,
+          : null,
+      onTap: enabled ? onTap : null,
     );
-
   }
 }

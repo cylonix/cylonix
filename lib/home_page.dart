@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'about_view.dart';
 import 'custom_login_view.dart';
 import 'exit_node_picker.dart';
@@ -70,19 +69,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  void _loginToURL(String url) async {
-    _logger.d("Launching to URL $url");
-    final launched = await launchUrl(
-      Uri.parse(url),
-    );
-    if (!launched) {
-      throw Exception("Failed to launch login URL at '$url'");
-    }
-  }
-
   Widget get _mainView {
     return MainView(
-      onLoginAtUrl: (url) => _loginToURL(url),
       onNavigateToSettings: () => Navigator.pushNamed(context, '/settings'),
       onNavigateToUserSwitcher: () => Navigator.pushNamed(
         context,
@@ -101,7 +89,6 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Widget get _mainViewWithRail {
     return MainView(
-      onLoginAtUrl: (url) => _loginToURL(url),
       onNavigateToSettings: () => _selectPage(Page.settings.value),
       onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
       onNavigateToPeerDetails: (Node node) {
