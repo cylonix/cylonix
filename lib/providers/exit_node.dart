@@ -41,11 +41,11 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
   ));
 
   Future<void> setExitNode(ExitNode? node) async {
-    // Implement exit node selection logic
+    // TODO: Implement exit node selection logic
   }
 
   Future<void> toggleAllowLANAccess() async {
-    // Implement LAN access toggle logic
+    // TODO: Implement LAN access toggle logic
   }
 }
 

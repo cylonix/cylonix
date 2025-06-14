@@ -132,7 +132,10 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget? _buildSwitch(BuildContext context, WidgetRef ref) {
     final ipnState = ref.watch(ipnStateNotifierProvider);
     final mdmState = ref.watch(mdmForceEnabledProvider);
+    final vpnState = ref.watch(vpnStateProvider);
     final isVPNPrepared = ref.watch(vpnPermissionStateProvider);
+    final connectingOrDisconnecting =
+        vpnState == VpnState.connecting || vpnState == VpnState.disconnecting;
 
     if (!isVPNPrepared) {
       return null;
@@ -153,6 +156,9 @@ class _MainViewState extends ConsumerState<MainView> {
                 value: value,
                 onChanged: null,
               );
+            }
+            if (connectingOrDisconnecting) {
+              return const AdaptiveLoadingWidget();
             }
             return AdaptiveSwitch(
               value: value,
@@ -1077,7 +1083,20 @@ class _MainViewState extends ConsumerState<MainView> {
           if (mounted) {
             showTopSnackBar(
               context,
-              const Text("Apple signin was cancelled."),
+              Container(
+                padding: const EdgeInsets.all(16),
+                alignment: Alignment.center,
+                height: 50,
+                color: CupertinoColors.secondarySystemBackground
+                    .resolveFrom(context),
+                child: const Text(
+                  "Apple signin was cancelled.",
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              additionalTopPadding: 0,
+              leftPadding: 0,
+              rightPadding: 0,
             );
           }
         } else {

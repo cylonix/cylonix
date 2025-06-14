@@ -276,7 +276,13 @@ class ExitNodeItem extends StatelessWidget {
       title: Text(node.city.isEmpty ? node.label : node.city),
       subtitle: !node.online ? const Text('Offline') : null,
       trailing: node.selected
-          ? Icon(isCupertino ? CupertinoIcons.check_mark_circled : Icons.check)
+          ? Padding(
+              padding: const EdgeInsetsGeometry.only(right: 4),
+              child: Icon(
+                isCupertino ? CupertinoIcons.check_mark_circled : Icons.check,
+                size: 32,
+              ),
+            )
           : null,
       onTap: enabled ? onTap : null,
     );
