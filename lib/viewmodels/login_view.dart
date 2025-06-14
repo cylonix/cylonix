@@ -19,18 +19,6 @@ class LoginViewModel extends StateNotifier<AsyncValue<void>> {
       state = AsyncValue.error(e, stack);
     }
   }
-
-  Future<void> setControlURL(String url,
-      {required void Function() onSuccess}) async {
-    state = const AsyncValue.loading();
-    try {
-      await ref.read(ipnStateNotifierProvider.notifier).setControlURL(url);
-      state = const AsyncValue.data(null);
-      onSuccess();
-    } catch (e, stack) {
-      state = AsyncValue.error(e, stack);
-    }
-  }
 }
 
 final loginViewModelProvider =

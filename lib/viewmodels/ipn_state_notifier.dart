@@ -317,13 +317,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     return await _ipnService.getLogs();
   }
 
-  Future<void> setControlURL(String url) async {
-    state = AsyncValue.data(
-      state.valueOrNull?.copyWith(browseToURL: null) ?? const IpnState(),
-    );
-    await _ipnService.setControlURL(url);
-  }
-
   Future<void> login({String? authKey, String? controlURL}) async {
     _logger.d(
       "\n\n***Logging in with authKey: $authKey, controlURL: $controlURL. "

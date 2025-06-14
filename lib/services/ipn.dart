@@ -429,13 +429,6 @@ class IpnService {
     if (isApple()) await _turnOffVPN();
   }
 
-  Future<void> setControlURL(String controlURL) async {
-    await _editPrefs(MaskedPrefs(
-      controlURL: controlURL,
-      controlURLSet: true,
-    ));
-  }
-
   Future<void> stopPing() async {
     return;
   }
@@ -566,6 +559,34 @@ class IpnService {
     String? controlURL,
   }) async {
     try {
+      // Stop VPN before setting the prefs so that it won't apply
+      // to the current login profile.
+      Future<void> editPrefsBeforeLogin() async {
+        // Handle MDM control URL (assuming you have MDM settings)
+        var prefs = maskedPrefs;
+        if (authKey != null) {
+          prefs ??= const MaskedPrefs();
+          prefs = prefs.copyWith(
+            wantRunning: true,
+            wantRunningSet: true,
+          );
+        }
+        final mdmControlURL = await _getMdmControlURL();
+        if (mdmControlURL.isNotEmpty) {
+          controlURL = mdmControlURL;
+          _logger.i('Overriding control URL with MDM value: $mdmControlURL');
+        } else {
+          controlURL ??= "https://manage.cylonix.io";
+        }
+        prefs ??= const MaskedPrefs();
+        prefs = prefs.copyWith(
+          controlURL: controlURL,
+          controlURLSet: true,
+        );
+        _logger.d("apply control URL $controlURL");
+        await _editPrefs(prefs);
+      }
+
       Future<void> stopThenLogin() async {
         try {
           await stopVpn();
@@ -573,14 +594,9 @@ class IpnService {
           _logger.e('Failed to stop: $e. Aborting login.');
           rethrow;
         }
-        if (authKey != null) {
-          await _editPrefs(
-            const MaskedPrefs(
-              wantRunning: true,
-              wantRunningSet: true,
-            ),
-          );
-        }
+        await editPrefsBeforeLogin();
+        final options = IpnOptions(authKey: authKey);
+        await _start(options);
         await _loginInteractive();
       }
 
@@ -595,32 +611,6 @@ class IpnService {
         await stopThenLogin();
       }
 
-      // Handle MDM control URL (assuming you have MDM settings)
-      var prefs = maskedPrefs;
-      if (authKey != null) {
-        prefs ??= const MaskedPrefs();
-        prefs = prefs.copyWith(
-          wantRunning: true,
-          wantRunningSet: true,
-        );
-      }
-      final mdmControlURL = await _getMdmControlURL();
-      if (mdmControlURL.isNotEmpty) {
-        controlURL = mdmControlURL;
-        _logger.i('Overriding control URL with MDM value: $mdmControlURL');
-      } else {
-        controlURL ??= "https://manage.cylonix.io";
-      }
-      prefs ??= const MaskedPrefs();
-      prefs = prefs.copyWith(
-        controlURL: controlURL,
-        controlURLSet: true,
-      );
-      _logger.d("apply control URL $controlURL");
-      await setControlURL(controlURL);
-
-      // Start the login process
-      await _editPrefs(prefs);
       await startAction();
     } catch (e) {
       _logger.e('Error during login: $e');

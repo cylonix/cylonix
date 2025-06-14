@@ -165,24 +165,19 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
         _logger.d("Control URL is already set to $url");
         return;
       }
-      await ref.read(loginViewModelProvider.notifier).setControlURL(
-        url,
-        onSuccess: () async {
-          _logger.d("Control URL set to $url");
-          if (mounted) {
-            await showAlertDialog(
-              context,
-              "Success",
-              "Control URL set to $url. It will be used for the next login.",
-            );
-          }
-          widget.onNavigateToHome();
-        },
-      );
-      ref.read(controlURLProvider.notifier).setValue(url);
-      setState(() {
-        _textController.text = url;
-      });
+      await ref.read(controlURLProvider.notifier).setValue(url);
+      if (mounted) {
+        await showAlertDialog(
+          context,
+          "Success",
+          "Control URL set to $url. It will be used for the next login.",
+        );
+      }
+      if (mounted) {
+        setState(() {
+          _textController.text = url;
+        });
+      }
     } catch (e) {
       _logger.e('Failed to set control URL: $e');
       if (mounted) {
