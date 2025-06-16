@@ -28,6 +28,7 @@ mixin _$IpnState {
   IpnPrefs? get prefs => throw _privateConstructorUsedError;
   HealthState? get health => throw _privateConstructorUsedError;
   String? get browseToURL => throw _privateConstructorUsedError;
+  String? get errMessage => throw _privateConstructorUsedError;
   List<OutgoingFile>? get outgoingFiles => throw _privateConstructorUsedError;
   LoginProfile? get currentProfile => throw _privateConstructorUsedError;
   List<LoginProfile> get loginProfiles => throw _privateConstructorUsedError;
@@ -57,6 +58,7 @@ abstract class $IpnStateCopyWith<$Res> {
       IpnPrefs? prefs,
       HealthState? health,
       String? browseToURL,
+      String? errMessage,
       List<OutgoingFile>? outgoingFiles,
       LoginProfile? currentProfile,
       List<LoginProfile> loginProfiles,
@@ -93,6 +95,7 @@ class _$IpnStateCopyWithImpl<$Res, $Val extends IpnState>
     Object? prefs = freezed,
     Object? health = freezed,
     Object? browseToURL = freezed,
+    Object? errMessage = freezed,
     Object? outgoingFiles = freezed,
     Object? currentProfile = freezed,
     Object? loginProfiles = null,
@@ -130,6 +133,10 @@ class _$IpnStateCopyWithImpl<$Res, $Val extends IpnState>
       browseToURL: freezed == browseToURL
           ? _value.browseToURL
           : browseToURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      errMessage: freezed == errMessage
+          ? _value.errMessage
+          : errMessage // ignore: cast_nullable_to_non_nullable
               as String?,
       outgoingFiles: freezed == outgoingFiles
           ? _value.outgoingFiles
@@ -252,6 +259,7 @@ abstract class _$$IpnStateImplCopyWith<$Res>
       IpnPrefs? prefs,
       HealthState? health,
       String? browseToURL,
+      String? errMessage,
       List<OutgoingFile>? outgoingFiles,
       LoginProfile? currentProfile,
       List<LoginProfile> loginProfiles,
@@ -292,6 +300,7 @@ class __$$IpnStateImplCopyWithImpl<$Res>
     Object? prefs = freezed,
     Object? health = freezed,
     Object? browseToURL = freezed,
+    Object? errMessage = freezed,
     Object? outgoingFiles = freezed,
     Object? currentProfile = freezed,
     Object? loginProfiles = null,
@@ -330,6 +339,10 @@ class __$$IpnStateImplCopyWithImpl<$Res>
           ? _value.browseToURL
           : browseToURL // ignore: cast_nullable_to_non_nullable
               as String?,
+      errMessage: freezed == errMessage
+          ? _value.errMessage
+          : errMessage // ignore: cast_nullable_to_non_nullable
+              as String?,
       outgoingFiles: freezed == outgoingFiles
           ? _value._outgoingFiles
           : outgoingFiles // ignore: cast_nullable_to_non_nullable
@@ -362,6 +375,7 @@ class _$IpnStateImpl implements _IpnState {
       this.prefs,
       this.health,
       this.browseToURL,
+      this.errMessage,
       final List<OutgoingFile>? outgoingFiles,
       this.currentProfile,
       final List<LoginProfile> loginProfiles = const [],
@@ -390,6 +404,8 @@ class _$IpnStateImpl implements _IpnState {
   final HealthState? health;
   @override
   final String? browseToURL;
+  @override
+  final String? errMessage;
   final List<OutgoingFile>? _outgoingFiles;
   @override
   List<OutgoingFile>? get outgoingFiles {
@@ -417,7 +433,7 @@ class _$IpnStateImpl implements _IpnState {
 
   @override
   String toString() {
-    return 'IpnState(backendState: $backendState, vpnState: $vpnState, loggedInUser: $loggedInUser, selfNode: $selfNode, netmap: $netmap, prefs: $prefs, health: $health, browseToURL: $browseToURL, outgoingFiles: $outgoingFiles, currentProfile: $currentProfile, loginProfiles: $loginProfiles, isRunningExitNode: $isRunningExitNode)';
+    return 'IpnState(backendState: $backendState, vpnState: $vpnState, loggedInUser: $loggedInUser, selfNode: $selfNode, netmap: $netmap, prefs: $prefs, health: $health, browseToURL: $browseToURL, errMessage: $errMessage, outgoingFiles: $outgoingFiles, currentProfile: $currentProfile, loginProfiles: $loginProfiles, isRunningExitNode: $isRunningExitNode)';
   }
 
   @override
@@ -438,6 +454,8 @@ class _$IpnStateImpl implements _IpnState {
             (identical(other.health, health) || other.health == health) &&
             (identical(other.browseToURL, browseToURL) ||
                 other.browseToURL == browseToURL) &&
+            (identical(other.errMessage, errMessage) ||
+                other.errMessage == errMessage) &&
             const DeepCollectionEquality()
                 .equals(other._outgoingFiles, _outgoingFiles) &&
             (identical(other.currentProfile, currentProfile) ||
@@ -460,6 +478,7 @@ class _$IpnStateImpl implements _IpnState {
       prefs,
       health,
       browseToURL,
+      errMessage,
       const DeepCollectionEquality().hash(_outgoingFiles),
       currentProfile,
       const DeepCollectionEquality().hash(_loginProfiles),
@@ -491,6 +510,7 @@ abstract class _IpnState implements IpnState {
       final IpnPrefs? prefs,
       final HealthState? health,
       final String? browseToURL,
+      final String? errMessage,
       final List<OutgoingFile>? outgoingFiles,
       final LoginProfile? currentProfile,
       final List<LoginProfile> loginProfiles,
@@ -515,6 +535,8 @@ abstract class _IpnState implements IpnState {
   HealthState? get health;
   @override
   String? get browseToURL;
+  @override
+  String? get errMessage;
   @override
   List<OutgoingFile>? get outgoingFiles;
   @override

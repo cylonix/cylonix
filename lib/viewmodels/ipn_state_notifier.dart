@@ -184,6 +184,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           currentProfile: currentProfile,
           selfNode: peerCategorizer.selfNode ?? currentState.selfNode,
           browseToURL: browseToURL,
+          errMessage: notification.errMessage ?? currentState.errMessage,
           outgoingFiles:
               notification.outgoingFiles ?? currentState.outgoingFiles,
           loginProfiles: ((loginProfiles ?? []).isNotEmpty
@@ -201,6 +202,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           currentProfile: currentProfile,
           selfNode: peerCategorizer.selfNode,
           browseToURL: browseToURL,
+          errMessage: notification.errMessage,
           loginProfiles: loginProfiles ?? [],
           outgoingFiles: notification.outgoingFiles,
         );
@@ -342,6 +344,13 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     _logger.d("Clearing browseToURL");
     state = AsyncValue.data(
       (state.valueOrNull ?? const IpnState()).copyWith(browseToURL: null),
+    );
+  }
+
+  void clearErrorMessage() {
+    _logger.d("Clearing error message");
+    state = AsyncValue.data(
+      (state.valueOrNull ?? const IpnState()).copyWith(errMessage: null),
     );
   }
 

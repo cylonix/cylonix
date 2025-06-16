@@ -56,6 +56,7 @@ class IpnState with _$IpnState {
     IpnPrefs? prefs,
     HealthState? health,
     String? browseToURL,
+    String? errMessage,
     List<OutgoingFile>? outgoingFiles,
     LoginProfile? currentProfile,
     @Default([]) List<LoginProfile> loginProfiles,

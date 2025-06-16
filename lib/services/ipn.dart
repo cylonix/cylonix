@@ -36,12 +36,13 @@ class IpnService {
       return;
     }
     _initialized = true;
-    _initMethodChannel();
     eventBus.on<BackendNotifyEvent>().listen((onData) {
       //_logger.d("Received notification");
       final n = onData.notification;
       _notificationController.add(n);
     });
+
+    _initMethodChannel();
     eventBus.on<TunnelStatusEvent>().listen((onData) {
       _logger.d("Received tunnel status ${onData.status}");
       // If tunnel status changed to inactive we may not receive a notification
@@ -95,13 +96,14 @@ class IpnService {
           _logger.d(
             "Received command result: ${call.arguments}".shortString(200),
           );
+          String? cmd;
           try {
             final arguments = call.arguments;
             if (arguments is! Map) {
               _logger.e("Invalid arguments: ${call.arguments.runtimeType}");
               return;
             }
-            final cmd = arguments["cmd"] as String?;
+            cmd = arguments["cmd"] as String?;
             final id = arguments["id"] as String?;
             final result = arguments["result"] as String?;
             if (cmd == null || result == null || id == null) {
@@ -116,7 +118,7 @@ class IpnService {
               _logger.d("Received command $cmd result but no completer");
             }
           } catch (e) {
-            _logger.e("Failed to handle command result: $e");
+            _logger.e("Failed to handle command '$cmd' result: $e");
           }
           break;
         case 'handleAppLink':
@@ -303,6 +305,7 @@ class IpnService {
             "Timeout waiting for command '$cmd' result",
             Duration(milliseconds: timeoutMilliseconds),
           ));
+          _commandCompleters.remove(id);
         }
       });
     }
@@ -693,6 +696,7 @@ class IpnService {
         _logger.e("Failed to get status: $e. Wait for notification to start.");
       }
       _logger.d("Tunnel started. Waiting for notification to start VPN.");
+      _watchNotifications();
       _startEngineBackendNotifySub?.cancel();
       _startEngineBackendNotifySub =
           eventBus.on<BackendNotifyEvent>().listen((_) async {

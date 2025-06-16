@@ -33,8 +33,8 @@ class PermissionsView extends ConsumerWidget {
               ),
               trailing: Icon(
                 isVPNGranted
-                    ? CupertinoIcons.checkmark_circle_fill
-                    : CupertinoIcons.xmark_circle_fill,
+                    ? CupertinoIcons.checkmark_circle
+                    : CupertinoIcons.xmark_circle,
                 color: isVPNGranted
                     ? CupertinoColors.activeGreen
                     : CupertinoColors.systemRed,

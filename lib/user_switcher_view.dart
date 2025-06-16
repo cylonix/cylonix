@@ -225,11 +225,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                   'Cylonix',
                 ),
                 if (users.length > 1)
-                  AdaptiveButton(
-                    textButton: !isApple(),
-                    child: const Text("Don't Show"),
-                    onPressed: () => _toggleSectionVisibility('cylonix'),
-                  ),
+                  _buildDontShowButtob(context, 'cylonix'),
               ],
             ),
             footer: Text(
@@ -251,11 +247,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                 const AdaptiveGroupedHeader(
                   'Tailscale',
                 ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  child: const Text('Don\'t Show'),
-                  onPressed: () => _toggleSectionVisibility('tailscale'),
-                ),
+                _buildDontShowButtob(context, 'tailscale'),
               ],
             ),
             footer: Text(
@@ -274,11 +266,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Other', style: adaptiveGroupedHeaderStyle(context)),
-                AdaptiveButton(
-                  padding: EdgeInsets.zero,
-                  child: const Text('Don\'t Show'),
-                  onPressed: () => _toggleSectionVisibility('other'),
-                ),
+                _buildDontShowButtob(context, 'other'),
               ],
             ),
             footer: Text(
@@ -408,6 +396,14 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
           ? const AdaptiveLoadingWidget(maxWidth: 24)
           : const AdaptiveListTileChevron(),
       onTap: _isAddingProfile ? null : onTap,
+    );
+  }
+
+  Widget _buildDontShowButtob(BuildContext context, String section) {
+    return AdaptiveButton(
+      textButton: !isApple(),
+      child: const Text("Don't Show"),
+      onPressed: () => _toggleSectionVisibility(section),
     );
   }
 

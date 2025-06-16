@@ -265,6 +265,18 @@ class _MainViewState extends ConsumerState<MainView> {
     final state = ref.watch(backendStateProvider) ?? BackendState.noState;
     final showDevices = ref.watch(showDevicesProvider);
     final vpnState = ref.watch(vpnStateProvider);
+    final errMessage = ref.watch(ipnErrMessageProvider);
+    if (errMessage != null) {
+      return _buildCenteredWidget(
+        _buildErrorWidget(
+          context,
+          ref,
+          errMessage,
+          _resetIpnStateNotifier,
+        ),
+      );
+    }
+
     if (vpnState == VpnState.connecting || vpnState == VpnState.disconnecting) {
       return _buildCenteredWidget(
         _buildConnectingView(context, vpnState == VpnState.connecting),
@@ -1386,6 +1398,9 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildErrorWidget(BuildContext context, WidgetRef ref, String error,
       Future<void> Function()? onRetry) {
-    return AdaptiveErrorWidget(error: error, onRetry: onRetry);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: AdaptiveErrorWidget(error: error, onRetry: onRetry),
+    );
   }
 }

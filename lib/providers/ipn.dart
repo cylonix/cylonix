@@ -27,6 +27,11 @@ final ipnStateProvider = Provider<IpnState?>((ref) {
   );
 });
 
+final ipnErrMessageProvider = Provider<String?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.errMessage;
+});
+
 final vpnStateProvider = Provider<VpnState>((ref) {
   final ipnState = ref.watch(ipnStateProvider);
   return ipnState?.vpnState ?? VpnState.disconnected;

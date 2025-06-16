@@ -178,7 +178,7 @@ class _HealthWarningTile extends ConsumerWidget {
           : warning.severity == Severity.medium
               ? Icon(
                   isApple()
-                      ? CupertinoIcons.exclamationmark_circle_fill
+                      ? CupertinoIcons.exclamationmark_circle
                       : Icons.warning,
                   color: isApple()
                       ? CupertinoColors.systemOrange.resolveFrom(context)

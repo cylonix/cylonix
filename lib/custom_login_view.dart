@@ -193,7 +193,7 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
   Widget? _appleControlURLTrailing(String url, String current) {
     return url == current && !_customURL
         ? const Icon(
-            CupertinoIcons.checkmark_circle_fill,
+            CupertinoIcons.checkmark_circle,
             color: CupertinoColors.activeBlue,
           )
         : null;
@@ -253,7 +253,7 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
                 ),
                 trailing: controlURL != cylonixURL && controlURL != tailscaleURL
                     ? Icon(
-                        CupertinoIcons.checkmark_circle_fill,
+                        CupertinoIcons.checkmark_circle,
                         color: CupertinoColors.activeBlue.resolveFrom(context),
                       )
                     : null,
