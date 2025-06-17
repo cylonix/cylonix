@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sliver_tools/sliver_tools.dart';
 import '../models/ipn.dart';
 import '../providers/ipn.dart';
 import '../utils/utils.dart';
@@ -178,70 +179,78 @@ class _PeerListState extends State<PeerList> {
     return CustomScrollView(
       slivers: [
         for (final peerSet in peerSets)
-          if (peerSet.peers.isNotEmpty) ...[
-            SliverAppBar(
-              automaticallyImplyLeading: false,
-              expandedHeight: 120.0,
-              backgroundColor: Colors.transparent,
-              flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
+          if (peerSet.peers.isNotEmpty)
+            MultiSliver(
+              pushPinnedChildren: true,
+              children: [
+                SliverAppBar(
+                  automaticallyImplyLeading: false,
+                  expandedHeight: 120.0,
+                  backgroundColor: isApple()
+                      ? appleScaffoldBackgroundColor(context)
+                      : Theme.of(context).colorScheme.surface,
+                  flexibleSpace: FlexibleSpaceBar(
+                    titlePadding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 8.0,
+                    ),
+                    centerTitle: !useNavigationRail(context),
+                    title: userTitle(peerSet.user),
+                  ),
+                  actions: const [SizedBox.shrink()],
+                  pinned: true,
                 ),
-                centerTitle: !useNavigationRail(context),
-                title: userTitle(peerSet.user),
-              ),
-              actions: const [SizedBox.shrink()],
-            ),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final peer = peerSet.peers[index];
-                  final online = (peer.online == true) ||
-                      (peer.stableID == selfNode?.stableID && isConnected);
-                  return AdaptiveListTile(
-                    backgroundColor: Colors.transparent,
-                    title: Text(peer.name,
-                        style: isApple()
-                            ? null
-                            : Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w500)),
-                    subtitle: Text(
-                      peer.addresses.join(', '),
-                      style: isApple()
-                          ? null
-                          : Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(fontWeight: FontWeight.w300),
-                    ),
-                    leading: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (peer.isExitNode)
-                          Icon(
-                            isApple()
-                                ? CupertinoIcons.arrow_up_right_circle
-                                : Icons.exit_to_app,
-                            color: online ? _onlineColor : _offlineColor,
-                            size: 12,
-                          ),
-                        const SizedBox(width: 4),
-                        AdaptiveOnlineIcon(
-                          online: online,
-                          disabledColor: Theme.of(context).disabledColor,
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final peer = peerSet.peers[index];
+                      final online = (peer.online == true) ||
+                          (peer.stableID == selfNode?.stableID && isConnected);
+                      return AdaptiveListTile(
+                        backgroundColor: Colors.transparent,
+                        title: Text(peer.name,
+                            style: isApple()
+                                ? null
+                                : Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w500)),
+                        subtitle: Text(
+                          peer.addresses.join(', '),
+                          style: isApple()
+                              ? null
+                              : Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(fontWeight: FontWeight.w300),
                         ),
-                      ],
-                    ),
-                    dense: true,
-                    onTap: () => widget.onPeerTap(peer),
-                  );
-                },
-                childCount: peerSet.peers.length,
-              ),
+                        leading: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (peer.isExitNode)
+                              Icon(
+                                isApple()
+                                    ? CupertinoIcons.arrow_up_right_circle
+                                    : Icons.exit_to_app,
+                                color: online ? _onlineColor : _offlineColor,
+                                size: 12,
+                              ),
+                            const SizedBox(width: 4),
+                            AdaptiveOnlineIcon(
+                              online: online,
+                              disabledColor: Theme.of(context).disabledColor,
+                            ),
+                          ],
+                        ),
+                        dense: true,
+                        onTap: () => widget.onPeerTap(peer),
+                      );
+                    },
+                    childCount: peerSet.peers.length,
+                  ),
+                ),
+              ],
             ),
-          ],
       ],
     );
   }

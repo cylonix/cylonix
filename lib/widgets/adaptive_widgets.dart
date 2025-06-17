@@ -232,7 +232,7 @@ class AdaptiveButton extends StatelessWidget {
     return SizedBox(
       width: width,
       child: filled
-          ? ElevatedButton(
+          ? FilledButton(
               onPressed: onPressed,
               child: child,
             )

@@ -39,6 +39,7 @@ dependencies:
   share_plus: ^10.1.4
   shared_preferences: ^2.2.2
   sign_in_with_apple: ^7.0.1
+  sliver_tools: ^0.2.12
   url_launcher: ^6.3.0
   uuid: ^3.0.5
 
