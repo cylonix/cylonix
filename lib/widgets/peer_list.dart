@@ -146,14 +146,14 @@ class _PeerListState extends State<PeerList> {
       return Text('Unknown User', style: style);
     }
     if (user.displayName.toLowerCase().endsWith('@privaterelay.appleid.com')) {
-      return Row(
+      return Column(
         spacing: 8,
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(user.displayName.split('@').first, style: style),
           Text(
             'Apple Private Relay',
-            style: style?.copyWith(
+            style: TextStyle(
               fontSize: 12,
               color: isApple()
                   ? CupertinoColors.secondaryLabel.resolveFrom(context)
@@ -205,7 +205,7 @@ class _PeerListState extends State<PeerList> {
                             ? null
                             : Theme.of(context)
                                 .textTheme
-                                .titleMedium
+                                .titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w500)),
                     subtitle: Text(
                       peer.addresses.join(', '),

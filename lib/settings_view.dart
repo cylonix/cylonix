@@ -388,7 +388,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       children: [
         AdaptiveListTile.notched(
           leading: AdaptiveAvatar(
-            radius: 20,
+            radius: isApple() ? 20 : 12,
             user: user,
           ),
           title: Text(

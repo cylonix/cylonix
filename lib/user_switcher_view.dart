@@ -360,7 +360,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
             : null,
       ),
       trailing: isSwitching
-          ? const AdaptiveLoadingWidget(maxWidth: 24)
+          ? const AdaptiveLoadingWidget(maxWidth: 18)
           : isCurrentUser
               ? Icon(
                   isApple() ? CupertinoIcons.check_mark : Icons.check,

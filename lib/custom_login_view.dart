@@ -170,7 +170,8 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
         await showAlertDialog(
           context,
           "Success",
-          "Control URL set to $url. It will be used for the next login.",
+          "Control URL has been set to '$url'. "
+              "It will be used for the next login.",
         );
       }
       if (mounted) {
@@ -305,10 +306,22 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
     final value = _textController.text.trim();
     if (value.isEmpty) return;
     if (widget.isAuthKey) {
-      ref.read(loginViewModelProvider.notifier).loginWithAuthKey(
-            value,
-            onSuccess: widget.onNavigateToHome,
+      try {
+        await ref.read(loginViewModelProvider.notifier).loginWithAuthKey(
+              value,
+              onSuccess: widget.onNavigateToHome,
+            );
+        widget.onNavigateToHome();
+      } catch (e) {
+        _logger.e('Failed to login with auth key: $e');
+        if (mounted) {
+          await showAlertDialog(
+            context,
+            "Error",
+            'Failed to login with auth key: $e',
           );
+        }
+      }
       return;
     }
     await _setController(value);

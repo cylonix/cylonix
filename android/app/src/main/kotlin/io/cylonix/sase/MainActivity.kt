@@ -33,6 +33,7 @@ import com.tailscale.ipn.getLogContent
 import com.tailscale.ipn.sendCommand
 import com.tailscale.ipn.ui.model.Ipn
 import com.tailscale.ipn.ui.model.Ipn.Notify
+import com.tailscale.ipn.ui.model.Netmap
 import com.tailscale.ipn.ui.viewModel.VpnViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModelFactory
@@ -329,7 +330,13 @@ class MainActivity: FlutterFragmentActivity() {
     private var lastNotification: Notify? = null
     private fun onNotificationReceived(notification: Notify) {
         Log.d(LOG_TAG, "Notification received: $notification")
-        lastNotification = notification
+        lastNotification = notification.copy(
+            State = notification.State ?: lastNotification?.State,
+            NetMap = notification.NetMap ?: lastNotification?.NetMap,
+            Prefs = notification.Prefs ?: lastNotification?.Prefs,
+            Engine = notification.Engine ?: lastNotification?.Engine,
+            Health = notification.Health ?: lastNotification?.Health,
+        )
         runOnUiThread {
             methodChannel?.invokeMethod("notification", Json.encodeToString(notification))
         }

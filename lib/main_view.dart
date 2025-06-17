@@ -142,7 +142,7 @@ class _MainViewState extends ConsumerState<MainView> {
     }
 
     return ipnState.when(
-      loading: () => const AdaptiveLoadingWidget(),
+      loading: () => null,
       error: (error, _) => AdaptiveSwitch(
         value: false,
         onChanged: (v) => _toggleVPN(context, ref, v),
@@ -158,14 +158,14 @@ class _MainViewState extends ConsumerState<MainView> {
               );
             }
             if (connectingOrDisconnecting) {
-              return const AdaptiveLoadingWidget();
+              return null;
             }
             return AdaptiveSwitch(
               value: value,
               onChanged: (v) => _toggleVPN(context, ref, v),
             );
           },
-          loading: () => const AdaptiveLoadingWidget(),
+          loading: () => null,
           error: (_, __) => AdaptiveSwitch(
             value: value,
             onChanged: (v) => _toggleVPN(context, ref, v),
@@ -411,7 +411,12 @@ class _MainViewState extends ConsumerState<MainView> {
       context: context,
       builder: (BuildContext context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: 32,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -74,65 +74,51 @@ class AlertDialogWidget extends StatelessWidget {
     return AlertDialog.adaptive(
       key: key,
       title: Text(title, textAlign: TextAlign.center),
-      contentPadding: const EdgeInsets.only(bottom: 8),
       content: Material(
         type: MaterialType.transparency,
         child: SingleChildScrollView(
           controller: ScrollController(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              if (!isApple()) const Divider(height: 1),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 8,
+            children: [
+              if (content != null)
+                Text(
+                  content!,
+                  textAlign: TextAlign.center,
+                  style: textStyle,
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (content != null)
-                      Text(
-                        content!,
-                        textAlign: TextAlign.center,
-                        style: textStyle,
-                      ),
-                    if (successMsg != null) ...[
-                      const SizedBox(height: 8),
-                      if (successSubtitle != null)
-                        Text(
-                          successSubtitle!,
-                          style: subtitleStyle,
-                          textAlign: TextAlign.center,
-                        ),
-                      Text(
-                        successMsg!,
-                        style: green,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    if (failureMsg != null) ...[
-                      const SizedBox(height: 8),
-                      if (failureSubtitle != null)
-                        Text(
-                          failureSubtitle!,
-                          style: subtitleStyle,
-                          textAlign: TextAlign.center,
-                        ),
-                      Text(
-                        failureMsg!,
-                        style: red,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    if (otherActions != null) ...[
-                      const SizedBox(height: 8),
-                      otherActions!,
-                    ],
-                  ],
+              if (successMsg != null) ...[
+                const SizedBox(height: 8),
+                if (successSubtitle != null)
+                  Text(
+                    successSubtitle!,
+                    style: subtitleStyle,
+                    textAlign: TextAlign.center,
+                  ),
+                Text(
+                  successMsg!,
+                  style: green,
+                  textAlign: TextAlign.center,
                 ),
-              ),
+              ],
+              if (failureMsg != null) ...[
+                const SizedBox(height: 8),
+                if (failureSubtitle != null)
+                  Text(
+                    failureSubtitle!,
+                    style: subtitleStyle,
+                    textAlign: TextAlign.center,
+                  ),
+                Text(
+                  failureMsg!,
+                  style: red,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              if (otherActions != null) ...[
+                const SizedBox(height: 8),
+                otherActions!,
+              ],
             ],
           ),
         ),
@@ -146,14 +132,6 @@ class AlertDialogWidget extends StatelessWidget {
               Navigator.of(context).pop(true);
             },
           ),
-        if (onCancel != null)
-          _action(
-            child: Text(
-              cancelText ?? 'Cancel',
-              textAlign: TextAlign.center,
-            ),
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
         if (showOK)
           _action(
             //autofocus: true,
@@ -163,12 +141,15 @@ class AlertDialogWidget extends StatelessWidget {
               onOK?.call();
             },
           ),
+        if (onCancel != null)
+          _action(
+            child: Text(
+              cancelText ?? 'Cancel',
+              textAlign: TextAlign.center,
+            ),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
       ],
-      shape: isApple()
-          ? null
-          : const RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(8.0)),
-      ),
       actionsAlignment: isApple() ? null : MainAxisAlignment.center,
     );
   }

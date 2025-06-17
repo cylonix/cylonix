@@ -292,11 +292,10 @@ class AdaptiveLoadingWidget extends StatelessWidget {
     return isApple()
         ? const CupertinoActivityIndicator()
         : CircularProgressIndicator(
-            strokeWidth: size ?? 4.0,
+            strokeWidth: size ?? 2.0,
             constraints: maxWidth != null
-                ? BoxConstraints(
-                    maxWidth: maxWidth!,
-                    maxHeight: maxWidth!,
+                ? BoxConstraints.tight(
+                    Size(maxWidth!, maxWidth!),
                   )
                 : null,
             valueColor: AlwaysStoppedAnimation<Color>(
@@ -334,14 +333,14 @@ class AdaptiveAvatar extends StatelessWidget {
                   initial,
                   style: isApple()
                       ? TextStyle(
-                          fontSize: radius * 0.6,
+                          fontSize: radius,
                         )
                       : Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontSize: radius * 0.6,
+                            fontSize: radius,
                           ),
                 )
               : AdaptiveAccountIcon(
-                  size: radius * 1.2,
+                  size: radius * 1.5,
                   color: color,
                 )
           : null,

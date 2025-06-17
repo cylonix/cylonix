@@ -167,8 +167,12 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       final warnings = health?.warnings;
       if (warnings != null) {
         final filteredWarnings = Map<String, UnhealthyState?>.from(warnings);
+        // Remove specific warnings that are not relevant for mobile or macOS
+        // which has the backend bundled in the app.
         filteredWarnings.removeWhere(
-            (key, warning) => warning?.warnableCode == "update-available");
+            (key, warning) =>
+            warning?.warnableCode == "update-available" ||
+            warning?.warnableCode == "is-using-unstable-version");
         health = HealthState(warnings: filteredWarnings);
       }
     }
