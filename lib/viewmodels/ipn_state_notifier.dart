@@ -99,15 +99,14 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> _handleIpnNotification(IpnNotification notification) async {
-    _logger.d(
-      "Received notification state=${notification.state} "
-      "url=${notification.browseToURL}",
-    );
+    //_logger.d(
+    //  "Received notification state=${notification.state} "
+    //  "url=${notification.browseToURL}",
+    //);
     List<LoginProfile>? loginProfiles;
     var currentProfile = state.valueOrNull?.currentProfile;
     if (notification.netMap != null) {
       peerCategorizer.regenerateGroupedPeers(notification.netMap!);
-      _logger.d("me=${peerCategorizer.me} node=${peerCategorizer.selfNode}");
       currentProfile = await getCurrentProfile();
     }
     final currentState = state.valueOrNull;
@@ -154,8 +153,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       _logger.d("\n\n******** VPN state -> $vpnState **********\n\n");
     }
 
-    print("browseToURL=${notification.browseToURL} "
-        "currentState.browseToURL=${currentState?.browseToURL}");
     // Determine browseToURL
     var browseToURL = notification.browseToURL ?? currentState?.browseToURL;
     if (backendState.value > BackendState.needsLogin.index) {

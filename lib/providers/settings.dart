@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/backend_notify_event.dart';
 import '../services/ipn.dart';
 import '../utils/logger.dart';
 
@@ -47,6 +48,14 @@ class VpnPermissionNotifier
   }
 
   Future<void> _initialize() async {
+    IpnService.eventBus.on<VpnPermissionEvent>().listen((event) {
+      _logger.d("Received VpnPermissionEvent: $event");
+      state = AsyncValue.data(VpnPermissionState(
+        isGranted: event.isGranted,
+        hasBeenAsked:
+            event.isGranted ? true : state.value?.hasBeenAsked ?? false,
+      ));
+    });
     try {
       _logger.d("Checking initial VPN permission state");
       final prefs = await SharedPreferences.getInstance();

@@ -61,6 +61,8 @@ copy_ipn_aar:
 	mkdir -p android/app/libs/
 	cp tailscale-android/android/libs/ipn_app.aar android/app/libs/.
 	cp tailscale-android/android/libs/libtailscale.aar android/app/libs/ipn.aar
+aab:
+	flutter build appbundle
 
 # linux build only supports ubuntu debian packaging for now
 debian:

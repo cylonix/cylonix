@@ -1254,7 +1254,6 @@ class _MainViewState extends ConsumerState<MainView> {
       BuildContext context, WidgetRef ref, String? loginURL) {
     final profiles = ref.watch(loginProfilesProvider);
     final urlLaunched = ref.watch(ipnStateNotifierProvider.notifier).urlBrowsed;
-    print("Login URL: $loginURL, Launched: $urlLaunched");
     return Column(
       spacing: 16,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1385,7 +1384,7 @@ class _MainViewState extends ConsumerState<MainView> {
         child: Center(child: child),
       );
     }
-    if (height < 700) {
+    if (height <= 800) {
       return Center(child: child);
     }
     return Column(

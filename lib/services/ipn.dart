@@ -93,9 +93,9 @@ class IpnService {
           }
           break;
         case "commandResult":
-          _logger.d(
-            "Received command result: ${call.arguments}".shortString(200),
-          );
+          //_logger.d(
+          //  "Received command result: ${call.arguments}".shortString(200),
+          //);
           String? cmd;
           try {
             final arguments = call.arguments;
@@ -169,6 +169,21 @@ class IpnService {
             _commandCompleters.remove(id);
           } catch (e) {
             _logger.e("Invalid tunnel creation result: $e");
+          }
+          break;
+        case "vpnPermissionResult":
+          _logger.d("VPN permission result: ${call.arguments}");
+          try {
+            final isGranted = call.arguments['granted'] as bool?;
+            if (isGranted == null) {
+              _logger.e("Missing isGranted in VPN permission result");
+              return;
+            }
+            eventBus.fire(
+              VpnPermissionEvent(isGranted: isGranted),
+            );
+          } catch (e) {
+            _logger.e("Invalid VPN permission result: $e");
           }
           break;
         case "webAuthDone":

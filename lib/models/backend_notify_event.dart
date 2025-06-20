@@ -58,3 +58,16 @@ class TunnelStatusEvent {
     return "status: $status ${error ?? ''}";
   }
 }
+
+class VpnPermissionEvent {
+  final bool isGranted;
+
+  const VpnPermissionEvent({
+    this.isGranted = false,
+  });
+
+  @override
+  String toString() {
+    return "VpnPermissionEvent(isGranted: $isGranted)";
+  }
+}

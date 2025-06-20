@@ -86,6 +86,11 @@ class MainActivity: FlutterFragmentActivity() {
               vpnViewModel.setVpnPrepared(false)
             }
           }
+          runOnUiThread {
+            methodChannel?.invokeMethod("vpnPermissionResult", mapOf(
+                "granted" to granted
+            ))
+          }
         }
         viewModel.setVpnPermissionLauncher(vpnPermissionLauncher)
     }
@@ -236,7 +241,7 @@ class MainActivity: FlutterFragmentActivity() {
                         val command = call.argument<String>("cmd")
                         val id = call.argument<String>("id")
                         val args = call.argument<String>("args")
-                        Log.d(LOG_TAG, "sendCommand: cmd=$command, id=$id, ars=$args")
+                        //Log.d(LOG_TAG, "sendCommand: cmd=$command, id=$id, ars=$args")
                         handleSendCommand(command, id, args)
                     } catch (e: Exception) {
                         Log.e(LOG_TAG, "Error in sendCommand: ${e.message}")
@@ -289,31 +294,11 @@ class MainActivity: FlutterFragmentActivity() {
             Log.e(LOG_TAG, "Invalid arguments for sendCommand: command=$command")
             return
         }
-        Log.d(LOG_TAG, "Handling sendCommand: command=$command, id=$id, args=$args")
+        //Log.d(LOG_TAG, "Handling sendCommand: command=$command, id=$id, args=$args")
         // Fork a thread to handle the command
         Thread {
-            var cmdResult: String? = null
-            try {
-                cmdResult = when (command) {
-                    "watch_notifications" -> {
-                        if (lastNotification != null) {
-                            Log.d(LOG_TAG, "Returning last notification: $lastNotification")
-                            onNotificationReceived(lastNotification!!)
-                        } else {
-                            Log.d(LOG_TAG, "No last notification to return")
-                        }
-                        // App already running notifer.
-                        // Skip this command.
-                        "Success"
-                    }
-                    else -> {
-                        App.get().sendCommand(command, args ?: "")
-                    }
-                }
-            } catch (e: Exception) {
-                cmdResult = "Error executing command: ${e.message}"
-            }
-            Log.e(LOG_TAG, "command result: $cmdResult")
+            var cmdResult = App.get().sendCommand(command, args ?: "")
+            //Log.d(LOG_TAG, "command result: $cmdResult")
             // If we have an ID, send the result back through method channel
             if (!id.isNullOrEmpty()) {
                 runOnUiThread {
@@ -329,7 +314,7 @@ class MainActivity: FlutterFragmentActivity() {
 
     private var lastNotification: Notify? = null
     private fun onNotificationReceived(notification: Notify) {
-        Log.d(LOG_TAG, "Notification received: $notification")
+        //Log.d(LOG_TAG, "Notification received: $notification")
         lastNotification = notification.copy(
             State = notification.State ?: lastNotification?.State,
             NetMap = notification.NetMap ?: lastNotification?.NetMap,
