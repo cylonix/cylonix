@@ -1,0 +1,37 @@
+display_name: Cylonix
+package_name: cylonix
+
+maintainer:
+  name: EZBLOCK Authors
+  email: contact@ezblock.io
+
+priority: optional
+
+section: x11
+
+installed_size: 57488
+
+dependencies:
+
+essential: false
+
+icon: android/app/src/main/res/mipmap-hdpi/ic_launcher.webp
+
+postuninstall_scripts:
+  - echo "Sorry to see you go."
+
+keywords:
+  - Secure Network Access
+  - Open Source
+  - WireGuard Mesh Network
+  - VPN
+
+generic_name: Secure Network Access 
+
+categories:
+  - Utility
+  - Communication
+  - Security
+  - Privacy
+
+startup_notify: true

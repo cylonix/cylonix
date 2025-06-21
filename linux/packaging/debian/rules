@@ -1,0 +1,42 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+override_dh_auto_build:
+	cd ../../tailscale; ./build_dist.sh tailscale.com/cmd/tailscale
+	cd ../../tailscale; ./build_dist.sh tailscale.com/cmd/tailscaled
+	cd ../../; flutter build linux --release
+override_dh_auto_install:
+	mkdir -p $(CURDIR)/debian/cylonix/usr/sbin
+	install -m 755 ../../tailscale/tailscaled $(CURDIR)/debian/cylonix/usr/sbin/cylonixd
+	mkdir -p $(CURDIR)/debian/cylonix/usr/bin
+	install -m 755 ../../tailscale/tailscale $(CURDIR)/debian/cylonix/usr/bin/cylonixc
+	rm -f ../../tailscale/tailscale ../../tailscale/tailscaled
+
+	mkdir -p $(CURDIR)/debian/cylonix/lib/systemd/system
+	install -m 644 $(CURDIR)/debian/cylonixd.service $(CURDIR)/debian/cylonix/lib/systemd/system
+
+	mkdir -p $(CURDIR)/debian/cylonix/etc/default
+	install -m 644 $(CURDIR)/debian/cylonixd.default $(CURDIR)/debian/cylonix/etc/default/cylonixd
+
+	mkdir -p $(CURDIR)/debian/cylonix/opt/cylonix
+	install -d $(CURDIR)/debian/cylonix/opt/cylonix/data/flutter_assets
+	cp -r ../../build/linux/x64/release/bundle/cylonix $(CURDIR)/debian/cylonix/opt/cylonix/.
+	cp -r ../../build/linux/x64/release/bundle/* $(CURDIR)/debian/cylonix/opt/cylonix/.
+	mkdir -p $(CURDIR)/debian/cylonix/usr/bin
+	ln -sf /opt/cylonix/cylonix $(CURDIR)/debian/cylonix/usr/bin/cylonix
+
+	mkdir -p $(CURDIR)/debian/cylonix/usr/share/applications
+	mkdir -p $(CURDIR)/debian/cylonix/usr/share/pixmaps
+	cp cylonix.desktop $(CURDIR)/debian/cylonix/usr/share/applications/.
+	cp cylonix.png $(CURDIR)/debian/cylonix/usr/share/pixmaps/cylonix.png
+
+override_dh_installsystemd:
+	dh_installsystemd --name=cylonixd
+
+override_dh_installdeb:
+	dh_installdeb
+	install -m 755 debian/postinst debian/cylonix/DEBIAN/
+
+override_dh_dwz:
+    # Disable dh_dwz to avoid errors with .debug_info sections

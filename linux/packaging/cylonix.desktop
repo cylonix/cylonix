@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Cylonix
+Comment=Open source secure network access
+Path=/usr/bin/cylonix
+Exec=cylonix
+Icon=cylonix.png
+Terminal=false
+Type=Application
+StartupNotify=true

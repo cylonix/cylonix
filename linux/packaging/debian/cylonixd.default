@@ -1,0 +1,6 @@
+# but you might want to configure this in order to set external firewall
+# settings.
+PORT="41741"
+
+# Extra flags you might want to pass to cylonixd.
+FLAGS=""

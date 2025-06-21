@@ -1,0 +1,13 @@
+Source: cylonix
+Section: net
+Priority: optional
+Maintainer: EZBLOCK Authors
+Build-Depends: debhelper-compat (= 12)
+Standards-Version: 4.6.0
+Homepage: https://cylonix.io
+Rules-Requires-Root: no
+
+Package: cylonix
+Architecture: amd64
+Description: Cylonix Application
+  Cylonix provides open source secure network access services.

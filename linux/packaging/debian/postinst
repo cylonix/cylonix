@@ -1,0 +1,35 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Set operator to the user who installs this package as root
+        if [ -z "${SUDO_USER}" ]; then
+            operator=$(whoami)
+        else
+            operator=${SUDO_USER}
+        fi
+        echo "OPERATOR=$operator" >> /etc/default/cylonixd
+        echo "Cylonixd operator is $operator"
+
+        # Reload systemd to pick up any changes
+        systemctl daemon-reload || true
+
+        # Restart the service to pick up new configuration
+        if systemctl is-active cylonixd >/dev/null 2>&1; then
+            systemctl restart cylonixd || true
+        else
+            systemctl start cylonixd || true
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
