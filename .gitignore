@@ -56,4 +56,10 @@ app.*.map.json
 lib/assets/config.local.yaml
 
 # Packaging artifacts
-# To be added
+# Debian artifacts
+linux/packaging/debian/.debhelper
+linux/packaging/debian/cylonix
+linux/packaging/debian/debhelper-build-stamp
+linux/packaging/debian/*.debhelper
+linux/packaging/debian/files
+linux/packaging/debian/cylonix.substvars

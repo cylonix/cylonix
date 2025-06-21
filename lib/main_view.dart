@@ -697,7 +697,7 @@ class _MainViewState extends ConsumerState<MainView> {
         }
         return ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
-          child: _buildNotStoppedAndNotRunningView(
+          child: _buildNotRunningView(
             context,
             ref,
             state,
@@ -708,6 +708,10 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildConnectingView(BuildContext context, bool turningOn) {
+    final health = ref.watch(healthProvider);
+    if (health != null && health.warnings?['login-state'] != null) {
+      return _buildLoginRequiredView(context, ref, null);
+    }
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 600),
       child: SingleChildScrollView(
@@ -751,10 +755,10 @@ class _MainViewState extends ConsumerState<MainView> {
     );
   }
 
-  Widget _buildNotStoppedAndNotRunningView(
+  Widget _buildNotRunningView(
       BuildContext context, WidgetRef ref, IpnState state) {
     _logger.d(
-      "Building not stopped and not running view: state="
+      "Building not running view: state="
       "${state.backendState.name} ${state.vpnState.name}",
     );
 
@@ -775,8 +779,7 @@ class _MainViewState extends ConsumerState<MainView> {
         state.loggedInUser!.loginName,
       );
     }
-    if (state.backendState == BackendState.noState &&
-        state.vpnState == VpnState.disconnected) {
+    if (state.vpnState == VpnState.disconnected) {
       return _buildStartView(context, ref);
     }
     if (state.backendState == BackendState.inUseOtherUser) {

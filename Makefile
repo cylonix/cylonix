@@ -35,9 +35,6 @@ subver:
 	@echo "platform is ${OS} date ${date} user ${user} ${branch}"
 	@echo "sub version is ${SUB_VERSION}"
 
-DART_DEFINES=\
-	--dart-define=BUILD_SUB_VERSION=${SUB_VERSION}
-
 linux chrome windows macos:
 	flutter run -v -d $@ ${DART_DEFINES}
 
@@ -63,13 +60,6 @@ copy_ipn_aar:
 	cp tailscale-android/android/libs/libtailscale.aar android/app/libs/ipn.aar
 aab:
 	flutter build appbundle
-
-# linux build only supports ubuntu debian packaging for now
-debian:
-	rm -rf build
-	$(call build,linux,)
-	make -C tailscale deb
-	cd tools/packaging/linux && SUB_VERSION=${SUB_VERSION} bash ./package.sh
 
 # apple build:
 # please use the Xcode project
@@ -128,18 +118,6 @@ docker_builder:
 		-t ${DOCKER_IMAGE} \
 		.
 
-docker_clean:
-	rm -rf build
-
-docker_cylonixd_deb:
-	docker run -it --rm \
-		-v ${PWD}:/app \
-		-v /etc/timezone:/etc/timezone:ro \
-		-v /etc/localtime:/etc/localtime:ro \
-		--name ${DOCKER_CONTAINER} \
-		--network=host \
-		${DOCKER_IMAGE} bash -c "export GOPROXY=${GOPROXY}; make -C tailscale deb_amd64"
-
 docker_deb:
 	rm -rf build
 	docker run -it --rm \
@@ -150,16 +128,16 @@ docker_deb:
 		--network=host \
 		${DOCKER_IMAGE} bash -c "export PUB_HOSTED_URL=${FLUTTER_PUB_HOSTED_URL}; flutter pub -v get; export GOPROXY=${GOPROXY}; make deb"
 
-docker_go:
-	docker run -it --rm \
-		-v /tmp:/host-tmp \
-		--name ${DOCKER_CONTAINER} \
-		--network=host \
-		${DOCKER_IMAGE} cp /home/cylonix/.cache/${GO_PACKAGE} /host-tmp/.
-
-docker_go_extracted:
-	docker run -it --rm \
-		-v /tmp:/host-tmp \
-		--name ${DOCKER_CONTAINER} \
-		--network=host \
-		${DOCKER_IMAGE} cp /home/cylonix/.cache/tailscale-go.extracted /host-tmp/.
+.PHONY: deb
+debhelper golang-go:
+	@if dpkg-query -Wf'$${db:Status-abbrev}' $@ 2>/dev/null |  \
+		grep -q '^i'; then                                     \
+			echo $@ has been installed;                        \
+		else                                                   \
+			sudo apt-get update && sudo apt-get install -y $@; \
+		fi
+deb: debhelper golang-go
+	rm -rf linux/packaging/debian/cylonix
+	cd linux/packaging; dpkg-buildpackage -rfakeroot -uc -b
+	mv linux/cylonix* build/linux/x64/release/.
+	@ls -l build/linux/x64/release/cylonix*

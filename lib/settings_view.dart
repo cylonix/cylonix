@@ -275,21 +275,22 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     ),
                 ],
               ),
-            AdaptiveListSection.insetGrouped(
-              children: [
-                AdaptiveListTile.notched(
-                  title: const Text('Permissions'),
-                  trailing: _trailingIcon,
-                  onTap: widget.onNavigateToPermissions,
-                ),
-                if (managedByOrg != null)
+            if (isMobile() || Platform.isMacOS)
+              AdaptiveListSection.insetGrouped(
+                children: [
                   AdaptiveListTile.notched(
-                    title: Text('Managed by $managedByOrg'),
+                    title: const Text('Permissions'),
                     trailing: _trailingIcon,
-                    onTap: widget.onNavigateToManagedBy,
+                    onTap: widget.onNavigateToPermissions,
                   ),
-              ],
-            ),
+                  if (managedByOrg != null)
+                    AdaptiveListTile.notched(
+                      title: Text('Managed by $managedByOrg'),
+                      trailing: _trailingIcon,
+                      onTap: widget.onNavigateToManagedBy,
+                    ),
+                ],
+              ),
             AdaptiveListSection.insetGrouped(
               children: [
                 AdaptiveListTile.notched(

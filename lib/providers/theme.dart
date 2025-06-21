@@ -21,7 +21,6 @@ class SystemBrightnessNotifier extends StateNotifier<(Brightness, DateTime)> {
         ));
 
   void updateBrightness(Brightness brightness) {
-    print("System brightness changed to: $brightness");
     state = (brightness, DateTime.now());
   }
 }
@@ -67,8 +66,15 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
     state = mode;
   }
   Future<void> toggleTheme() async {
+    final currentBrightness = ref.read(systemBrightnessProvider).$1;
+    final effectiveTheme = state == ThemeMode.system
+        ? (currentBrightness == Brightness.light
+            ? ThemeMode.light
+            : ThemeMode.dark)
+        : state;
+
     final newTheme =
-        state == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+        effectiveTheme == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
     await setTheme(newTheme);
   }
 }

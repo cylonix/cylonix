@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,17 +39,13 @@ class _HomePageState extends ConsumerState<HomePage> {
   void initState() {
     super.initState();
     _initLogger();
-    if (Platform.isAndroid) {
-      WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged =
-          () {
-        _logger.i("Platform brightness changed");
-        final brightness =
-            WidgetsBinding.instance.platformDispatcher.platformBrightness;
-        ref
-            .read(systemBrightnessProvider.notifier)
-            .updateBrightness(brightness);
-      };
-    }
+    WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged =
+        () {
+      _logger.i("Platform brightness changed");
+      final brightness =
+          WidgetsBinding.instance.platformDispatcher.platformBrightness;
+      ref.read(systemBrightnessProvider.notifier).updateBrightness(brightness);
+    };
   }
 
   void _initLogger() async {

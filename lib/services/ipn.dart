@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:event_bus/event_bus.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -265,6 +266,10 @@ class IpnService {
   }
 
   Future<void> logout() async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp('logout', 'POST');
+      return;
+    }
     final result = await _sendCommand("logout", "");
     if (result != 'Success') {
       throw Exception(result);
@@ -351,6 +356,10 @@ class IpnService {
 
   Future<bool> checkVPNPermission() async {
     try {
+      if (Platform.isLinux || Platform.isWindows) {
+        // On Linux and Windows, we don't need to check VPN permission.
+        return true;
+      }
       final completer = Completer<bool>();
       final id = const Uuid().v4();
       _commandCompleters[id] = completer;
@@ -387,6 +396,10 @@ class IpnService {
   }
 
   Future<void> _loginInteractive() async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp('login-interactive', 'POST');
+      return;
+    }
     final result = await _sendCommand('start_login_interactive', '');
     if (result != 'Success') {
       throw Exception('Login interactive failed: $result');
@@ -394,6 +407,10 @@ class IpnService {
   }
 
   Future<void> _editPrefs(MaskedPrefs edits) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp('prefs', 'PATCH', body: edits);
+      return;
+    }
     final result = await _sendCommand('edit_prefs', jsonEncode(edits));
     if (result != 'Success') {
       _logger.e("Edit prefs failed: $result");
@@ -409,13 +426,74 @@ class IpnService {
   }
 
   Future<void> _start(IpnOptions options) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp('start', 'POST', body: options);
+      return;
+    }
     final result = await _sendCommand('start', jsonEncode(options));
     if (result != 'Success') {
       throw Exception('Start failed: $result');
     }
   }
 
+  Future<HttpClient> _watchNotificationsOverHttp() async {
+    final client = _httpClient;
+    try {
+      // Calculate notification bits
+      final mask = NotifyWatchOpt.combine([
+        NotifyWatchOpt.noPrivateKeys,
+        NotifyWatchOpt.initialPrefs,
+        NotifyWatchOpt.initialState,
+        NotifyWatchOpt.initialNetMap,
+        NotifyWatchOpt.initialHealthState,
+      ]);
+
+      final request = await client.openUrl(
+        'GET',
+        Uri.parse('$_localBaseURL/watch-ipn-bus?mask=$mask'),
+      );
+
+      final response = await request.close();
+      if (response.statusCode != 200) {
+        client.close();
+        throw Exception(
+          'Watch notifications failed: ${response.statusCode} ${response.reasonPhrase}',
+        );
+      }
+
+      // Start listening to the stream without awaiting
+      response.transform(utf8.decoder).transform(const LineSplitter()).listen(
+        (data) {
+          if (data.isEmpty) return; // Skip empty lines (server flushes)
+
+          try {
+            final json = jsonDecode(data);
+            final notification = IpnNotification.fromJson(json);
+            eventBus.fire(BackendNotifyEvent(notification));
+          } catch (e, stack) {
+            _logger.e('Failed to parse notification: $e\n$stack');
+          }
+        },
+        onError: (e, stack) {
+          _logger.e('Error in notification stream: $e\n$stack');
+        },
+      );
+
+      return client;
+    } catch (e) {
+      client.close();
+      rethrow;
+    }
+  }
+
+  HttpClient? _notificationClient;
   Future<void> _watchNotifications() async {
+    if (_useHttpLocalApi) {
+      // Close any existing client
+      _notificationClient?.close();
+      _notificationClient = await _watchNotificationsOverHttp();
+      return;
+    }
     final result = await _sendCommand(
       'watch_notifications',
       '',
@@ -452,7 +530,9 @@ class IpnService {
   }
 
   Future<List<LoginProfile>?> getProfiles() async {
-    final result = await _sendCommand('profiles', '');
+    final result = await (_useHttpLocalApi
+        ? _sendCommandOverHttp('profiles/', 'GET')
+        : _sendCommand('profiles', ''));
     final list = jsonDecode(result) as List<dynamic>?;
     return list?.map((e) => LoginProfile.fromJson(e)).toList();
   }
@@ -462,27 +542,55 @@ class IpnService {
     if (addr.isEmpty) {
       throw Exception("Peer has no address");
     }
-    final result = await _sendCommand('ping', addr);
+    final result = await (_useHttpLocalApi
+        ? _sendCommandOverHttp(
+            'ping?ip=${Uri.encodeQueryComponent(addr)}&type=disco',
+            'POST',
+          )
+        : _sendCommand('ping', addr));
     return PingResult.fromJson(jsonDecode(result));
   }
 
   Future<Status> status({bool light = false, bool fast = false}) async {
-    final result = await _sendCommand(
-        'status', light ? jsonEncode({"peers": false}) : '',
-        timeoutMilliseconds: fast ? 500 : 5000);
+    final timeoutMilliseconds = fast ? 500 : 5000;
+
+    final result = _useHttpLocalApi
+        ? await _sendCommandOverHttp(
+            light ? 'status?peers=false' : 'status',
+            'GET',
+            timeoutMilliseconds: timeoutMilliseconds,
+          )
+        : await _sendCommand(
+            'status',
+            light ? jsonEncode({"peers": false}) : '',
+            timeoutMilliseconds: timeoutMilliseconds,
+          );
     return Status.fromJson(jsonDecode(result));
   }
 
   Future<LoginProfile> currentProfile({bool fast = false}) async {
-    final result = await _sendCommand(
-      'current_profile',
-      '',
-      timeoutMilliseconds: fast ? 500 : 5000,
-    );
+    final result = _useHttpLocalApi
+        ? await _sendCommandOverHttp(
+            'profiles/current',
+            'GET',
+            timeoutMilliseconds: fast ? 500 : 5000,
+          )
+        : await _sendCommand(
+            'current_profile',
+            '',
+            timeoutMilliseconds: fast ? 500 : 5000,
+          );
     return LoginProfile.fromJson(jsonDecode(result));
   }
 
   Future<void> addProfile() async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp(
+        'profiles',
+        'PUT',
+      );
+      return;
+    }
     final result = await _sendCommand('add_profile', '');
     if (result != "Success") {
       throw Exception("Failed to add profile: $result");
@@ -510,11 +618,19 @@ class IpnService {
   }
 
   Future<bool> isTailchatRunning() async {
+    // Only check on iOS, as Tailchat proxy is not supported on other platforms.
+    if (!Platform.isIOS) {
+      return false;
+    }
     final result = await _sendCommand('is_tailchat_running', '');
     return result == "true";
   }
 
   Future<void> switchProfile(String id) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp('profiles/$id', 'POST');
+      return;
+    }
     final result = await _sendCommand('switch_profile', id);
     if (result != "Success") {
       throw Exception("Failed to switch profile: $result");
@@ -532,9 +648,9 @@ class IpnService {
     _logger.d("Set always use relay to $on DONE.");
   }
 
-// Parses a string into a boolean value.
-// Accepts 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False.
-// Any other value throws a FormatException.
+  // Parses a string into a boolean value.
+  // Accepts 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False.
+  // Any other value throws a FormatException.
   static bool parseBool(String str) {
     switch (str) {
       case '1':
@@ -558,6 +674,19 @@ class IpnService {
   }
 
   Future<bool> getAlwaysUseDerp() async {
+    if (_useHttpLocalApi) {
+      final result = await _sendCommandOverHttp(
+        'envknob?env=TS_DEBUG_ALWAYS_USE_DERP',
+        'GET',
+        timeoutMilliseconds: 2000,
+      );
+      try {
+        final v = jsonDecode(result);
+        return v['value'] != null ? parseBool(v['value'] as String) : false;
+      } catch (e) {
+        throw Exception("Failed to get always use relay: $result");
+      }
+    }
     final result = await _sendCommand(
       'get_env_knob',
       'TS_DEBUG_ALWAYS_USE_DERP',
@@ -725,7 +854,29 @@ class IpnService {
   }
 
   // Don't care about the result as caller cannot wait for it.
-  static void sendLog(String log) {
+  HttpClient? _logClient;
+  void sendLog(String log) async {
+    if (_useHttpLocalApi) {
+      _logClient ??= _httpClient;
+      HttpClientRequest? request;
+      try {
+        request = await _logClient!.openUrl(
+          'POST',
+          Uri.parse('$_localBaseURL/log'),
+        );
+        request.headers.contentType = ContentType.text;
+        request.write(log);
+        final response = await request.close();
+        // Drain response to properly close the connection
+        await response.drain<void>();
+      } catch (e) {
+        _logger.e('Failed to send log: $e');
+      } finally {
+        // Don't close the client, but close the request
+        request?.close();
+      }
+      return;
+    }
     _channel.invokeMethod(
       "sendCommand",
       <String, String>{"cmd": "log", 'id': "", "args": log},
@@ -812,6 +963,69 @@ class IpnService {
     if (r.statusCode != 200) {
       final msg = "Failed to confirm Apple signin: ${r.statusCode} ${r.body}";
       throw Exception(msg);
+    }
+  }
+
+  HttpClient get _httpClient {
+    if (!Platform.isLinux && !Platform.isWindows) {
+      throw UnsupportedError(
+          "Http client is only supported on Linux and Windows platforms.");
+    }
+    final socket = Platform.isLinux
+        ? "/var/run/cylonix/cylonixd.sock"
+        : r'\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled';
+    final address = InternetAddress(socket, type: InternetAddressType.unix);
+
+    final client = HttpClient()
+      ..connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) {
+        assert(proxyHost == null);
+        assert(proxyPort == null);
+        return Socket.startConnect(address, 0);
+      }
+      ..findProxy = (Uri uri) => 'DIRECT';
+
+    return client;
+  }
+
+  bool get _useHttpLocalApi {
+    // Use HTTP local API only on Linux and Windows.
+    return Platform.isLinux || Platform.isWindows;
+  }
+
+  static const _localBaseURL = "http://local-tailscaled.sock/localapi/v0";
+  Future<String> _sendCommandOverHttp(
+    String url,
+    String method, {
+    int timeoutMilliseconds = 10000,
+    dynamic body,
+  }) async {
+    final client = _httpClient;
+    try {
+      final request = await client.openUrl(
+          method,
+          Uri.parse(
+            '$_localBaseURL/$url',
+          ));
+      request.headers.contentType = ContentType.json;
+      if (body != null) {
+        final jsonBody = jsonEncode(body);
+        request.write(jsonBody);
+      }
+      final response = await request.close().timeout(
+            Duration(milliseconds: timeoutMilliseconds),
+          );
+      if (response.statusCode >= 300) {
+        final errorMsg = "HTTP $method $url failed: ${response.statusCode} "
+            "${response.reasonPhrase}";
+        _logger.e(errorMsg);
+        throw Exception(errorMsg);
+      }
+
+      // Convert response to string
+      final stringData = await response.transform(utf8.decoder).join();
+      return stringData;
+    } finally {
+      client.close();
     }
   }
 }

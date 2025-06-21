@@ -1193,3 +1193,44 @@ class ExitNode {
     this.isRunningExitNode = false,
   });
 }
+class NotifyWatchOpt {
+  // Private constructor to prevent instantiation
+  NotifyWatchOpt._();
+
+  /// If set, causes Engine updates to be sent to the client either regularly
+  /// or when they change, without having to ask for each one via Engine.RequestStatus.
+  static const int watchEngineUpdates = 1 << 0;
+
+  /// If set, the first Notify message (sent immediately) will contain
+  /// the current State + BrowseToURL + SessionID
+  static const int initialState = 1 << 1;
+
+  /// If set, the first Notify message (sent immediately) will contain the current Prefs
+  static const int initialPrefs = 1 << 2;
+
+  /// If set, the first Notify message (sent immediately) will contain the current NetMap
+  static const int initialNetMap = 1 << 3;
+
+  /// If set, private keys that would normally be sent in updates are zeroed out
+  static const int noPrivateKeys = 1 << 4;
+
+  /// If set, the first Notify message (sent immediately) will contain
+  /// the current Taildrive Shares
+  static const int initialDriveShares = 1 << 5;
+
+  /// If set, the first Notify message (sent immediately) will contain
+  /// the current Taildrop OutgoingFiles
+  static const int initialOutgoingFiles = 1 << 6;
+
+  /// If set, the first Notify message (sent immediately) will contain
+  /// the current health.State of the client
+  static const int initialHealthState = 1 << 7;
+
+  /// If set, rate limit spammy netmap updates to every few seconds
+  static const int rateLimit = 1 << 8;
+
+  /// Helper method to combine multiple options
+  static int combine(List<int> opts) {
+    return opts.fold(0, (acc, opt) => acc | opt);
+  }
+}

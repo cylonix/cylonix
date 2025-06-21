@@ -340,7 +340,11 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     final isSwitching = user.id == _switchingUserId;
     final u = user.userProfile;
     var subtitle = u.loginName != u.displayName ? u.loginName : '';
-    subtitle += showControlURL ? "\n(${user.controlURL})" : '';
+    subtitle += showControlURL
+        ? subtitle.isEmpty
+            ? "Server: ${user.controlURL}"
+            : "\nServer: ${user.controlURL}"
+        : '';
     return AdaptiveListTile(
       title: Text(u.displayName),
       subtitle: subtitle.isEmpty ? null : Text(subtitle),
