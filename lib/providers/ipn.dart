@@ -47,6 +47,11 @@ final peersProvider = Provider<List<Node>>((ref) {
   return netmap?.peers ?? [];
 });
 
+final prefsProvider = Provider<IpnPrefs?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.prefs;
+});
+
 final searchTermProvider = StateProvider<String>((ref) => '');
 
 final filteredPeersProvider = Provider<List<Node>>((ref) {
@@ -91,6 +96,13 @@ final nodeStateProvider = Provider<NodeState>((ref) {
   }
 
   return NodeState.none;
+});
+
+final exitNodeIDProvider = Provider<String?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  final exitNodeId = ipnState?.prefs?.exitNodeID ?? "";
+  if (exitNodeId.isEmpty) return null;
+  return exitNodeId;
 });
 
 final exitNodeProvider = Provider<Node?>((ref) {
@@ -143,6 +155,11 @@ final stateTextProvider = Provider<String>((ref) {
 final backendStateProvider = Provider<BackendState?>(
   (ref) => ref.watch(ipnStateProvider)?.backendState,
 );
+
+final filesWaitingProvider = Provider<List<AwaitingFile>>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.filesWaiting ?? [];
+});
 
 final healthWarningsProvider = Provider<HealthState?>((ref) {
   return ref.watch(ipnStateProvider)?.health;

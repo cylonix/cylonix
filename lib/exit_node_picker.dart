@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ipn.dart';
 import 'providers/exit_node.dart';
+import 'providers/ipn.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 
@@ -70,8 +71,12 @@ class ExitNodePicker extends ConsumerWidget {
 
   Widget _buildContent(BuildContext context, WidgetRef ref, ExitNodeState model,
       bool isCupertino) {
+    final exitNodeID = ref.watch(exitNodeIDProvider);
+    final netmap = ref.watch(netmapProvider);
+    final exitNodeInNetmap = exitNodeID != null &&
+        netmap?.peers?.any((peer) => peer.stableID == exitNodeID) == true;
     var children = [
-      if (model.forcedExitNodeId != null)
+      if (model.forcedExitNodeID != null)
         _buildManagedByOrgText(
             context, model.managedByOrganization, isCupertino)
       else
@@ -79,11 +84,19 @@ class ExitNodePicker extends ConsumerWidget {
           node: ExitNode(
             label: 'None',
             online: true,
-            selected: !model.anyActive,
+            selected: !model.anyActive && exitNodeID == null,
           ),
           onTap: () =>
               ref.read(exitNodePickerProvider.notifier).setExitNode(null),
-          isCupertino: isCupertino,
+        ),
+      if (!exitNodeInNetmap && exitNodeID != null)
+        ExitNodeItem(
+          node: ExitNode(
+            id: exitNodeID,
+            label: "$exitNodeID (Not connected! All Traffic is dropped)",
+            online: false,
+            selected: true,
+          ),
         ),
       if (model.showRunAsExitNode)
         _buildRunAsExitNodeItem(context, ref, model, isCupertino),
@@ -92,7 +105,6 @@ class ExitNodePicker extends ConsumerWidget {
           node: node,
           onTap: () =>
               ref.read(exitNodePickerProvider.notifier).setExitNode(node),
-          isCupertino: isCupertino,
         ),
       ),
       if (model.mullvadExitNodeCount > 0) ...[
@@ -248,22 +260,20 @@ class ExitNodeItem extends StatelessWidget {
   const ExitNodeItem({
     super.key,
     required this.node,
-    required this.onTap,
-    required this.isCupertino,
+    this.onTap,
   });
 
   final ExitNode node;
-  final VoidCallback onTap;
-  final bool isCupertino;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = node.online && !node.isRunningExitNode;
+    final enabled = node.online;
 
     return AdaptiveListTile.notched(
       leading: CircleAvatar(
         backgroundColor: node.online
-            ? isCupertino
+            ? isApple()
                 ? CupertinoColors.activeGreen.resolveFrom(context)
                 : Colors.green
             : null,
@@ -279,7 +289,7 @@ class ExitNodeItem extends StatelessWidget {
           ? Padding(
               padding: const EdgeInsetsGeometry.only(right: 4),
               child: Icon(
-                isCupertino ? CupertinoIcons.check_mark_circled : Icons.check,
+                isApple() ? CupertinoIcons.check_mark_circled : Icons.check,
                 size: 32,
               ),
             )

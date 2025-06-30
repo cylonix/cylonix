@@ -11,6 +11,7 @@ import '../models/backend_notify_event.dart';
 import '../models/ipn.dart';
 import '../utils/logger.dart';
 import '../utils/utils.dart';
+import 'named_pipe_socket.dart';
 
 class IpnService {
   static bool _initialized = false;
@@ -23,6 +24,11 @@ class IpnService {
       StreamController<IpnNotification>.broadcast();
 
   StreamSubscription<BackendNotifyEvent>? _startEngineBackendNotifySub;
+  static const _localBaseURL = "http://local-tailscaled.sock/localapi/v0";
+  static const _localApiHost = "local-tailscaled.sock";
+  static const _localApiPrefix = "/localapi/v0";
+  static HttpClient? _notificationClient;
+  static HttpClient? _logClient;
 
   IpnService() {
     _init();
@@ -221,7 +227,10 @@ class IpnService {
             ),
           );
         }
-        _logger.e("Transfer to peer $peerID timed out");
+        _logger.e(
+          "Transfer to peer $peerID timed out",
+          sendToIpn: !_useHttpLocalApi,
+        );
       });
     }
 
@@ -235,21 +244,30 @@ class IpnService {
         }
       });
 
-      final result = await _sendCommand(
-        'send_files_to_peer',
-        jsonEncode({
-          'peer_id': peerID,
-          'files': files,
-        }),
-        onSetTimeout: setTimeout,
-      );
+      final result = _useHttpLocalApi
+          ? await _sendPeerFilesOverHttp(
+              peerID,
+              files,
+            )
+          : await _sendCommand(
+              'send_files_to_peer',
+              jsonEncode({
+                'peer_id': peerID,
+                'files': files,
+              }),
+              onSetTimeout: setTimeout,
+            );
 
-      _logger.d("Send files to peer $peerID: $result");
+      _logger.d(
+        "Send files to peer $peerID: $result",
+        sendToIpn: !_useHttpLocalApi,
+      );
       if (!result.startsWith("Success")) {
         throw Exception("Failed to send file to peer: result='$result'");
       }
     } finally {
       sub.cancel();
+      print("Canceling send peer files timer");
       currentTimer?.cancel();
     }
   }
@@ -267,7 +285,7 @@ class IpnService {
 
   Future<void> logout() async {
     if (_useHttpLocalApi) {
-      await _sendCommandOverHttp('logout', 'POST');
+      await _sendCommandOverHttp(Uri.parse('$_localBaseURL/logout'), 'POST');
       return;
     }
     final result = await _sendCommand("logout", "");
@@ -397,7 +415,10 @@ class IpnService {
 
   Future<void> _loginInteractive() async {
     if (_useHttpLocalApi) {
-      await _sendCommandOverHttp('login-interactive', 'POST');
+      await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/login-interactive'),
+        'POST',
+      );
       return;
     }
     final result = await _sendCommand('start_login_interactive', '');
@@ -406,15 +427,21 @@ class IpnService {
     }
   }
 
-  Future<void> _editPrefs(MaskedPrefs edits) async {
-    if (_useHttpLocalApi) {
-      await _sendCommandOverHttp('prefs', 'PATCH', body: edits);
-      return;
-    }
-    final result = await _sendCommand('edit_prefs', jsonEncode(edits));
-    if (result != 'Success') {
-      _logger.e("Edit prefs failed: $result");
-      throw Exception('Edit prefs failed: $result');
+  Future<IpnPrefs> editPrefs(MaskedPrefs edits) async {
+    final result = _useHttpLocalApi
+        ? await _sendCommandOverHttp(
+            Uri.parse('$_localBaseURL/prefs'),
+            'PATCH',
+            body: edits,
+          )
+        : await _sendCommand('edit_prefs', jsonEncode(edits));
+    try {
+      final json = jsonDecode(result) as Map<String, dynamic>;
+      final prefs = IpnPrefs.fromJson(json);
+      return prefs;
+    } catch (e) {
+      _logger.e("Failed to parse returned prefs: $result: $e");
+      throw Exception("Failed to parse edited prefs: $result: $e");
     }
   }
 
@@ -427,7 +454,11 @@ class IpnService {
 
   Future<void> _start(IpnOptions options) async {
     if (_useHttpLocalApi) {
-      await _sendCommandOverHttp('start', 'POST', body: options);
+      await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/start'),
+        'POST',
+        body: options,
+      );
       return;
     }
     final result = await _sendCommand('start', jsonEncode(options));
@@ -436,10 +467,11 @@ class IpnService {
     }
   }
 
-  Future<HttpClient> _watchNotificationsOverHttp() async {
+  Future<HttpClient> watchNotificationsOverHttp() async {
     final client = _httpClient;
     try {
-      // Calculate notification bits
+      _logger.d("Watching notifications over HTTP", sendToIpn: false);
+
       final mask = NotifyWatchOpt.combine([
         NotifyWatchOpt.noPrivateKeys,
         NotifyWatchOpt.initialPrefs,
@@ -457,18 +489,36 @@ class IpnService {
       if (response.statusCode != 200) {
         client.close();
         throw Exception(
-          'Watch notifications failed: ${response.statusCode} ${response.reasonPhrase}',
+          "Request failed with status code: ${response.statusCode}. ",
+        );
+      }
+      final contentType = response.headers.contentType;
+      final charset = contentType?.charset?.toLowerCase() ?? 'utf-8';
+      if (charset != 'utf-8') {
+        _logger.w(
+          "Received notification with charset $charset, "
+          "which is not utf-8. This may cause issues.",
+        );
+        _logger.d("Received content: $response", sendToIpn: false);
+        throw Exception(
+          "Unsupported charset: $charset. Only utf-8 is supported.",
         );
       }
 
-      // Start listening to the stream without awaiting
       response.transform(utf8.decoder).transform(const LineSplitter()).listen(
         (data) {
-          if (data.isEmpty) return; // Skip empty lines (server flushes)
-
+          if (data.isEmpty) return;
           try {
             final json = jsonDecode(data);
             final notification = IpnNotification.fromJson(json);
+            if (notification.outgoingFiles != null) {
+              for (final f in notification.outgoingFiles!) {
+                _logger.d(
+                  "Received outgoing file: ${f.id} (${f.sent} bytes)",
+                  sendToIpn: false,
+                );
+              }
+            }
             eventBus.fire(BackendNotifyEvent(notification));
           } catch (e, stack) {
             _logger.e('Failed to parse notification: $e\n$stack');
@@ -476,9 +526,11 @@ class IpnService {
         },
         onError: (e, stack) {
           _logger.e('Error in notification stream: $e\n$stack');
+          watchNotifications();
         },
       );
 
+      _logger.d("Notification watch initiated", sendToIpn: false);
       return client;
     } catch (e) {
       client.close();
@@ -486,12 +538,11 @@ class IpnService {
     }
   }
 
-  HttpClient? _notificationClient;
-  Future<void> _watchNotifications() async {
+  Future<void> watchNotifications() async {
     if (_useHttpLocalApi) {
       // Close any existing client
       _notificationClient?.close();
-      _notificationClient = await _watchNotificationsOverHttp();
+      _notificationClient = await watchNotificationsOverHttp();
       return;
     }
     final result = await _sendCommand(
@@ -506,19 +557,19 @@ class IpnService {
   }
 
   Future<String> _getMdmControlURL() async {
+    // Not yet implemented.
     return "";
-    //return Pst.mdmControlURL ?? "";
   }
 
   Future<void> startVpn() async {
-    await _editPrefs(const MaskedPrefs(
+    await editPrefs(const MaskedPrefs(
       wantRunning: true,
       wantRunningSet: true,
     ));
   }
 
   Future<void> stopVpn() async {
-    await _editPrefs(const MaskedPrefs(
+    await editPrefs(const MaskedPrefs(
       wantRunning: false,
       wantRunningSet: true,
     ));
@@ -531,7 +582,7 @@ class IpnService {
 
   Future<List<LoginProfile>?> getProfiles() async {
     final result = await (_useHttpLocalApi
-        ? _sendCommandOverHttp('profiles/', 'GET')
+        ? _sendCommandOverHttp(Uri.parse('$_localBaseURL/profiles/'), 'GET')
         : _sendCommand('profiles', ''));
     final list = jsonDecode(result) as List<dynamic>?;
     return list?.map((e) => LoginProfile.fromJson(e)).toList();
@@ -544,7 +595,15 @@ class IpnService {
     }
     final result = await (_useHttpLocalApi
         ? _sendCommandOverHttp(
-            'ping?ip=${Uri.encodeQueryComponent(addr)}&type=disco',
+            Uri(
+              scheme: 'http',
+              host: _localApiHost,
+              path: '$_localApiPrefix/ping',
+              queryParameters: {
+                'ip': addr,
+                'type': 'disco',
+              },
+            ),
             'POST',
           )
         : _sendCommand('ping', addr));
@@ -556,7 +615,13 @@ class IpnService {
 
     final result = _useHttpLocalApi
         ? await _sendCommandOverHttp(
-            light ? 'status?peers=false' : 'status',
+            light
+                ? Uri(
+                    scheme: 'http',
+                    host: _localApiHost,
+                    path: '$_localApiPrefix/status',
+                    queryParameters: {'peers': 'false'})
+                : Uri.parse('$_localBaseURL/status'),
             'GET',
             timeoutMilliseconds: timeoutMilliseconds,
           )
@@ -571,7 +636,7 @@ class IpnService {
   Future<LoginProfile> currentProfile({bool fast = false}) async {
     final result = _useHttpLocalApi
         ? await _sendCommandOverHttp(
-            'profiles/current',
+            Uri.parse('$_localBaseURL/profiles/current'),
             'GET',
             timeoutMilliseconds: fast ? 500 : 5000,
           )
@@ -586,7 +651,7 @@ class IpnService {
   Future<void> addProfile() async {
     if (_useHttpLocalApi) {
       await _sendCommandOverHttp(
-        'profiles',
+        Uri.parse('$_localBaseURL/profiles/'),
         'PUT',
       );
       return;
@@ -628,13 +693,88 @@ class IpnService {
 
   Future<void> switchProfile(String id) async {
     if (_useHttpLocalApi) {
-      await _sendCommandOverHttp('profiles/$id', 'POST');
+      await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/profiles/$id'),
+        'POST',
+      );
       return;
     }
     final result = await _sendCommand('switch_profile', id);
     if (result != "Success") {
       throw Exception("Failed to switch profile: $result");
     }
+  }
+
+  Future<List<AwaitingFile>?> getAwaitingFiles() async {
+    final result = _useHttpLocalApi
+        ? await _sendCommandOverHttp(
+            Uri.parse('$_localBaseURL/files/'),
+            'GET',
+          )
+        : await _sendCommand('get_awaiting_files', '');
+    final list = jsonDecode(result) as List<dynamic>?;
+    return list?.map((e) => AwaitingFile.fromJson(e)).toList();
+  }
+
+  Future<void> saveFile(String file, String path) async {
+    _useHttpLocalApi
+        ? await _saveFileOverHttp(file, path)
+        : await _sendCommand('get_file', file);
+  }
+
+  Future<void> _saveFileOverHttp(String file, String path) async {
+    HttpClient? client;
+    IOSink? sink;
+    try {
+      client = _httpClient;
+      final uri = Uri(
+        scheme: 'http',
+        host: _localApiHost,
+        path: '$_localApiPrefix/files/${Uri.encodeComponent(file)}',
+      );
+      final request = await client.openUrl('GET', uri);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
+      if (Platform.isWindows) {
+        request.headers.set(HttpHeaders.connectionHeader, "close");
+      }
+      final response = await request.close().timeout(
+            const Duration(milliseconds: 1000),
+          );
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          "Failed to download file '$file': ${response.statusCode} ${response.reasonPhrase}",
+        );
+      }
+
+      final fileToSave = File(path);
+      sink = fileToSave.openWrite();
+      await response.forEach((chunk) {
+        sink!.add(chunk);
+      });
+      await sink.flush();
+      await sink.close();
+      _logger.d("File saved to $path");
+    } catch (e) {
+      _logger.e("Failed to save file '$file' to '$path': $e");
+      throw Exception("Failed to save file '$file' to '$path': $e");
+    } finally {
+      await sink?.close();
+      client?.close();
+    }
+  }
+
+  Future<void> deleteFile(String file) async {
+    _useHttpLocalApi
+        ? await _sendCommandOverHttp(
+            Uri(
+              scheme: 'http',
+              host: _localApiHost,
+              path: '$_localApiPrefix/files/${Uri.encodeComponent(file)}',
+            ),
+            'DELETE',
+          )
+        : await _sendCommand('delete_file', file);
   }
 
   Future<void> setAlwaysUseDerp(bool on) async {
@@ -676,7 +816,7 @@ class IpnService {
   Future<bool> getAlwaysUseDerp() async {
     if (_useHttpLocalApi) {
       final result = await _sendCommandOverHttp(
-        'envknob?env=TS_DEBUG_ALWAYS_USE_DERP',
+        Uri.parse('$_localBaseURL/envknob?env=TS_DEBUG_ALWAYS_USE_DERP'),
         'GET',
         timeoutMilliseconds: 2000,
       );
@@ -731,7 +871,7 @@ class IpnService {
           controlURLSet: true,
         );
         _logger.d("apply control URL $controlURL");
-        await _editPrefs(prefs);
+        await editPrefs(prefs);
       }
 
       Future<void> stopThenLogin() async {
@@ -823,7 +963,7 @@ class IpnService {
         final ret = await status(light: true, fast: true);
         _logger.d("status: $ret");
         final state = BackendState.fromString(ret.backendState);
-        _watchNotifications();
+        watchNotifications();
         if (state.value > BackendState.needsLogin.value) {
           _logger.i(
             "Tunnel already started with state: ${ret.backendState} "
@@ -840,7 +980,7 @@ class IpnService {
         _logger.e("Failed to get status: $e. Wait for notification to start.");
       }
       _logger.d("Tunnel started. Waiting for notification to start VPN.");
-      _watchNotifications();
+      watchNotifications();
       _startEngineBackendNotifySub?.cancel();
       _startEngineBackendNotifySub =
           eventBus.on<BackendNotifyEvent>().listen((_) async {
@@ -853,28 +993,46 @@ class IpnService {
     }
   }
 
-  // Don't care about the result as caller cannot wait for it.
-  HttpClient? _logClient;
-  void sendLog(String log) async {
-    if (_useHttpLocalApi) {
-      _logClient ??= _httpClient;
-      HttpClientRequest? request;
-      try {
-        request = await _logClient!.openUrl(
-          'POST',
-          Uri.parse('$_localBaseURL/log'),
+  static bool _sendingLog = false;
+  static void _sendLogOverHttp(String log, {bool priority = false}) async {
+    var waitCount = 0;
+    while (_sendingLog) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waitCount++;
+      if (waitCount > 5) {
+        if (priority) {
+          break;
+        }
+        _logger.w(
+          "Timeout waiting for previous log to be sent. "
+          "Drop the log.",
+          sendToIpn: false,
         );
-        request.headers.contentType = ContentType.text;
-        request.write(log);
-        final response = await request.close();
-        // Drain response to properly close the connection
-        await response.drain<void>();
-      } catch (e) {
-        _logger.e('Failed to send log: $e');
-      } finally {
-        // Don't close the client, but close the request
-        request?.close();
+        return;
       }
+    }
+    _sendingLog = true;
+    try {
+      _logClient ??= _httpClient;
+      final request = await _logClient!.openUrl(
+        'POST',
+        Uri.parse('$_localBaseURL/log'),
+      );
+      request.write(log);
+      await request.close();
+    } catch (e) {
+      _logger.e('Failed to send log over stream: $e', sendToIpn: false);
+      _logClient?.close();
+      _logClient = null;
+    } finally {
+      _sendingLog = false;
+    }
+  }
+
+  // Don't care about the result as caller cannot wait for it.
+  static void sendLog(String log, {bool priority = false}) async {
+    if (_useHttpLocalApi) {
+      _sendLogOverHttp(log, priority: priority);
       return;
     }
     _channel.invokeMethod(
@@ -966,47 +1124,96 @@ class IpnService {
     }
   }
 
-  HttpClient get _httpClient {
+  static HttpClient get _httpClient {
     if (!Platform.isLinux && !Platform.isWindows) {
       throw UnsupportedError(
           "Http client is only supported on Linux and Windows platforms.");
     }
     final socket = Platform.isLinux
         ? "/var/run/cylonix/cylonixd.sock"
-        : r'\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled';
+        : r'\\.\pipe\ProtectedPrefix\Administrators\Cylonix\cylonixd';
     final address = InternetAddress(socket, type: InternetAddressType.unix);
 
     final client = HttpClient()
       ..connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) {
         assert(proxyHost == null);
         assert(proxyPort == null);
-        return Socket.startConnect(address, 0);
+        return Platform.isLinux
+            ? Socket.startConnect(address, 0)
+            : NamedPipeSocket(socket, uri.path).createConnectionTask();
       }
       ..findProxy = (Uri uri) => 'DIRECT';
-
     return client;
   }
 
-  bool get _useHttpLocalApi {
+  static bool get _useHttpLocalApi {
     // Use HTTP local API only on Linux and Windows.
     return Platform.isLinux || Platform.isWindows;
   }
 
-  static const _localBaseURL = "http://local-tailscaled.sock/localapi/v0";
+  Future<String> _listenToHttpResponse(
+    HttpClientResponse response, {
+    int timeoutMilliseconds = 10000,
+    String endpoint = "",
+  }) async {
+    Completer? completer;
+    completer = Completer();
+    response.transform(utf8.decoder).listen(
+      (data) {
+        if (completer == null || (completer?.isCompleted ?? false)) {
+          _logger.e(
+            "$endpoint: Completer is null or completed, "
+            "cannot set http response",
+            sendToIpn: false,
+          );
+          return;
+        }
+        completer?.complete(data);
+        completer = null;
+      },
+      onError: (error, stack) {
+        _logger.e('$endpoint: Stream error: $error', sendToIpn: false);
+        if (completer != null && !(completer?.isCompleted ?? false)) {
+          completer?.completeError(error);
+          completer = null;
+        }
+      },
+      onDone: () {
+        if (completer != null && !(completer?.isCompleted ?? false)) {
+          completer?.complete("");
+          completer = null;
+        }
+        if (endpoint.contains('/log')) {
+          _logger.d("$endpoint: Stream done", sendToIpn: false);
+        }
+      },
+      cancelOnError: true,
+    );
+    final result = await completer?.future.timeout(Duration(
+      milliseconds: timeoutMilliseconds,
+    ));
+    completer = null;
+    if (result is! String) {
+      _logger.e("$endpoint: HTTP request failed: $result", sendToIpn: false);
+      throw Exception("HTTP request failed: $result");
+    }
+    return result;
+  }
+
   Future<String> _sendCommandOverHttp(
-    String url,
+    Uri uri,
     String method, {
     int timeoutMilliseconds = 10000,
     dynamic body,
   }) async {
     final client = _httpClient;
+    final path = uri.path;
     try {
-      final request = await client.openUrl(
-          method,
-          Uri.parse(
-            '$_localBaseURL/$url',
-          ));
+      final request = await client.openUrl(method, uri);
       request.headers.contentType = ContentType.json;
+      if (Platform.isWindows) {
+        request.headers.set(HttpHeaders.connectionHeader, "close");
+      }
       if (body != null) {
         final jsonBody = jsonEncode(body);
         request.write(jsonBody);
@@ -1014,18 +1221,171 @@ class IpnService {
       final response = await request.close().timeout(
             Duration(milliseconds: timeoutMilliseconds),
           );
+      final stringData = await _listenToHttpResponse(
+        response,
+        timeoutMilliseconds: timeoutMilliseconds,
+        endpoint: path,
+      );
       if (response.statusCode >= 300) {
-        final errorMsg = "HTTP $method $url failed: ${response.statusCode} "
-            "${response.reasonPhrase}";
-        _logger.e(errorMsg);
+        final errorMsg = "HTTP $method $path failed: ${response.statusCode} "
+            "${response.reasonPhrase}: body: $stringData";
+        _logger.e("$path: $errorMsg", sendToIpn: false);
         throw Exception(errorMsg);
       }
-
-      // Convert response to string
-      final stringData = await response.transform(utf8.decoder).join();
       return stringData;
+    } catch (e) {
+      _logger.e("$path: Failed to send command over HTTP: $e",
+          sendToIpn: false);
+      rethrow;
     } finally {
       client.close();
     }
+  }
+
+  Future<String> _sendPeerFilesOverHttp(
+      String peerID, List<OutgoingFile> files) async {
+    // For windows, post multiple does not work yet due to multiple content
+    // length issue, so we need to send files one by one. We cannot use
+    // the direct single file put API due to the server managing the id field.
+    if (Platform.isWindows && files.length > 1) {
+      for (final file in files) {
+        await _sendPeerFilesOverHttp(peerID, [file]);
+      }
+      return "Success";
+    }
+    for (final file in files) {
+      _logger.d(
+        "Sending file to peer $peerID/${file.id}/${file.name}",
+        sendToIpn: false,
+      );
+    }
+
+    // Create manifest
+    final manifest = jsonEncode(files);
+    final manifestBytes = utf8.encode(manifest);
+
+    final parts = <FilePart>[
+      // Add manifest as first part
+      FilePart(
+        filename: 'manifest.json',
+        contentType: 'application/json',
+        contentLength: manifestBytes.length,
+        file: await _bytesToTempFile(manifestBytes),
+      ),
+      // Add actual files
+      for (final file in files)
+        FilePart(
+          filename: file.name,
+          contentLength: file.declaredSize,
+          file: File(file.path!),
+        ),
+    ];
+
+    try {
+      return await _postMultipart(
+        'file-put/$peerID',
+        parts,
+      );
+    } finally {
+      // Clean up temporary manifest file
+      await parts.first.file.delete();
+    }
+  }
+
+  Future<String> _postMultipart(String path, List<FilePart> parts) async {
+    final client = _httpClient;
+    final uri = Uri.parse('$_localBaseURL/$path');
+    final request = await client.openUrl('POST', uri);
+
+    try {
+      final boundary = '__X_BOUNDARY__${const Uuid().v4()}__';
+      request.headers.set(
+        'Content-Type',
+        'multipart/form-data; boundary=$boundary',
+      );
+      request.headers.chunkedTransferEncoding = true;
+
+      // Start writing multipart data
+      for (final part in parts) {
+        // Write part header
+        final asciiFallback = _escapeQuotes(
+            part.filename.replaceAll(RegExp(r'[^\x00-\x7F]'), '_'));
+        final encodedFilename = _encodeFilenameRFC5987(part.filename);
+        request.write(
+          '--$boundary\r\n'
+          'Content-Disposition: form-data; name="file"; '
+          'filename="$asciiFallback";'
+          'filename*=UTF-8\'\'$encodedFilename\r\n'
+          'Content-Type: ${part.contentType}\r\n'
+          '\r\n',
+        );
+
+        // Write file data in chunks
+        final stream = part.file.openRead();
+        await for (final chunk in stream) {
+          request.add(chunk);
+        }
+        request.write('\r\n');
+      }
+
+      // Write final boundary
+      request.write('--$boundary--\r\n');
+
+      final response = await request.close();
+      final responseBody = await _listenToHttpResponse(
+        response,
+        timeoutMilliseconds: 24 * 3600 * 1000 /* 24 hours */,
+        endpoint: path,
+      );
+      if (response.statusCode == 200) {
+        return "Success: $responseBody";
+      }
+
+      if (response.statusCode >= 300) {
+        throw Exception(
+          'HTTP POST $path failed: ${response.statusCode} $responseBody',
+        );
+      }
+
+      return responseBody;
+    } finally {
+      client.close();
+    }
+  }
+
+  // Helper method to create a temporary file from bytes
+  Future<File> _bytesToTempFile(List<int> bytes) async {
+    final temp = await File(
+            '${Directory.systemTemp.path}/manifest_${const Uuid().v4()}.json')
+        .create();
+    await temp.writeAsBytes(bytes);
+    return temp;
+  }
+
+  // Helper method to escape quotes in filenames
+  String _escapeQuotes(String str) {
+    return str.replaceAll('"', '\\"').replaceAll(r'\', r'\\');
+  }
+
+  String _encodeFilenameRFC5987(String filename) {
+    final utf8Bytes = utf8.encode(filename);
+    final sb = StringBuffer();
+    for (final b in utf8Bytes) {
+      // Unreserved characters according to RFC 3986
+      if ((b >= 0x41 && b <= 0x5A) || // A-Z
+          (b >= 0x61 && b <= 0x7A) || // a-z
+          (b >= 0x30 && b <= 0x39) || // 0-9
+          b == 0x2D || // -
+          b == 0x2E || // .
+          b == 0x5F || // _
+          b == 0x7E) {
+        // ~
+        sb.writeCharCode(b);
+      } else {
+        sb.write('%');
+        sb.write(b.toRadixString(16).padLeft(2, '0').toUpperCase());
+      }
+    }
+    return sb.toString();
   }
 }

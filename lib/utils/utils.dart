@@ -118,7 +118,7 @@ bool isDesktop() {
   return !isMobile();
 }
 
-String formatBytes(int bytes, int decimals) {
+String formatBytes(int bytes, [int decimals = 2]) {
   if (bytes <= 0) return "";
   const suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
   var i = (log(bytes) / log(1024)).floor();

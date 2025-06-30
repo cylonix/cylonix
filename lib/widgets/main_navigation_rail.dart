@@ -12,6 +12,7 @@ class MainNavigationRail extends ConsumerStatefulWidget {
   final Function() onNavigateToUserSwitcher;
   final Function() onNavigateToSettings;
   final Function() onNavigateToExitNodes;
+  final Function() onNavigateToSendFiles;
   final Function() onNavigateToHealth;
   final Function() onNavigateToHome;
   final Function() onNavigateToAbout;
@@ -21,6 +22,7 @@ class MainNavigationRail extends ConsumerStatefulWidget {
     required this.onNavigateToUserSwitcher,
     required this.onNavigateToSettings,
     required this.onNavigateToExitNodes,
+    required this.onNavigateToSendFiles,
     required this.onNavigateToHealth,
     required this.onNavigateToHome,
     required this.onNavigateToAbout,
@@ -151,6 +153,15 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     );
   }
 
+  Widget _railIcon(Widget icon, String? tooltip) {
+    return _extended
+        ? icon
+        : Tooltip(
+            message: tooltip,
+            child: icon,
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
@@ -181,42 +192,52 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
       ),
       destinations: [
         NavigationRailDestination(
-          icon: Icon(_homeIcon),
+          icon: _railIcon(Icon(_homeIcon), "Home"),
           label: Text(
             'Home',
             style: _labelStyle,
           ),
         ),
         NavigationRailDestination(
-          icon: Icon(_settingsIcon),
+          icon: _railIcon(Icon(_settingsIcon), "Settings"),
           label: Text(
             'Settings',
             style: _labelStyle,
           ),
         ),
         NavigationRailDestination(
-          icon: Icon(_exitNodeIcon),
+          icon: _railIcon(Icon(_exitNodeIcon), "Exit Nodes"),
           label: Text(
             'Exit Nodes',
             style: _labelStyle,
           ),
         ),
         NavigationRailDestination(
-          icon: _buildHeathIcon(health),
+          icon: _railIcon(const Icon(Icons.upload_file_outlined), "Send Files"),
+          label: Text(
+            'Send Files',
+            style: _labelStyle,
+          ),
+        ),
+        NavigationRailDestination(
+          icon: _railIcon(_buildHeathIcon(health), "Health"),
           label: Text(
             'Health',
             style: _labelStyle,
           ),
         ),
         NavigationRailDestination(
-          icon: Icon(isDarkMode ? _lightModeIcon : _darkModeIcon),
+          icon: _railIcon(
+            Icon(isDarkMode ? _lightModeIcon : _darkModeIcon),
+            isDarkMode ? "Light Mode" : "Dark Mode",
+          ),
           label: Text(
             isDarkMode ? "Light Mode" : "Dark Mode",
             style: _labelStyle,
           ),
         ),
         NavigationRailDestination(
-          icon: Icon(_infoIcon),
+          icon: _railIcon(Icon(_infoIcon), "About Cylonix"),
           label: Text(
             "About Cylonix",
             style: _labelStyle,
@@ -268,12 +289,15 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
         widget.onNavigateToExitNodes();
         break;
       case 3:
-        widget.onNavigateToHealth();
+        widget.onNavigateToSendFiles();
         break;
       case 4:
-        ref.read(themeProvider.notifier).toggleTheme();
+        widget.onNavigateToHealth();
         break;
       case 5:
+        ref.read(themeProvider.notifier).toggleTheme();
+        break;
+      case 6:
         widget.onNavigateToAbout();
         break;
     }
@@ -301,7 +325,8 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
   Widget _buildLeading(BuildContext context, UserProfile? user) {
     final profiles = ref.watch(loginProfilesProvider);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          isApple() ? CrossAxisAlignment.start : CrossAxisAlignment.center,
       children: [
         SizedBox(height: Platform.isIOS && !_isIpad ? 16 : 32),
         // Avatar and name

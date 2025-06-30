@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'dart:io';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -58,6 +58,7 @@ class IpnState with _$IpnState {
     String? browseToURL,
     String? errMessage,
     List<OutgoingFile>? outgoingFiles,
+    List<AwaitingFile>? filesWaiting,
     LoginProfile? currentProfile,
     @Default([]) List<LoginProfile> loginProfiles,
     @Default(false) bool isRunningExitNode,
@@ -879,6 +880,17 @@ class Service with _$Service {
       _$ServiceFromJson(json);
 }
 
+@freezed
+class AwaitingFile with _$AwaitingFile {
+  const factory AwaitingFile({
+    @JsonKey(name: 'Name') required String name,
+    @JsonKey(name: 'Size') required int size,
+  }) = _AwaitingFile;
+
+  factory AwaitingFile.fromJson(Map<String, dynamic> json) =>
+      _$AwaitingFileFromJson(json);
+}
+
 class Links {
   Links._();
 
@@ -1098,6 +1110,7 @@ class PeerStatus with _$PeerStatus {
     @JsonKey(name: 'ID') required String id,
     @JsonKey(name: 'HostName') required String hostName,
     @JsonKey(name: 'DNSName') required String dnsName,
+    @JsonKey(name: 'OS') String? os,
     @JsonKey(name: 'TailscaleIPs') List<String>? tailscaleIPs,
     @JsonKey(name: 'Tags') List<String>? tags,
     @JsonKey(name: 'PrimaryRoutes') List<String>? primaryRoutes,
@@ -1179,20 +1192,27 @@ extension PeerStatusExtension on PeerStatus {
 class ExitNode {
   final String? id;
   final String label;
-  final String city;
   final bool online;
   final bool selected;
-  final bool isRunningExitNode;
+  final bool mullvad;
+  final int priority;
+  final String countryCode;
+  final String country;
+  final String city;
 
   ExitNode({
     this.id,
     required this.label,
+    required this.online,
+    required this.selected,
+    this.mullvad = false,
+    this.priority = 0,
+    this.countryCode = '',
+    this.country = '',
     this.city = '',
-    this.online = true,
-    this.selected = false,
-    this.isRunningExitNode = false,
   });
 }
+
 class NotifyWatchOpt {
   // Private constructor to prevent instantiation
   NotifyWatchOpt._();
@@ -1233,4 +1253,18 @@ class NotifyWatchOpt {
   static int combine(List<int> opts) {
     return opts.fold(0, (acc, opt) => acc | opt);
   }
+}
+
+class FilePart {
+  final String filename;
+  final String contentType;
+  final int contentLength;
+  final File file;
+
+  FilePart({
+    required this.filename,
+    this.contentType = 'application/octet-stream',
+    required this.contentLength,
+    required this.file,
+  });
 }

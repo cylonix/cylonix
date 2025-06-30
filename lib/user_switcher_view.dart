@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:cylonix/widgets/alert_dialog_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -224,8 +225,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                 const AdaptiveGroupedHeader(
                   'Cylonix',
                 ),
-                if (users.length > 1)
-                  _buildDontShowButtob(context, 'cylonix'),
+                if (users.length > 1) _buildDontShowButtob(context, 'cylonix'),
               ],
             ),
             footer: Text(
@@ -508,6 +508,8 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
           widget.onNavigateToCustomControl();
         } else if (value == 'auth') {
           widget.onNavigateToAuthKey();
+        } else if (value == 'data') {
+          _showProfilesData();
         }
       },
       itemBuilder: (context) => [
@@ -518,6 +520,10 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         const PopupMenuItem(
           value: 'auth',
           child: Text('Auth Key'),
+        ),
+        const PopupMenuItem(
+          value: 'data',
+          child: Text('Profiles Data'),
         ),
       ],
     );
@@ -558,27 +564,9 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     }
   }
 
-  void _showError(String message) {
+  void _showError(String message) async {
     if (!mounted) return;
-    if (isApple()) {
-      showCupertinoDialog(
-        context: context,
-        builder: (context) => CupertinoAlertDialog(
-          title: const Text('Error'),
-          content: Text(message),
-          actions: [
-            CupertinoDialogAction(
-              child: const Text('OK'),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-    }
+    await showAlertDialog(context, 'Error', message);
   }
 
   void _showProfilesData() async {
@@ -593,54 +581,32 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     final prettyJson =
         profiles.map((p) => encoder.convert(p.toJson())).toList();
 
-    if (isApple()) {
-      await showCupertinoModalPopup(
-        context: context,
-        builder: (_) => AdaptiveModalPopup(
-          child: Column(
-            children: [
-              CupertinoListTile(
-                title: const Text('Profiles Data'),
-                trailing: AdaptiveButton(
-                  onPressed: () => Navigator.pop(_),
-                  child: const Text('Close'),
-                ),
-              ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(16.0),
-                  children: prettyJson
-                      .map(
-                        (json) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child:
-                              Text(json, style: const TextStyle(fontSize: 14)),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Profiles Data'),
-          content: SingleChildScrollView(
-            child: Text(prettyJson.join('\n\n')),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('OK'),
+    AdaptiveModalPopup(
+      child: Column(
+        children: [
+          CupertinoListTile(
+            title: const Text('Profiles Data'),
+            trailing: AdaptiveButton(
               onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
             ),
-          ],
-        ),
-      );
-    }
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: prettyJson
+                  .map(
+                    (json) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Text(json, style: const TextStyle(fontSize: 14)),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    ).show(context);
   }
 
   void _handleDeleteAccount(LoginProfile profile) async {
@@ -662,53 +628,49 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
 
     await AdaptiveModalPopup(
       height: height,
-      child: Container(
-        constraints: const BoxConstraints(
-          maxWidth: 600,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          spacing: 16,
-          children: [
-            AdaptiveListTile(
-              leading: Icon(
-                isApple() ? CupertinoIcons.info_circle : Icons.info_outline,
-              ),
-              title: const Text(
-                'Delete Account',
-                textAlign: TextAlign.center,
-              ),
-              trailing: AdaptiveButton(
-                textButton: !isApple(),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+      maxWidth: 600,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 16,
+        children: [
+          AdaptiveListTile(
+            leading: Icon(
+              isApple() ? CupertinoIcons.info_circle : Icons.info_outline,
+            ),
+            title: const Text(
+              'Delete Account',
+              textAlign: TextAlign.center,
+            ),
+            trailing: AdaptiveButton(
+              textButton: !isApple(),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                spacing: 16,
+                children: [
+                  text(
+                    'Delete Account will delete all the data associated with '
+                    'this account including the user profile and devices. If '
+                    'the account is an admin account, it will also delete all '
+                    'the users associated with the organization and its '
+                    'security settings.',
+                  ),
+                  text(
+                    'If you still want to proceed to delete '
+                    '"${profile.userProfile.displayName}". Please send a '
+                    'request to contact@cylonix.io. After the request is '
+                    'processed, you will receive an email with a link to '
+                    'delete your account.',
+                  ),
+                ],
               ),
             ),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  spacing: 16,
-                  children: [
-                    text(
-                      'Delete Account will delete all the data associated with '
-                      'this account including the user profile and devices. If '
-                      'the account is an admin account, it will also delete all '
-                      'the users associated with the organization and its '
-                      'security settings.',
-                    ),
-                    text(
-                      'If you still want to proceed to delete '
-                      '"${profile.userProfile.displayName}". Please send a '
-                      'request to contact@cylonix.io. After the request is '
-                      'processed, you will receive an email with a link to '
-                      'delete your account.',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     ).show(context);
   }

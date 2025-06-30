@@ -675,7 +675,7 @@ class AdaptiveModalPopup extends StatelessWidget {
             : Theme.of(context).colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      width: maxWidth ?? double.infinity,
+      width: double.infinity,
       height: height ?? MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       margin: EdgeInsets.only(
@@ -694,7 +694,10 @@ class AdaptiveModalPopup extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: child,
+              child: SizedBox(
+                width: maxWidth ?? double.infinity,
+                child: child,
+              ),
             ),
           ],
         ),
@@ -711,6 +714,7 @@ class AdaptiveModalPopup extends StatelessWidget {
     } else {
       await showModalBottomSheet(
         constraints: const BoxConstraints(
+          minWidth: double.infinity,
           maxWidth: double.infinity,
         ),
         isScrollControlled: true,
@@ -845,6 +849,23 @@ class AdaptiveGroupedHeader extends StatelessWidget {
     return Text(
       title.toUpperCase(),
       style: adaptiveGroupedHeaderStyle(context),
+    );
+  }
+}
+
+class AdaptiveGroupedFooter extends StatelessWidget {
+  final String title;
+
+  const AdaptiveGroupedFooter(
+    this.title, {
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: adaptiveGroupedFooterStyle(context),
     );
   }
 }

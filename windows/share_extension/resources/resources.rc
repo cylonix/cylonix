@@ -1,0 +1,23 @@
+#include "resource.h"
+#include <windows.h>
+
+IDI_MAINICON ICON "..\\..\\installer\\cylonix.ico"
+
+IDD_MAINWINDOW DIALOGEX 0, 0, 320, 240
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Share with Cylonix"
+FONT 9, "Segoe UI"
+BEGIN
+    CONTROL         "", IDC_PEERLIST, "SysListView32", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP, 10, 10, 300, 180
+    PUSHBUTTON      "Send", IDC_SENDBUTTON, 240, 200, 70, 25
+    CONTROL         "", IDC_PROGRESS, "msctls_progress32", WS_VISIBLE, 10, 200, 220, 14
+    LTEXT          "", IDC_STATUSTEXT, 10, 220, 300, 14
+END
+
+STRINGTABLE
+BEGIN
+    IDS_WINDOWTITLE "Share with Cylonix"
+    IDS_SENDING    "Sending files..."
+    IDS_COMPLETE   "Files sent successfully"
+    IDS_ERROR      "Error sending files"
+END

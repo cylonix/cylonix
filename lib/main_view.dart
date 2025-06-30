@@ -9,6 +9,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'files_waiting_view.dart';
 import 'health_view.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
@@ -294,11 +295,17 @@ class _MainViewState extends ConsumerState<MainView> {
         );
     }
 
+    final common = [
+      _buildExpiryNotification(context, netmap, ref),
+      _buildFilesWaitingSummary(context, ref),
+      ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
+    ];
+
     final child = !showDevices
         ? Column(
             spacing: 16,
-            children: [
-              ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
+            children: <Widget>[
+              ...common,
               Expanded(
                 child: _buildCenteredWidget(const HealthStateWidget()),
               ),
@@ -306,8 +313,7 @@ class _MainViewState extends ConsumerState<MainView> {
           )
         : Column(
             children: [
-              _buildExpiryNotification(context, netmap, ref),
-              ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
+              ...common,
               Expanded(
                 child: PeerList(
                   onPeerTap: widget.onNavigateToPeerDetails,
@@ -397,6 +403,41 @@ class _MainViewState extends ConsumerState<MainView> {
       icon: user == null
           ? const Icon(CupertinoIcons.ellipsis_circle)
           : AdaptiveAvatar(radius: 18, user: user),
+    );
+  }
+
+  Widget _buildFilesWaitingSummary(BuildContext context, WidgetRef ref) {
+    final files = ref.watch(filesWaitingProvider);
+    if (files.isEmpty) return const SizedBox.shrink();
+    final totalSize = files.fold<int>(0, (sum, f) => sum + f.size);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      margin: const EdgeInsets.all(16),
+      child: AdaptiveListTile(
+          backgroundColor: isApple()
+              ? CupertinoColors.systemBrown
+                  .resolveFrom(
+                    context,
+                  )
+                  .withValues(alpha: 0.1)
+              : Theme.of(context).colorScheme.primaryContainer,
+          leading: const Icon(Icons.folder),
+          title: Text("Files Waiting: ${files.length}"),
+          subtitle: Text("Total Size: ${formatBytes(totalSize)}"),
+          onTap: () {
+            var height = MediaQuery.of(context).size.height * 0.9;
+            if (height > 900) {
+              height = height * 0.7;
+            }
+
+            AdaptiveModalPopup(
+              maxWidth: 800,
+              height: height,
+              child: const FilesWaitingView(),
+            ).show(context);
+          },
+          trailing: const AdaptiveListTileChevron()),
     );
   }
 
@@ -730,7 +771,16 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
             ),
             const AdaptiveLoadingWidget(),
-            _cancelAndRetryButton,
+            AdaptiveButton(
+              width: 250,
+              onPressed: () => _resetIpnStateNotifier(),
+              child: const Text('Cancel and Retry'),
+            ),
+            AdaptiveButton(
+              width: 250,
+              onPressed: () => _startSignin(context, ref),
+              child: const Text('Start Signin'),
+            ),
             const HealthWarningList(color: CupertinoColors.systemBackground),
           ],
         ),
@@ -793,13 +843,6 @@ class _MainViewState extends ConsumerState<MainView> {
     return _buildConnectingView(
       context,
       state.vpnState != VpnState.disconnecting,
-    );
-  }
-
-  Widget get _cancelAndRetryButton {
-    return AdaptiveButton(
-      onPressed: () => _resetIpnStateNotifier(),
-      child: const Text('Cancel and Retry'),
     );
   }
 

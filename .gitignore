@@ -63,3 +63,10 @@ linux/packaging/debian/debhelper-build-stamp
 linux/packaging/debian/*.debhelper
 linux/packaging/debian/files
 linux/packaging/debian/cylonix.substvars
+# Windows artifacts
+windows/installer/cylonixc.exe
+windows/installer/cylonixd.exe
+windows/installer/bin
+windows/installer/FlutterDataFiles.wxs
+windows/installer/FlutterRuntimeFiles.wxs
+windows/share_extension/build

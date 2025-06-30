@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:fire="http://schemas.microsoft.com/wix/FirewallExtension"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <?include Variables.wxs ?>
+
+  <Fragment>
+    <!-- Main Application Files -->
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <!-- Main executable and Flutter files -->
+      <Component Id="MainExecutable" Guid="$(var.MainExecutableGuid)">
+        <File Id="CylonixExe"
+              Source="$(var.FlutterReleaseDir)\cylonix.exe"
+              KeyPath="yes"
+              Checksum="yes" />
+      </Component>
+
+      <!-- DLL Files -->
+      <Component Id="RuntimeLibraries" Guid="$(var.RuntimeLibrariesGuid)">
+        <!-- Add a registry entry as KeyPath since no files are present -->
+        <RegistryValue Root="HKLM"
+                       Key="$(var.ProductRegKey)"
+                       Name="RuntimeLibrariesPlaceholder"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+
+      <Component Id="ShareLauncherScript" Guid="$(var.ShareLauncherExecutableGuid)">
+        <File Id="ShareLauncherPS1"
+          Source="share_launcher.ps1"
+          KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Cylonixd Service Files -->
+    <ComponentGroup Id="CylonixdService" Directory="CYLONIXDFOLDER">
+      <Component Id="CylonixdExecutable" Guid="$(var.CylonixdExecutableGuid)">
+        <File Id="CylonixdExe"
+              Source="$(var.CylonixdDir)\cylonixd.exe"
+              KeyPath="yes"
+              Checksum="yes" />
+        <File Id="WintunDll"
+              Source="$(var.CylonixdDir)\wintun.dll" />
+
+        <!-- Service Installation - Remove embedded ServiceConfig -->
+        <ServiceInstall Id="InstallCylonixdService"
+                        Type="ownProcess"
+                        Vital="yes"
+                        Name="$(var.ServiceName)"
+                        DisplayName="$(var.ServiceDisplayName)"
+                        Description="$(var.ServiceDescription)"
+                        Start="auto"
+                        Account="LocalSystem"
+                        ErrorControl="normal"
+                        Interactive="no"
+                        Arguments="--port=41741 --tun=Cylonix --socket=\\.\pipe\ProtectedPrefix\Administrators\Cylonix\cylonixd" >
+            <!-- Service Dependencies -->
+            <ServiceDependency Id="iphlpsvc" />
+            <ServiceDependency Id="netprofm" />
+            <ServiceDependency Id="WinHttpAutoProxySvc" />
+        </ServiceInstall>
+
+        <!-- Service Control -->
+        <ServiceControl Id="StartCylonixdService"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Name="$(var.ServiceName)"
+                        Wait="yes" />
+
+        <!-- Service Configuration using WixUtilExtension - Separate element -->
+        <util:ServiceConfig ServiceName="$(var.ServiceName)"
+                            FirstFailureActionType="restart"
+                            SecondFailureActionType="restart"
+                            ThirdFailureActionType="restart"
+                            RestartServiceDelayInSeconds="1"
+                            ResetPeriodInDays="5" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Shortcuts -->
+    <Component Id="ApplicationShortcuts" Directory="ApplicationProgramsFolder" Guid="$(var.ApplicationShortcutsGuid)">
+      <File Id="CylonixIcon"
+            Source="cylonix.ico"
+            KeyPath="no" />
+      <Shortcut Id="ApplicationStartMenuShortcut"
+                Name="Cylonix Node Agent"
+                Description="Cylonix Node Agent"
+                Target="[INSTALLFOLDER]cylonix.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="CylonixIcon"
+                IconIndex="0" />
+
+      <Shortcut Id="ApplicationDesktopShortcut"
+                Directory="DesktopFolder"
+                Name="Cylonix Node Agent"
+                Description="Cylonix Node Agent"
+                Target="[INSTALLFOLDER]cylonix.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="CylonixIcon"
+                IconIndex="0" />
+
+      <Shortcut Id="UninstallProduct"
+                Name="Uninstall Cylonix Node Agent"
+                Description="Uninstalls Cylonix Node Agent"
+                Target="[SystemFolder]msiexec.exe"
+                Arguments="/x [ProductCode]" />
+
+      <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\$(var.ProductManufacturer)\$(var.ProductName)"
+                     Name="installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Firewall Rules -->
+    <Component Id="FirewallRules" Directory="INSTALLFOLDER" Guid="$(var.FirewallRulesGuid)">
+      <fire:FirewallException Id="CylonixFirewallRule"
+                              Name="Cylonix Node Agent"
+                              Program="[INSTALLFOLDER]cylonix.exe"
+                              Scope="any"
+                              Profile="all"
+                              Protocol="tcp" />
+      <RegistryValue Root="HKLM"
+                     Key="$(var.ProductRegKey)"
+                     Name="FirewallConfigured"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Registry Entries -->
+    <Component Id="RegistryEntries" Directory="INSTALLFOLDER" Guid="$(var.RegistryEntriesGuid)">
+      <RegistryKey Root="HKLM" Key="$(var.ProductRegKey)">
+        <RegistryValue Name="InstallLocation" Type="string" Value="[INSTALLFOLDER]" />
+        <RegistryValue Name="Version" Type="string" Value="$(var.ProductVersion)" />
+        <RegistryValue Name="Publisher" Type="string" Value="$(var.ProductManufacturer)" />
+      </RegistryKey>
+      <RegistryValue Root="HKLM"
+                     Key="$(var.ProductRegKey)"
+                     Name="Installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+    <Component Id="ShareTarget" Directory="INSTALLFOLDER" Guid="*">
+      <!-- File Type Association -->
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\Cylonix.ShareTarget">
+        <RegistryValue Type="string" Value="Cylonix" KeyPath="yes" />
+        <RegistryValue Name="FriendlyTypeName" Type="string" Value="Share with Cylonix" />
+        <!-- Add app registration -->
+        <RegistryValue Name="AppUserModelId" Type="string" Value="Cylonix.App" />
+      </RegistryKey>
+
+      <!-- Share Target Registration -->
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\Cylonix.ShareTarget\shell\open">
+        <RegistryValue Type="string" Value="Share with Cylonix" />
+        <RegistryValue Name="Icon" Type="string" Value="[INSTALLFOLDER]cylonix.exe" />
+        <!-- Add these values -->
+        <RegistryValue Name="MultiSelectModel" Type="string" Value="Player" />
+        <RegistryValue Name="ProgrammaticAccessOnly" Type="string" Value="" />
+      </RegistryKey>
+
+      <!-- System Share Registration -->
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved">
+        <RegistryValue Type="string" Name="{7AD84985-87B4-4A16-BE58-8B72A5B390F7}" Value="Cylonix Share Extension" />
+      </RegistryKey>
+
+      <!-- Add to "Show more options" context menu -->
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\*\shell\Cylonix">
+        <RegistryValue Type="string" Value="Share with Cylonix" />
+        <RegistryValue Name="Icon" Type="string" Value="[INSTALLFOLDER]cylonix.exe" />
+        <RegistryValue Name="MultiSelectModel" Type="string" Value="Player" />
+      </RegistryKey>
+
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\*\shell\Cylonix\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]cylonix.exe&quot; --share &quot;%1&quot;" />
+      </RegistryKey>
+
+      <!-- Keep existing capabilities registration -->
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Cylonix\Capabilities">
+        <RegistryValue Type="string" Name="ApplicationName" Value="Cylonix" />
+        <RegistryValue Type="string" Name="ApplicationDescription" Value="Send files with Cylonix" />
+      </RegistryKey>
+
+      <RegistryKey Root="HKLM" Key="SOFTWARE\RegisteredApplications">
+        <RegistryValue Type="string" Name="Cylonix.ShareTarget" Value="SOFTWARE\Cylonix\Capabilities" />
+      </RegistryKey>
+    </Component>
+  </Fragment>
+</Wix>

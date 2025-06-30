@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -12,12 +13,14 @@ import 'peer_details_view.dart';
 import 'permissions_view.dart';
 import 'providers/theme.dart';
 import 'settings_view.dart';
+import 'share_view.dart';
 import 'theme.dart';
 import 'user_switcher_view.dart';
 import 'utils/utils.dart';
 
 class App extends ConsumerWidget {
-  const App({super.key});
+  final List<String> sharedFiles;
+  const App({super.key, this.sharedFiles = const []});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Shortcuts(
@@ -44,6 +47,12 @@ class App extends ConsumerWidget {
       supportedLocales: const [
         Locale('en', 'US'),
       ],
+      home: sharedFiles.isNotEmpty
+          ? ShareView(
+              paths: sharedFiles,
+              onCancel: () => exit(0),
+            )
+          : null,
     );
   }
 
