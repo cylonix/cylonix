@@ -629,6 +629,10 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     await _ipnService.saveFile(file, path);
   }
 
+  Future<String> getFilePath(String file) async {
+    return await _ipnService.getFilePath(file);
+  }
+
   Future<void> deleteFile(String file) async {
     await _ipnService.deleteFile(file);
   }

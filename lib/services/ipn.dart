@@ -760,6 +760,19 @@ class IpnService {
     }
   }
 
+  Future<String> getFilePath(String baseName) async {
+    if (_useHttpLocalApi) {
+      throw Exception(
+        "GetFilePath is not supported over HTTP API",
+      );
+    }
+    final result = await _sendCommand('get_file_path', baseName);
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to get file path: $result");
+    }
+    return result;
+  }
+
   Future<String> _saveFileOverHttp(String file, String path) async {
     HttpClient? client;
     IOSink? sink;

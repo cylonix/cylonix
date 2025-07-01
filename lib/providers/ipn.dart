@@ -161,6 +161,22 @@ final filesWaitingProvider = Provider<List<AwaitingFile>>((ref) {
   return ipnState?.filesWaiting ?? [];
 });
 
+class FilesSaved extends StateNotifier<List<String>> {
+  FilesSaved() : super([]);
+  void addFile(String file) {
+    state.add(file);
+  }
+
+  void remove(String file) {
+    state = state.where((f) => f != file).toList();
+  }
+}
+
+final filesSavedProvider =
+    StateNotifierProvider<FilesSaved, List<String>>((ref) {
+  return FilesSaved();
+});
+
 final healthWarningsProvider = Provider<HealthState?>((ref) {
   return ref.watch(ipnStateProvider)?.health;
 });

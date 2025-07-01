@@ -4,10 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:downloadsfolder/downloadsfolder.dart' as dlf;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart' as pp;
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
-import 'package:uuid/uuid.dart';
 import 'providers/ipn.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
@@ -19,6 +16,7 @@ class FilesWaitingView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final files = ref.watch(filesWaitingProvider);
+    final filesSaved = ref.watch(filesSavedProvider);
     return Column(
       children: [
         AdaptiveListTile(
@@ -32,103 +30,98 @@ class FilesWaitingView extends ConsumerWidget {
           ),
         ),
         files.isEmpty
-            ? const Center(child: Text('No files waiting.'))
+            ? const Center(child: Text('No files waiting'))
             : SingleChildScrollView(
                 child: AdaptiveListSection.insetGrouped(
                   header: const AdaptiveGroupedHeader("Files Waiting"),
                   footer: const AdaptiveGroupedFooter(
-                      'Save or delete files as needed.'),
-                  children: files.map((file) {
-                    return AdaptiveListTile.notched(
-                      leading: Icon(
-                        isApple()
-                            ? CupertinoIcons.doc
-                            : Icons.insert_drive_file_outlined,
-                      ),
-                      title: Text(file.name),
-                      subtitle: Text(formatBytes(file.size)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(isApple()
-                                ? CupertinoIcons.download_circle
-                                : Icons.save_alt),
-                            tooltip: 'Save',
-                            onPressed: () => _saveFile(context, file.name, ref),
-                          ),
-                          IconButton(
-                            icon: Icon(isApple()
-                                ? CupertinoIcons.delete
-                                : Icons.delete),
-                            tooltip: 'Delete',
-                            onPressed: () =>
-                                _deleteFile(context, file.name, ref),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
+                    'Save or delete files as needed',
+                  ),
+                  children: files
+                      .map(
+                        (file) => _buildFileTile(
+                          context,
+                          file.name,
+                          file.size,
+                          filesSaved,
+                          ref,
+                        ),
+                      )
+                      .toList(),
                 ),
               ),
       ],
     );
   }
 
-  Future<String> _getAndroidSaveFileName(String fileName) async {
-    // For Android, we save to the downloads folder
-    final dir = await dlf.getDownloadDirectory();
-    for (var i = 0; i < 100; i++) {
-      final extension = p.extension(fileName);
-      final baseName = p.basenameWithoutExtension(fileName);
-      final newFileName = i == 0 ? fileName : '${baseName}_$i$extension';
-      final filePath = p.join(dir.path, newFileName);
-      if (!File(filePath).existsSync()) {
-        return newFileName;
-      }
-    }
-    throw Exception("Unable to find a unique file name after 100 attempts.");
+  Widget _buildFileTile(
+    BuildContext context,
+    String fileName,
+    int fileSize,
+    List<String> filesSaved,
+    WidgetRef ref,
+  ) {
+    final saved = filesSaved.contains(fileName);
+    return AdaptiveListTile.notched(
+      leading: Icon(
+        isApple() ? CupertinoIcons.doc : Icons.insert_drive_file_outlined,
+      ),
+      title: Text(fileName),
+      subtitle: Text(formatBytes(fileSize)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (saved) AdaptiveSuccessIcon(),
+          IconButton(
+            icon: Icon(
+                isApple() ? CupertinoIcons.download_circle : Icons.save_alt),
+            tooltip: saved ? 'Save Again' : 'Save',
+            onPressed: () => _saveFile(context, fileName, ref),
+          ),
+          IconButton(
+            icon: Icon(isApple() ? CupertinoIcons.delete : Icons.delete),
+            tooltip: 'Delete',
+            onPressed: () => _deleteFile(context, fileName, ref),
+          ),
+        ],
+      ),
+    );
   }
 
   void _saveFile(BuildContext context, String fileName, WidgetRef ref) async {
     try {
-      final toPath = Platform.isAndroid
-          ? p.join(
-              (await pp.getApplicationCacheDirectory()).path, const Uuid().v4())
-          : await FilePicker.platform.saveFile(
-              dialogTitle: "Choose the file to be saved",
-              fileName: fileName,
-            );
-
-      if (toPath == null) {
-        return null; // User canceled the picker
-      }
+      var showPath = fileName;
       if (Platform.isAndroid) {
-        await File(toPath).create(recursive: true);
-      }
-
-      await ref
-          .read(ipnStateNotifierProvider.notifier)
-          .saveFile(fileName, toPath);
-      var saveName = fileName;
-      if (Platform.isAndroid) {
-        saveName = await _getAndroidSaveFileName(fileName);
+        final srcPath = await ref
+            .read(ipnStateNotifierProvider.notifier)
+            .getFilePath(fileName);
         await dlf.copyFileIntoDownloadFolder(
-          toPath,
-          saveName,
+          srcPath,
+          fileName,
         );
-      }
-      if (context.mounted) {
-        var showPath = toPath;
-        if (Platform.isAndroid) {
-          showPath = 'shared Download/$saveName';
+        showPath = 'the "Download" folder';
+      } else {
+        final toPath = await FilePicker.platform.saveFile(
+          dialogTitle: "Choose the file to be saved",
+          fileName: fileName,
+        );
+
+        if (toPath == null) {
+          return null; // User canceled the picker
         }
+        await ref
+            .read(ipnStateNotifierProvider.notifier)
+            .saveFile(fileName, toPath);
+        showPath = toPath;
+      }
+      ref.read(filesSavedProvider.notifier).addFile(fileName);
+      if (context.mounted) {
         showTopSnackBar(
           context,
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('File saved successfully to: $showPath'),
+              child: Text('File saved successfully to $showPath'),
             ),
           ),
           displayDuration: const Duration(seconds: 5),
@@ -163,6 +156,7 @@ class FilesWaitingView extends ConsumerWidget {
           ),
         );
       }
+      ref.read(filesSavedProvider.notifier).remove(fileName);
     } catch (e) {
       if (context.mounted) {
         await showAlertDialog(
