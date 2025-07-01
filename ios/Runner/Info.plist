@@ -42,18 +42,8 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<key>NSCalendarsUsageDescription</key>
-	<string>This app supports integration of video meetings into the calendar</string>
-	<key>NSCameraUsageDescription</key>
-	<string>This app needs camera access to scan QR codes or join video meetings</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>this app needs access to your microphone for meetings.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>To upload photos, please allow permission to access your photo library.</string>
 	<key>RTCAppGroupIdentifier</key>
 	<string>group.io.cylonix.sase.ios</string>
-	<key>RTCScreenSharingExtension</key>
-	<string>io.cylonix.sase.broadcast-extension</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

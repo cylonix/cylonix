@@ -291,7 +291,10 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
     }
     await AdaptiveModalPopup(
       height: height,
-      child: PingView(peer: node),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: PingView(peer: node),
+      ),
     ).show(context);
   }
 

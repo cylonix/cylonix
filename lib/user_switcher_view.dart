@@ -581,7 +581,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     final prettyJson =
         profiles.map((p) => encoder.convert(p.toJson())).toList();
 
-    AdaptiveModalPopup(
+    await AdaptiveModalPopup(
       child: Column(
         children: [
           CupertinoListTile(
@@ -629,6 +629,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     await AdaptiveModalPopup(
       height: height,
       maxWidth: 600,
+      padding: const EdgeInsets.all(16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         spacing: 16,

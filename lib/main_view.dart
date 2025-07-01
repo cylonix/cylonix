@@ -144,10 +144,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
     return ipnState.when(
       loading: () => null,
-      error: (error, _) => AdaptiveSwitch(
-        value: false,
-        onChanged: (v) => _toggleVPN(context, ref, v),
-      ),
+      error: (error, _) => null,
       data: (state) {
         final value = state.vpnState == VpnState.connected;
         return mdmState.when(

@@ -69,9 +69,11 @@ class IpnService {
   Stream<IpnNotification> get notificationStream =>
       _notificationController.stream;
 
-  Future<void> initializeEngine() async {
+  Future<void> initializeEngine(
+    Function(Object error, StackTrace stack) onError,
+  ) async {
     try {
-      await startEngine();
+      await startEngine(onError);
     } catch (e) {
       _logger.e('Failed to initialize VPN engine: $e');
       rethrow;
@@ -435,6 +437,9 @@ class IpnService {
             body: edits,
           )
         : await _sendCommand('edit_prefs', jsonEncode(edits));
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to edit prefs: $result");
+    }
     try {
       final json = jsonDecode(result) as Map<String, dynamic>;
       final prefs = IpnPrefs.fromJson(json);
@@ -467,7 +472,18 @@ class IpnService {
     }
   }
 
-  Future<HttpClient> watchNotificationsOverHttp() async {
+  Future<HttpClient> watchNotificationsOverHttp(
+    Function(Object error, StackTrace stack) onError,
+  ) async {
+    void restart() async {
+      try {
+        await watchNotifications(onError);
+      } catch (e, stack) {
+        _logger.e('Failed to restart notification watch: $e');
+        onError(e, stack);
+      }
+    }
+
     final client = _httpClient;
     try {
       _logger.d("Watching notifications over HTTP", sendToIpn: false);
@@ -526,7 +542,12 @@ class IpnService {
         },
         onError: (e, stack) {
           _logger.e('Error in notification stream: $e\n$stack');
-          watchNotifications();
+          onError(e, stack);
+          restart();
+        },
+        onDone: () {
+          _logger.d("Notification stream done. Restarting watch.");
+          restart();
         },
       );
 
@@ -538,11 +559,13 @@ class IpnService {
     }
   }
 
-  Future<void> watchNotifications() async {
+  Future<void> watchNotifications(
+    Function(Object error, StackTrace stack) onError,
+  ) async {
     if (_useHttpLocalApi) {
       // Close any existing client
       _notificationClient?.close();
-      _notificationClient = await watchNotificationsOverHttp();
+      _notificationClient = await watchNotificationsOverHttp(onError);
       return;
     }
     final result = await _sendCommand(
@@ -584,6 +607,9 @@ class IpnService {
     final result = await (_useHttpLocalApi
         ? _sendCommandOverHttp(Uri.parse('$_localBaseURL/profiles/'), 'GET')
         : _sendCommand('profiles', ''));
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to get profiles: $result");
+    }
     final list = jsonDecode(result) as List<dynamic>?;
     return list?.map((e) => LoginProfile.fromJson(e)).toList();
   }
@@ -630,6 +656,9 @@ class IpnService {
             light ? jsonEncode({"peers": false}) : '',
             timeoutMilliseconds: timeoutMilliseconds,
           );
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to get status: $result");
+    }
     return Status.fromJson(jsonDecode(result));
   }
 
@@ -645,6 +674,9 @@ class IpnService {
             '',
             timeoutMilliseconds: fast ? 500 : 5000,
           );
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to get current profile: $result");
+    }
     return LoginProfile.fromJson(jsonDecode(result));
   }
 
@@ -705,24 +737,30 @@ class IpnService {
     }
   }
 
-  Future<List<AwaitingFile>?> getAwaitingFiles() async {
+  Future<List<AwaitingFile>?> getWaitingFiles() async {
     final result = _useHttpLocalApi
         ? await _sendCommandOverHttp(
             Uri.parse('$_localBaseURL/files/'),
             'GET',
           )
-        : await _sendCommand('get_awaiting_files', '');
+        : await _sendCommand('get_waiting_files', '');
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to get waiting files: $result");
+    }
     final list = jsonDecode(result) as List<dynamic>?;
     return list?.map((e) => AwaitingFile.fromJson(e)).toList();
   }
 
   Future<void> saveFile(String file, String path) async {
-    _useHttpLocalApi
+    final result = _useHttpLocalApi
         ? await _saveFileOverHttp(file, path)
-        : await _sendCommand('get_file', file);
+        : await _sendCommand('get_file', '$file:$path');
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to get waiting files: $result");
+    }
   }
 
-  Future<void> _saveFileOverHttp(String file, String path) async {
+  Future<String> _saveFileOverHttp(String file, String path) async {
     HttpClient? client;
     IOSink? sink;
     try {
@@ -755,6 +793,7 @@ class IpnService {
       await sink.flush();
       await sink.close();
       _logger.d("File saved to $path");
+      return "Success";
     } catch (e) {
       _logger.e("Failed to save file '$file' to '$path': $e");
       throw Exception("Failed to save file '$file' to '$path': $e");
@@ -765,7 +804,7 @@ class IpnService {
   }
 
   Future<void> deleteFile(String file) async {
-    _useHttpLocalApi
+    final result = _useHttpLocalApi
         ? await _sendCommandOverHttp(
             Uri(
               scheme: 'http',
@@ -774,7 +813,10 @@ class IpnService {
             ),
             'DELETE',
           )
-        : await _sendCommand('delete_file', file);
+        : await _sendCommand('delete_file', Uri.encodeComponent(file));
+    if (result.startsWith("Error")) {
+      throw Exception("Failed to delete file '$file': $result");
+    }
   }
 
   Future<void> setAlwaysUseDerp(bool on) async {
@@ -919,7 +961,9 @@ class IpnService {
     await login(maskedPrefs: prefs);
   }
 
-  Future<void> startEngine() async {
+  Future<void> startEngine(
+    Function(Object error, StackTrace stack) onError,
+  ) async {
     _logger.d("Starting engine...");
     final completer = Completer<TunnelStatusEvent>();
     final id = const Uuid().v4();
@@ -963,7 +1007,7 @@ class IpnService {
         final ret = await status(light: true, fast: true);
         _logger.d("status: $ret");
         final state = BackendState.fromString(ret.backendState);
-        watchNotifications();
+        await watchNotifications(onError);
         if (state.value > BackendState.needsLogin.value) {
           _logger.i(
             "Tunnel already started with state: ${ret.backendState} "
@@ -980,7 +1024,7 @@ class IpnService {
         _logger.e("Failed to get status: $e. Wait for notification to start.");
       }
       _logger.d("Tunnel started. Waiting for notification to start VPN.");
-      watchNotifications();
+      await watchNotifications(onError);
       _startEngineBackendNotifySub?.cancel();
       _startEngineBackendNotifySub =
           eventBus.on<BackendNotifyEvent>().listen((_) async {
@@ -995,23 +1039,28 @@ class IpnService {
 
   static bool _sendingLog = false;
   static void _sendLogOverHttp(String log, {bool priority = false}) async {
-    var waitCount = 0;
-    while (_sendingLog) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      waitCount++;
-      if (waitCount > 5) {
-        if (priority) {
-          break;
+    // For windows, named pipes connection has max number of concurrent
+    // connections, so we need to wait for previous log to be sent to
+    // avoid sending logs in parallel.
+    if (Platform.isWindows) {
+      var waitCount = 0;
+      while (_sendingLog) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        waitCount++;
+        if (waitCount > 5) {
+          if (priority) {
+            break;
+          }
+          _logger.w(
+            "Timeout waiting for previous log to be sent. "
+            "Drop the log.",
+            sendToIpn: false,
+          );
+          return;
         }
-        _logger.w(
-          "Timeout waiting for previous log to be sent. "
-          "Drop the log.",
-          sendToIpn: false,
-        );
-        return;
       }
+      _sendingLog = true;
     }
-    _sendingLog = true;
     try {
       _logClient ??= _httpClient;
       final request = await _logClient!.openUrl(
@@ -1228,7 +1277,7 @@ class IpnService {
       );
       if (response.statusCode >= 300) {
         final errorMsg = "HTTP $method $path failed: ${response.statusCode} "
-            "${response.reasonPhrase}: body: $stringData";
+            "${response.reasonPhrase}: $stringData";
         _logger.e("$path: $errorMsg", sendToIpn: false);
         throw Exception(errorMsg);
       }

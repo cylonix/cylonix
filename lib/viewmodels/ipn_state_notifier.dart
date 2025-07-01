@@ -51,7 +51,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   MDMSettingsService get mdmSettings => _mdmSettings;
 
   Future<void> _initialize() async {
-    if (!mounted) return;
     _logger.d("Initializing IpnStateNotifier. Set ipn state to connecting");
     state = const AsyncValue.data(IpnState(vpnState: VpnState.connecting));
 
@@ -62,14 +61,24 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         _notificationQueue.add(notification);
         _processNextNotification();
       });
-      await _ipnService.initializeEngine();
-
-      if (!mounted) return;
+      await _ipnService.initializeEngine(_onError);
     } catch (error, stack) {
-      _logger.e("Failed to initialize engine: $error, stackTrace: $stack");
-      if (!mounted) return;
-      state = AsyncValue.error(error, stack);
+      _onError(error, stack);
     }
+  }
+
+  void _onError(Object error, StackTrace stack) {
+    _logger.e("Error in IpnStateNotifier: $error, stackTrace: $stack");
+    var e = error;
+    if (Platform.isLinux) {
+      if (error
+          .toString()
+          .contains("OS Error: No such file or directory, errno = 2")) {
+        e = Exception("Cylonix backend initialization failed. "
+            "Please ensure the Cylonixd service is running.");
+      }
+    }
+    state = AsyncValue.error(e, stack);
   }
 
   Future<void> _processNextNotification() async {
@@ -175,7 +184,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
     List<AwaitingFile>? awaitingFiles;
     if (notification.filesWaiting != null) {
-      awaitingFiles = await getAwaitingFiles();
+      awaitingFiles = await getWaitingFiles();
     }
 
     // Create new state or update existing one
@@ -606,9 +615,9 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
-  Future<List<AwaitingFile>?> getAwaitingFiles() async {
+  Future<List<AwaitingFile>?> getWaitingFiles() async {
     try {
-      return await _ipnService.getAwaitingFiles();
+      return await _ipnService.getWaitingFiles();
     } catch (error, stack) {
       _logger.e("Failed to get awaiting files: $error, stackTrace: $stack");
       state = AsyncValue.error(error, stack);

@@ -1,12 +1,17 @@
-import 'package:cylonix/widgets/alert_dialog_widget.dart';
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:downloadsfolder/downloadsfolder.dart' as dlf;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart' as pp;
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
+import 'package:uuid/uuid.dart';
 import 'providers/ipn.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
+import 'widgets/alert_dialog_widget.dart';
 
 class FilesWaitingView extends ConsumerWidget {
   const FilesWaitingView({super.key});
@@ -70,28 +75,63 @@ class FilesWaitingView extends ConsumerWidget {
     );
   }
 
+  Future<String> _getAndroidSaveFileName(String fileName) async {
+    // For Android, we save to the downloads folder
+    final dir = await dlf.getDownloadDirectory();
+    for (var i = 0; i < 100; i++) {
+      final extension = p.extension(fileName);
+      final baseName = p.basenameWithoutExtension(fileName);
+      final newFileName = i == 0 ? fileName : '${baseName}_$i$extension';
+      final filePath = p.join(dir.path, newFileName);
+      if (!File(filePath).existsSync()) {
+        return newFileName;
+      }
+    }
+    throw Exception("Unable to find a unique file name after 100 attempts.");
+  }
+
   void _saveFile(BuildContext context, String fileName, WidgetRef ref) async {
     try {
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: "Choose the file to be saved",
-        fileName: fileName,
-      );
+      final toPath = Platform.isAndroid
+          ? p.join(
+              (await pp.getApplicationCacheDirectory()).path, const Uuid().v4())
+          : await FilePicker.platform.saveFile(
+              dialogTitle: "Choose the file to be saved",
+              fileName: fileName,
+            );
 
-      if (path == null) {
+      if (toPath == null) {
         return null; // User canceled the picker
       }
+      if (Platform.isAndroid) {
+        await File(toPath).create(recursive: true);
+      }
+
       await ref
           .read(ipnStateNotifierProvider.notifier)
-          .saveFile(fileName, path);
+          .saveFile(fileName, toPath);
+      var saveName = fileName;
+      if (Platform.isAndroid) {
+        saveName = await _getAndroidSaveFileName(fileName);
+        await dlf.copyFileIntoDownloadFolder(
+          toPath,
+          saveName,
+        );
+      }
       if (context.mounted) {
+        var showPath = toPath;
+        if (Platform.isAndroid) {
+          showPath = 'shared Download/$saveName';
+        }
         showTopSnackBar(
           context,
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('File saved successfully to: $path'),
+              child: Text('File saved successfully to: $showPath'),
             ),
           ),
+          displayDuration: const Duration(seconds: 5),
         );
       }
     } catch (e) {

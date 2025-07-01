@@ -656,14 +656,16 @@ class AdaptiveModalPopup extends StatelessWidget {
   final Widget child;
   final double? height;
   final double? maxWidth;
+  final EdgeInsetsGeometry? padding;
   final VoidCallback? onDismiss;
 
   const AdaptiveModalPopup({
     super.key,
-    required this.child,
     this.height,
     this.maxWidth,
+    this.padding,
     this.onDismiss,
+    required this.child,
   });
 
   @override
@@ -677,7 +679,7 @@ class AdaptiveModalPopup extends StatelessWidget {
       ),
       width: double.infinity,
       height: height ?? MediaQuery.of(context).size.height * 0.7,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: padding,
       margin: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
