@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:bal="http://schemas.microsoft.com/wix/BalExtension">
+  <?include Variables.wxs ?>
+
+  <Bundle Name="$(var.ProductName) Installer"
+          Version="$(var.ProductVersion)"
+          Manufacturer="EZBLOCK INC."
+          UpgradeCode="$(var.ProductUpgradeCode)"
+          IconSourceFile="cylonix.ico"
+          AboutUrl="https://cylonix.io">
+
+    <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.HyperlinkLicense">
+      <bal:WixStandardBootstrapperApplication
+        LicenseUrl=""
+        LogoFile="cylonix_32_white_background.png"
+        ShowVersion="yes"
+        SuppressOptionsUI="yes"
+        SuppressRepair="yes"
+      />
+    </BootstrapperApplicationRef>
+
+    <Chain>
+      <!-- Install main application -->
+      <MsiPackage Id="CylonixMainPackage"
+                  SourceFile="C:\Users\cylonix\src\cylonix\windows\installer\bin\CylonixInstaller.msi"
+                  Name="CylonixInstaller.msi"
+                  Vital="yes"
+                  Visible="yes"
+                  DisplayInternalUI="yes">
+        <MsiProperty Name="INSTALLLEVEL" Value="1000" />
+      </MsiPackage>
+    </Chain>
+  </Bundle>
+</Wix>

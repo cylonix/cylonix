@@ -74,6 +74,15 @@ build_windows:
 	flutter build windows --release
 pack_windows:
 	cd .\windows\installer && powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+# Requires WiX Toolset to be installed and sign scripts be to be setup.
+# Both signengine.bat and sign.bat should be provisioned in the windows\installer directory.
+sign_windows_exe:
+	wix burn detach windows\installer\bin\CylonixSetup.exe -engine windows\installer\bin\burnengine.exe
+	.\windows\installer\signengine.bat
+	wix burn reattach windows\installer\bin\CylonixSetup.exe -engine windows\installer\bin\burnengine.exe -o windows\installer\bin\CylonixSetup.exe
+	.\windows\installer\sign.bat
+
 sign_windows:
 	${SIGN_CMD} sign /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /a ${EXE_PATH}
 install_windows:

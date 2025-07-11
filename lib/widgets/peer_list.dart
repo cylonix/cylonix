@@ -52,7 +52,12 @@ class _PeerListState extends State<PeerList> {
               showNoResults
                   ? _buildNoResults(context)
                   : Expanded(
-                      child: _buildPeersList(context, filteredSets, ref),
+                      child: Padding(
+                        padding: const EdgeInsetsGeometry.symmetric(
+                          horizontal: 16,
+                        ),
+                        child: _buildPeersList(context, filteredSets, ref),
+                      ),
                     ),
             ],
           ),

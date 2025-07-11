@@ -1,6 +1,7 @@
 param(
     [string]$WixPath = "C:\Program Files (x86)\WiX Toolset v3.14\bin",
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$MsiOnly  # Add option to build only MSI
 )
 
 function Invoke-FlutterHarvest {
@@ -72,6 +73,7 @@ function Invoke-FlutterHarvest {
     $fileCount = (Select-String -Path "FlutterDataFiles.wxs" -Pattern "File Id").Count
     Write-Host "Generated $fileCount file entries" -ForegroundColor Cyan
 }
+
 function Invoke-FlutterRuntimeHarvest {
     param(
         [string]$WixPath,
@@ -213,7 +215,7 @@ try {
     Write-Host "Step 2: Harvesting Flutter runtime files..." -ForegroundColor Yellow
     Invoke-FlutterRuntimeHarvest -WixPath $WixPath -FlutterReleaseDir $FlutterReleaseDir
 
-    # Step 3: Compile WiX source files
+    # Step 3: Compile WiX source files for MSI
     Write-Host "Step 3: Compiling WiX source files..." -ForegroundColor Yellow
 
     $candleArgs = @(
@@ -225,7 +227,7 @@ try {
         "Product.wxs"
         "Components.wxs"
         "FlutterDataFiles.wxs"
-        "FlutterRuntimeFiles.wxs"  # Add the runtime files
+        "FlutterRuntimeFiles.wxs"
     )
 
     & "$WixPath\candle.exe" @candleArgs
@@ -234,8 +236,8 @@ try {
         throw "Compilation failed with exit code $LASTEXITCODE"
     }
 
-    # Step 4: Link installer package
-    Write-Host "Step 4: Linking installer package..." -ForegroundColor Yellow
+    # Step 4: Link MSI package
+    Write-Host "Step 4: Linking MSI package..." -ForegroundColor Yellow
 
     $lightArgs = @(
         "-out", "$OutputDir\CylonixInstaller.msi"
@@ -246,7 +248,7 @@ try {
         "$TempDir\Product.wixobj"
         "$TempDir\Components.wixobj"
         "$TempDir\FlutterDataFiles.wixobj"
-        "$TempDir\FlutterRuntimeFiles.wixobj"  # Add the runtime files
+        "$TempDir\FlutterRuntimeFiles.wixobj"
     )
 
     & "$WixPath\light.exe" @lightArgs
@@ -255,16 +257,70 @@ try {
         throw "Linking failed with exit code $LASTEXITCODE"
     }
 
-    # Step 5: Clean up
-    Write-Host "Step 5: Cleaning up temporary files..." -ForegroundColor Yellow
+    $msiPath = "$OutputDir\CylonixInstaller.msi"
+    $msiFileInfo = Get-Item $msiPath
+    Write-Host "MSI created: $msiPath" -ForegroundColor Green
+    Write-Host "MSI size: $([math]::Round($msiFileInfo.Length / 1MB, 2)) MB" -ForegroundColor Green
+
+    # Step 5: Create EXE with Burn (unless MsiOnly is specified)
+    if (-not $MsiOnly) {
+        Write-Host "Step 5: Creating Burn bootstrapper EXE..." -ForegroundColor Yellow
+
+        # Verify required static files exist
+        $requiredFiles = @("CylonixTheme.xml", "CylonixLocalization.wxl", "cylonix_128.png")
+        foreach ($file in $requiredFiles) {
+            if (!(Test-Path $file)) {
+                throw "Required file missing: $file"
+            }
+        }
+        Write-Host "All required static files found." -ForegroundColor Green
+
+        # Compile Bundle
+        $bundleCandleArgs = @(
+            "-out", "$TempDir\"
+            "-ext", "WixBalExtension"
+            "-ext", "WixUtilExtension"
+            "Bundle.wxs"
+        )
+
+        & "$WixPath\candle.exe" @bundleCandleArgs
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Bundle compilation failed with exit code $LASTEXITCODE"
+        }
+
+        # Link Bundle to create EXE
+        $bundleLightArgs = @(
+            "-out", "$OutputDir\CylonixSetup.exe"
+            "-ext", "WixBalExtension"
+            "-ext", "WixUtilExtension"
+            "-loc", "CylonixLocalization.wxl"
+            "$TempDir\Bundle.wixobj"
+        )
+
+        & "$WixPath\light.exe" @bundleLightArgs
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Bundle linking failed with exit code $LASTEXITCODE"
+        }
+
+        $exePath = "$OutputDir\CylonixSetup.exe"
+        $exeFileInfo = Get-Item $exePath
+        Write-Host "EXE created: $exePath" -ForegroundColor Green
+        Write-Host "EXE size: $([math]::Round($exeFileInfo.Length / 1MB, 2)) MB" -ForegroundColor Green
+    }
+
+    # Step 6: Clean up
+    Write-Host "Step 6: Cleaning up temporary files..." -ForegroundColor Yellow
     Remove-Item -Path $TempDir -Recurse -Force
 
-    $installerPath = "$OutputDir\CylonixInstaller.msi"
-    $fileInfo = Get-Item $installerPath
-
     Write-Host "SUCCESS!" -ForegroundColor Green
-    Write-Host "Installer created: $installerPath" -ForegroundColor Green
-    Write-Host "File size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB" -ForegroundColor Green
+    if ($MsiOnly) {
+        Write-Host "MSI installer created successfully!" -ForegroundColor Green
+    } else {
+        Write-Host "Both MSI and EXE installers created successfully!" -ForegroundColor Green
+        Write-Host "Use CylonixSetup.exe for distribution (it contains the MSI)" -ForegroundColor Cyan
+    }
 
     # Open the output directory
     Start-Process explorer.exe -ArgumentList $OutputDir
