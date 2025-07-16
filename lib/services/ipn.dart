@@ -524,6 +524,7 @@ class IpnService {
       response.transform(utf8.decoder).transform(const LineSplitter()).listen(
         (data) {
           if (data.isEmpty) return;
+          _logger.d("Notification: ${data.length} bytes", sendToIpn: false);
           try {
             final json = jsonDecode(data);
             final notification = IpnNotification.fromJson(json);
@@ -535,9 +536,15 @@ class IpnService {
                 );
               }
             }
+            if (notification.state != null) {
+              _logger.d(
+                "Notification: backend state = ${notification.state}",
+                sendToIpn: false,
+              );
+            }
             eventBus.fire(BackendNotifyEvent(notification));
-          } catch (e, stack) {
-            _logger.e('Failed to parse notification: $e\n$stack');
+          } catch (e) {
+            _logger.e('Failed to parse notification: $e');
           }
         },
         onError: (e, stack) {
@@ -1050,44 +1057,55 @@ class IpnService {
     }
   }
 
-  static bool _sendingLog = false;
+  static bool _httpInProgress = false;
+  static Future<void> _waitForHttpLock({int timeoutMs = 10000}) async {
+    var waited = 0;
+    while (_httpInProgress) {
+      if (waited >= timeoutMs) {
+        throw TimeoutException(
+          'Timeout waiting for HTTP lock after ${timeoutMs}ms',
+        );
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+      waited += 100;
+    }
+    _httpInProgress = true;
+  }
+
   static void _sendLogOverHttp(String log, {bool priority = false}) async {
     // For windows, named pipes connection has max number of concurrent
     // connections, so we need to wait for previous log to be sent to
     // avoid sending logs in parallel.
-    if (Platform.isWindows) {
-      var waitCount = 0;
-      while (_sendingLog) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        waitCount++;
-        if (waitCount > 5) {
-          if (priority) {
-            break;
+    try {
+      if (Platform.isWindows) {
+        try {
+          await _waitForHttpLock(timeoutMs: 1000);
+        } catch (e) {
+          if (!priority) {
+            _logger.w(
+              "Timeout waiting for log to be sent. "
+              "Drop the log.",
+              sendToIpn: false,
+            );
+            return;
           }
-          _logger.w(
-            "Timeout waiting for previous log to be sent. "
-            "Drop the log.",
-            sendToIpn: false,
-          );
-          return;
         }
       }
-      _sendingLog = true;
-    }
-    try {
-      _logClient ??= _httpClient;
-      final request = await _logClient!.openUrl(
-        'POST',
-        Uri.parse('$_localBaseURL/log'),
-      );
-      request.write(log);
-      await request.close();
-    } catch (e) {
-      _logger.e('Failed to send log over stream: $e', sendToIpn: false);
-      _logClient?.close();
-      _logClient = null;
+      try {
+        _logClient ??= _httpClient;
+        final request = await _logClient!.openUrl(
+          'POST',
+          Uri.parse('$_localBaseURL/log'),
+        );
+        request.write(log);
+        await request.close();
+      } catch (e) {
+        _logger.e('Failed to send log over stream: $e', sendToIpn: false);
+        _logClient?.close();
+        _logClient = null;
+      }
     } finally {
-      _sendingLog = false;
+      _httpInProgress = false;
     }
   }
 
@@ -1449,5 +1467,13 @@ class IpnService {
       }
     }
     return sb.toString();
+  }
+}
+
+class EventBusSender {
+  static void fireEvent(List<dynamic> args) {
+    final IpnNotification notification = args[0];
+    final EventBus eventBus = args[1];
+    eventBus.fire(BackendNotifyEvent(notification));
   }
 }
