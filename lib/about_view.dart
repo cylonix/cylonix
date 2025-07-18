@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'models/platform.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
+import 'widgets/tv_widgets.dart';
 
 class AboutView extends ConsumerWidget {
   final VoidCallback? onNavigateBack;
@@ -192,17 +194,21 @@ class AboutView extends ConsumerWidget {
     if (isCupertino) {
       return CupertinoButton(
         padding: EdgeInsets.zero,
-        onPressed: () => _launchURL(url),
+        onPressed: () => _launchURL(context, url),
         child: Text(title),
       );
     }
     return TextButton(
-      onPressed: () => _launchURL(url),
+      onPressed: () => _launchURL(context, url),
       child: Text(title),
     );
   }
 
-  Future<void> _launchURL(String url) async {
+  Future<void> _launchURL(BuildContext context, String url) async {
+    if (isAndroidTV) {
+      await showQrCodeForURL(context, url);
+      return;
+    }
     if (!await launchUrl(Uri.parse(url))) {
       throw Exception('Could not launch $url');
     }

@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../models/ipn.dart';
+import '../models/platform.dart';
 import '../utils/utils.dart';
+import 'tv_widgets.dart';
 
 class AdaptiveSearchBar extends StatelessWidget {
   final String placeholder;
@@ -148,6 +150,14 @@ class AdaptiveOnlineIcon extends Icon {
         );
 }
 
+Color focusedButtonColor(BuildContext context, Color color) {
+  return HSLColor.fromColor(color)
+      .withLightness(
+        (HSLColor.fromColor(color).lightness * 1.2).clamp(0.0, 1.0),
+      )
+      .toColor();
+}
+
 class AdaptiveButton extends StatelessWidget {
   final VoidCallback onPressed;
   final Widget child;
@@ -155,6 +165,7 @@ class AdaptiveButton extends StatelessWidget {
   final bool textButton;
   final bool small;
   final bool large;
+  final bool autofocus;
   final double? width;
   final double? height;
   final EdgeInsetsGeometry? padding;
@@ -164,6 +175,7 @@ class AdaptiveButton extends StatelessWidget {
     this.textButton = false,
     this.small = false,
     this.large = false,
+    this.autofocus = false,
     this.width,
     this.height,
     this.padding,
@@ -229,8 +241,20 @@ class AdaptiveButton extends StatelessWidget {
         child: child,
       );
     }
+    if (isAndroidTV) {
+      return TVButton(
+        autofocus: autofocus,
+        onPressed: onPressed,
+        child: child,
+        width: width,
+        height: height,
+        filled: filled,
+        padding: padding,
+      );
+    }
     return SizedBox(
       width: width,
+      height: height,
       child: filled
           ? FilledButton(
               onPressed: onPressed,

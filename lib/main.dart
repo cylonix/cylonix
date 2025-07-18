@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
+import 'models/platform.dart';
 import 'models/shared_file.dart';
 import 'providers/share_file.dart';
 import 'utils/applog.dart';
@@ -13,6 +14,7 @@ void main(List<String> args) async {
   const _channel = MethodChannel('io.cylonix.sase/share_channel');
   await _loadEnv();
   await _initLogger();
+  await initializePlatform();
   _logger = Logger(tag: "Main");
 
   WidgetsFlutterBinding.ensureInitialized();

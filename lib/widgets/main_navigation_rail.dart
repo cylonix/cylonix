@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'adaptive_widgets.dart';
 import '../models/ipn.dart';
+import '../models/platform.dart';
 import '../providers/ipn.dart';
 import '../providers/theme.dart';
 import '../utils/utils.dart';
@@ -34,7 +35,7 @@ class MainNavigationRail extends ConsumerStatefulWidget {
 
 class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
   int _selectedIndex = 0;
-  bool get _extended => isApple() ? true : _isExtended;
+  bool get _extended => isApple() || isAndroidTV ? true : _isExtended;
   bool _isExtended = false;
 
   IconData get _homeIcon => isApple() ? CupertinoIcons.home : Icons.home;
@@ -212,7 +213,8 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             style: _labelStyle,
           ),
         ),
-        NavigationRailDestination(
+        if (!isAndroidTV)
+          NavigationRailDestination(
           icon: _railIcon(const Icon(Icons.upload_file_outlined), "Send Files"),
           label: Text(
             'Send Files',
@@ -226,7 +228,8 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             style: _labelStyle,
           ),
         ),
-        NavigationRailDestination(
+        if (!isAndroidTV)
+          NavigationRailDestination(
           icon: _railIcon(
             Icon(isDarkMode ? _lightModeIcon : _darkModeIcon),
             isDarkMode ? "Light Mode" : "Dark Mode",
@@ -279,6 +282,10 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
   }
 
   void _handleNavigation(int index) {
+    if (isAndroidTV) {
+      _handleAndroidTVNavigation(index);
+      return;
+    }
     switch (index) {
       case 0:
         widget.onNavigateToHome();
@@ -298,6 +305,25 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
         ref.read(themeProvider.notifier).toggleTheme();
         break;
       case 6:
+        widget.onNavigateToAbout();
+        break;
+    }
+  }
+
+  void _handleAndroidTVNavigation(int index) {
+    switch (index) {
+      case 0:
+        widget.onNavigateToHome();
+      case 1:
+        widget.onNavigateToSettings();
+        break;
+      case 2:
+        widget.onNavigateToExitNodes();
+        break;
+      case 3:
+        widget.onNavigateToHealth();
+        break;
+      case 4:
         widget.onNavigateToAbout();
         break;
     }
@@ -358,7 +384,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             ],
           ),
         ),
-        if (!isApple()) _toggleButton,
+        if (!isApple() && !isAndroidTV) _toggleButton,
       ],
     );
   }

@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'files_waiting_view.dart';
 import 'health_view.dart';
 import 'models/ipn.dart';
+import 'models/platform.dart';
 import 'providers/ipn.dart';
 import 'providers/settings.dart';
 import 'providers/theme.dart';
@@ -22,6 +23,7 @@ import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/exit_node_status.dart';
 import 'widgets/peer_list.dart';
+import 'widgets/qr_code_image.dart';
 
 class MainView extends ConsumerStatefulWidget {
   final Function() onNavigateToSettings;
@@ -53,6 +55,7 @@ class _MainViewState extends ConsumerState<MainView> {
   int _launchCountDown = 10;
   bool _signingInWithApple = false;
   bool _signInWithAppSuccess = false;
+  bool _showingSigninQRCode = false;
 
   @override
   void dispose() {
@@ -290,6 +293,11 @@ class _MainViewState extends ConsumerState<MainView> {
           padding: const EdgeInsets.all(16),
           child: _buildCenteredWidget(_buildConnectView(context, ref)),
         );
+    }
+
+    if (_showingSigninQRCode) {
+      _showingSigninQRCode = false;
+      Navigator.pop(context);
     }
 
     final common = [
@@ -723,7 +731,8 @@ class _MainViewState extends ConsumerState<MainView> {
       data: (state) {
         if (state.browseToURL != null) {
           // Apple user to choose manually open the URL or sign in with apple.
-          if (!isApple()) _setAutoLaunchUrl(state.browseToURL!);
+          // AndroidTV shows a login QR code instead.
+          if (!isApple() && !isAndroidTV) _setAutoLaunchUrl(state.browseToURL!);
           _waitingForURL = false;
         }
         if (state.vpnState == VpnState.connecting ||
@@ -804,11 +813,6 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildNotRunningView(
       BuildContext context, WidgetRef ref, IpnState state) {
-    _logger.d(
-      "Building not running view: state="
-      "${state.backendState.name} ${state.vpnState.name}",
-    );
-
     if (state.backendState == BackendState.needsMachineAuth) {
       return _buildAuthRequiredView(
         context,
@@ -1317,6 +1321,7 @@ class _MainViewState extends ConsumerState<MainView> {
           const SizedBox(height: 16),
           if (!_waitingForURL)
             AdaptiveButton(
+              autofocus: true,
               filled: true,
               onPressed: () => _startSignin(context, ref),
               child: const Text('Start Signin'),
@@ -1365,7 +1370,52 @@ class _MainViewState extends ConsumerState<MainView> {
             ),
           ],
         ],
-        if (loginURL != null && !_canSignInWithAppleInApp) ...[
+        if (loginURL != null && isAndroidTV) ...[
+          const SizedBox(height: 16),
+          Text(
+            "Please scan the QR code with your phone to sign in.",
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.apply(
+                  color: isApple()
+                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                      : null,
+                ),
+          ),
+          const SizedBox(height: 16),
+          AdaptiveButton(
+              autofocus: true,
+              filled: true,
+              onPressed: () async {
+                _showingSigninQRCode = true;
+                await showDialog(
+                  context: context,
+                  builder: (c) {
+                    return AlertDialog(
+                      title: const Text("Sign in with QR Code"),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        spacing: 16,
+                        children: [
+                          Text(
+                            "Scan this QR code with your phone to sign in "
+                            "at $loginURL.",
+                          ),
+                          QrCodeImage(loginURL),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(c),
+                          child: const Text("Close"),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+              child: const Text("Show Signin QR Code")),
+        ],
+        if (loginURL != null && !isAndroidTV && !_canSignInWithAppleInApp) ...[
           urlLaunched == loginURL
               ? const AdaptiveLoadingWidget()
               : Text("$_launchCountDown seconds until auto-launch"),

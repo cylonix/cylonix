@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/platform.dart';
 import '../theme.dart';
 
 const _themePreferenceKey = 'theme_mode';
@@ -24,6 +25,7 @@ class SystemBrightnessNotifier extends StateNotifier<(Brightness, DateTime)> {
     state = (brightness, DateTime.now());
   }
 }
+
 final themeProvider = StateNotifierProvider<ThemeNotifier, ThemeMode>((ref) {
   return ThemeNotifier(ref);
 });
@@ -40,6 +42,12 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
   }
 
   Future<void> _loadTheme() async {
+    // For android TV, we default to dark mode
+    if (isAndroidTV) {
+      state = ThemeMode.dark;
+      return;
+    }
+
     // On loading up, use system theme as priority.
     state = ThemeMode.system;
   }
@@ -65,6 +73,7 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
 
     state = mode;
   }
+
   Future<void> toggleTheme() async {
     final currentBrightness = ref.read(systemBrightnessProvider).$1;
     final effectiveTheme = state == ThemeMode.system
