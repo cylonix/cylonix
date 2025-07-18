@@ -234,6 +234,35 @@ class NamedPipeSocket extends StreamView<Uint8List> implements Socket {
     );
   }
 
+  static bool _debugNotificationData = false;
+  static void _showDebugData(
+    String id,
+    Uint8List data,
+  ) {
+    if (id.contains("watch")) {
+      try {
+        print('\n=== $id Raw Data ===');
+        print('Data size: ${data.length} bytes');
+        final hexPrefix = data
+            .take(8)
+            .map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}')
+            .join(' ');
+        print('First 8 bytes (hex): $hexPrefix');
+
+        // Try to show as ASCII
+        try {
+          final ascii = String.fromCharCodes(data.take(8));
+          print('First 8 bytes (ASCII): $ascii');
+        } catch (e) {
+          print('First 8 bytes not valid ASCII');
+        }
+      } catch (e) {
+        print('Error analyzing chunk: $e');
+      }
+      print('=======================\n');
+    }
+  }
+
   static void _readingIsolateEntry(_ReadingIsolateData data) {
     final id = data.id;
     final handle = data.handle;
@@ -276,6 +305,9 @@ class NamedPipeSocket extends StreamView<Uint8List> implements Socket {
             //print(
             //    '$id ReadFile succeeded immediately: ${bytesRead.value} bytes');
             final data = buffer.asTypedList(bytesRead.value);
+            if (_debugNotificationData) {
+              _showDebugData(id, data);
+            }
             sendPort.send(data.toList());
             continue;
           }
@@ -309,6 +341,9 @@ class NamedPipeSocket extends StreamView<Uint8List> implements Socket {
                 //print('$id Async read completed: ${bytesRead.value} bytes');
                 if (bytesRead.value > 0) {
                   final data = buffer.asTypedList(bytesRead.value);
+                  if (_debugNotificationData) {
+                    _showDebugData(id, data);
+                  }
                   sendPort.send(data.toList());
                 }
                 // Continue reading
