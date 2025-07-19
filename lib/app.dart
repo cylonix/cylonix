@@ -12,6 +12,7 @@ import 'home_page.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
 import 'providers/theme.dart';
+import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
 import 'theme.dart';
@@ -134,6 +135,13 @@ class App extends ConsumerWidget {
         return MaterialPageRoute(
           builder: (_) => PermissionsView(
             onNavigateBack: () => Navigator.pop(_),
+          ),
+        );
+
+      case '/run-as-exit-node':
+        return MaterialPageRoute(
+          builder: (_) => RunExitNodeView(
+            onNavigateBackToExitNodes: () => Navigator.pop(_),
           ),
         );
 

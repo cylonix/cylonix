@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
 import 'ipn.dart';
@@ -13,6 +14,7 @@ class ExitNodeState {
   final String? managedByOrganization;
   final String? forcedExitNodeID;
   final bool isRunningExitNode;
+  final bool isRunningExitNodePendingApproval;
   final bool isLanAccessHidden;
 
   ExitNodeState({
@@ -26,6 +28,7 @@ class ExitNodeState {
     this.managedByOrganization,
     this.forcedExitNodeID,
     this.isRunningExitNode = false,
+    this.isRunningExitNodePendingApproval = false,
     this.isLanAccessHidden = false,
   });
 }
@@ -43,6 +46,8 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
           allowLANAccess: false,
           showRunAsExitNode: false,
         )) {
+    _updateState();
+
     // Watch for changes in netmap and prefs
     ref.listen(netmapProvider, (previous, next) => _updateState());
     ref.listen(prefsProvider, (previous, next) => _updateState());
@@ -113,7 +118,9 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
     // Check if should show Mullvad info
     final shouldShowMullvadInfo = netmap.selfNode.isAdmin == true &&
         prefs?.controlURL.endsWith('.tailscale.com') == true;
-
+    final routes = prefs?.advertiseRoutes ?? [];
+    final wantToBeExitNode =
+        routes.contains("0.0.0.0/0") && routes.contains("::/0");
     state = ExitNodeState(
       tailnetExitNodes: tailnetNodes,
       mullvadExitNodesByCountryCode: mullvadByCountry,
@@ -121,14 +128,16 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
       anyActive: anyActive,
       shouldShowMullvadInfo: shouldShowMullvadInfo,
       allowLANAccess: prefs?.exitNodeAllowLANAccess ?? false,
-      showRunAsExitNode: netmap.selfNode.isAdmin == true,
+      showRunAsExitNode: true, //netmap.selfNode.isAdmin == true,
       isRunningExitNode: netmap.selfNode.isExitNode == true,
+      isRunningExitNodePendingApproval:
+          !netmap.selfNode.isExitNode && wantToBeExitNode,
       isLanAccessHidden: prefs?.exitNodeAllowLANAccess == null,
     );
   }
 
   Future<void> setExitNode(ExitNode? node) async {
-    ref.read(exitNodeLoadingProvider.notifier).state = true;
+    ref.read(exitNodeLoadingProvider.notifier).setLoading(true);
     try {
       final prefs = MaskedPrefs(
         exitNodeID: node?.id,
@@ -136,7 +145,7 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
       );
       await ref.read(ipnStateNotifierProvider.notifier).editPrefs(prefs);
     } finally {
-      ref.read(exitNodeLoadingProvider.notifier).state = false;
+      ref.read(exitNodeLoadingProvider.notifier).setLoading(false);
     }
   }
 
@@ -145,14 +154,55 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
       exitNodeAllowLANAccess: !state.allowLANAccess,
       exitNodeAllowLANAccessSet: true,
     );
-    await ref.read(ipnStateNotifierProvider.notifier).editPrefs(prefs);
+    try {
+      ref.read(exitNodeLoadingProvider.notifier).setLoading(true);
+      await ref.read(ipnStateNotifierProvider.notifier).editPrefs(prefs);
+    } finally {
+      ref.read(exitNodeLoadingProvider.notifier).setLoading(false);
+    }
+  }
+
+  Future<void> setRunAsExitNode(bool isOn) async {
+    try {
+      ref.read(exitNodeLoadingProvider.notifier).setLoading(true);
+      await ref.read(ipnStateNotifierProvider.notifier).setRunAsExitNode(isOn);
+    } finally {
+      ref.read(exitNodeLoadingProvider.notifier).setLoading(false);
+    }
   }
 }
 
-// Update the provider to pass ref
 final exitNodePickerProvider =
     StateNotifierProvider<ExitNodePickerNotifier, ExitNodeState>((ref) {
   return ExitNodePickerNotifier(ref);
 });
 
-final exitNodeLoadingProvider = StateProvider<bool>((ref) => false);
+class ExitNodeLoadingNotifier extends StateNotifier<bool> {
+  ExitNodeLoadingNotifier() : super(false);
+
+  void setLoading(bool isLoading) {
+    state = isLoading;
+  }
+}
+
+final exitNodeLoadingProvider =
+    StateNotifierProvider<ExitNodeLoadingNotifier, bool>((ref) {
+  return ExitNodeLoadingNotifier();
+});
+
+final exitNodeIDProvider = Provider<String?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  final exitNodeId = ipnState?.prefs?.exitNodeID ?? "";
+  if (exitNodeId.isEmpty) return null;
+  return exitNodeId;
+});
+
+final exitNodeProvider = Provider<Node?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  final exitNodeId = ipnState?.prefs?.exitNodeID ?? "";
+  if (exitNodeId.isEmpty) return null;
+
+  return ipnState?.netmap?.peers?.firstWhereOrNull(
+    (peer) => peer.stableID == exitNodeId,
+  );
+});

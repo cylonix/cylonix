@@ -1468,6 +1468,38 @@ class IpnService {
     }
     return sb.toString();
   }
+
+  Future<IpnPrefs?> setRunningExitNode(
+      IpnPrefs? currentPrefs, bool isOn) async {
+    if (currentPrefs == null) return currentPrefs;
+    var routes = <String>[];
+    if (currentPrefs.advertiseRoutes?.isNotEmpty == true) {
+      routes.addAll(currentPrefs.advertiseRoutes!);
+    }
+    final hasV4 = routes.contains("0.0.0.0/0");
+    final hasV6 = routes.contains("::/0");
+    if (isOn) {
+      if (hasV4 && hasV6) {
+        _logger.d("Already has both v4 and v6 default routes. Skip...");
+        return currentPrefs;
+      }
+      if (!hasV4) routes.add("0.0.0.0/0");
+      if (!hasV6) routes.add("::/0");
+    } else {
+      if (!hasV4 && !hasV6) {
+        _logger.d("Already has neither v4 or v6 default routes. Skip...");
+        return currentPrefs;
+      }
+      if (hasV4) routes.removeWhere((r) => r == "0.0.0.0/0");
+      if (hasV6) routes.removeWhere((r) => r == "::/0");
+    }
+    return await editPrefs(
+      MaskedPrefs(
+        advertiseRoutes: routes,
+        advertiseRoutesSet: true,
+      ),
+    );
+  }
 }
 
 class EventBusSender {

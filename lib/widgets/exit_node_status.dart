@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
+import '../providers/exit_node.dart';
 import '../providers/ipn.dart';
 import '../utils/utils.dart';
 import 'adaptive_widgets.dart';
@@ -20,6 +21,8 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     final exitNodeID = ref.watch(exitNodeIDProvider);
     final exitNode = ref.watch(exitNodeProvider);
     final managedByOrg = ref.watch(managedByOrganizationProvider);
+    final isRunningExitNode =
+        ref.watch(exitNodePickerProvider).isRunningExitNode;
 
     return AdaptiveListSection.insetGrouped(
       children: [
@@ -27,7 +30,13 @@ class ExitNodeStatusWidget extends ConsumerWidget {
           isApple()
               ? _buildCupertinoMdmWarning(context, managedByOrg)
               : _buildMdmWarning(context, managedByOrg),
-        _buildExitNodeTile(context, nodeState, exitNode, exitNodeID),
+        _buildExitNodeTile(
+          context,
+          nodeState,
+          exitNode,
+          exitNodeID,
+          isRunningExitNode,
+        ),
       ],
     );
   }
@@ -113,6 +122,7 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     NodeState nodeState,
     Node? exitNode,
     String? exitNodeID,
+    bool isRunningExitNode,
   ) {
     final bool isOffline = nodeState == NodeState.activeNotRunning;
     var nodeName = exitNode?.name ?? "Not connected";
@@ -120,7 +130,9 @@ class ExitNodeStatusWidget extends ConsumerWidget {
       nodeName = "$exitNodeID (Offline! All Traffic is dropped)";
     }
     return Text(
-      nodeState == NodeState.none ? "None" : nodeName,
+      nodeState == NodeState.none
+          ? "None${isRunningExitNode ? ' (self is running as exit node)' : ''}"
+          : nodeName,
       style: TextStyle(
         color: nodeState == NodeState.none
             ? null
@@ -138,13 +150,20 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     NodeState nodeState,
     Node? exitNode,
     String? exitNodeID,
+    bool isRunningExitNode,
   ) {
     final bool isActive = nodeState == NodeState.activeAndRunning;
     final bool isNotConnected = exitNode == null && exitNodeID != null;
 
     return AdaptiveListTile.notched(
       title: const Text('Exit Node'),
-      subtitle: _getSubtitle(context, nodeState, exitNode, exitNodeID),
+      subtitle: _getSubtitle(
+        context,
+        nodeState,
+        exitNode,
+        exitNodeID,
+        isRunningExitNode,
+      ),
       leading: nodeState == NodeState.none
           ? null
           : isApple()

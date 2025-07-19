@@ -636,4 +636,25 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   Future<void> deleteFile(String file) async {
     await _ipnService.deleteFile(file);
   }
+
+  Future<void> setRunAsExitNode(bool isOn) async {
+    _logger.d("Setting run as exit node: $isOn");
+    final on = isOn ? "on" : "off";
+    try {
+      final prefs =
+          await _ipnService.setRunningExitNode(state.valueOrNull?.prefs, isOn);
+      _logger.d(
+        "Run as exit node set to $on. New prefs: $prefs",
+        sendToIpn: false,
+      );
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(prefs: prefs),
+      );
+    } catch (error, stack) {
+      final msg = "Failed to set run as exit node $on: $error";
+      _logger.e(msg);
+      state = AsyncValue.error(error, stack);
+      throw Exception(msg);
+    }
+  }
 }

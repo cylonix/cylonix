@@ -322,9 +322,11 @@ class AdaptiveLoadingWidget extends StatelessWidget {
                     Size(maxWidth!, maxWidth!),
                   )
                 : null,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              color ?? Theme.of(context).primaryColor,
-            ),
+            valueColor: color != null
+                ? AlwaysStoppedAnimation<Color>(
+                    color!,
+                  )
+                : null,
           );
   }
 }
@@ -898,4 +900,49 @@ class AdaptiveGroupedFooter extends StatelessWidget {
 
 Color? appleScaffoldBackgroundColor(BuildContext context) {
   return CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context);
+}
+
+IconData osIcon(String os) {
+  switch (os.toLowerCase()) {
+    case 'android':
+      return Icons.android;
+    case 'ios':
+      return Icons.phone_iphone;
+    case 'macos':
+      return Icons.laptop_mac;
+    case 'windows':
+      return Icons.laptop_windows;
+    case 'linux':
+      return Icons.computer;
+    default:
+      return isApple() ? CupertinoIcons.device_desktop : Icons.computer;
+  }
+}
+
+class LoadingIndicator extends StatelessWidget {
+  final Widget child;
+  final bool isLoading;
+
+  const LoadingIndicator({
+    super.key,
+    required this.child,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        child,
+        if (isLoading) ...[
+          const Opacity(
+            opacity: 0.6,
+            child: ModalBarrier(dismissible: false, color: Colors.black),
+          ),
+          const AdaptiveLoadingWidget(),
+        ],
+      ],
+    );
+  }
 }

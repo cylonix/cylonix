@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 
-bool isAndroidTV = true;
+bool isAndroidTV = false;
 
 Future<void> setIsAndroidTV() async {
   if (!Platform.isAndroid) {

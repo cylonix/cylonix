@@ -98,23 +98,6 @@ final nodeStateProvider = Provider<NodeState>((ref) {
   return NodeState.none;
 });
 
-final exitNodeIDProvider = Provider<String?>((ref) {
-  final ipnState = ref.watch(ipnStateProvider);
-  final exitNodeId = ipnState?.prefs?.exitNodeID ?? "";
-  if (exitNodeId.isEmpty) return null;
-  return exitNodeId;
-});
-
-final exitNodeProvider = Provider<Node?>((ref) {
-  final ipnState = ref.watch(ipnStateProvider);
-  final exitNodeId = ipnState?.prefs?.exitNodeID ?? "";
-  if (exitNodeId.isEmpty) return null;
-
-  return ipnState?.netmap?.peers?.firstWhereOrNull(
-    (peer) => peer.stableID == exitNodeId,
-  );
-});
-
 // User profile related providers
 final userProfileProvider = Provider<UserProfile?>((ref) {
   return ref.watch(ipnStateProvider)?.loggedInUser;
@@ -179,6 +162,11 @@ final filesSavedProvider =
 
 final healthWarningsProvider = Provider<HealthState?>((ref) {
   return ref.watch(ipnStateProvider)?.health;
+});
+
+final selfNodeProvider = Provider<Node?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.selfNode;
 });
 
 // Health and warning indicators

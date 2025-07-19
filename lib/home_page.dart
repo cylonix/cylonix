@@ -13,6 +13,7 @@ import 'peer_details_view.dart';
 import 'permissions_view.dart';
 import 'providers/share_file.dart';
 import 'providers/theme.dart';
+import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
 import 'utils/applog.dart';
@@ -119,6 +120,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         return _peerDetailsView;
       case Page.permissions:
         return _permissionsView;
+      case Page.runExitNodeView:
+        return RunExitNodeView(
+          onNavigateBackToExitNodes: () => _selectPage(Page.exitNodes.value),
+        );
       default:
         return _mainViewWithRail;
     }
@@ -143,8 +148,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget get _exitNodesView {
     return ExitNodePicker(
       onNavigateBackHome: () => _selectPage(Page.mainView.value),
-      onNavigateToRunAsExitNode: () =>
-          Navigator.pushNamed(context, '/run-as-exit-node'),
+      onNavigateToRunAsExitNode: () => _selectPage(Page.runExitNodeView.value),
     );
   }
 
@@ -347,7 +351,8 @@ enum Page {
   customControl(6),
   about(7),
   perDetails(8),
-  permissions(9);
+  permissions(9),
+  runExitNodeView(10);
 
   const Page(this.value);
   final int value;
