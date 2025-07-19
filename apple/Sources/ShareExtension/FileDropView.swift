@@ -759,7 +759,9 @@ struct PeerRow: View {
                                 .buttonStyle(.plain)
                                 #endif
                                 .foregroundColor(.accentColor)
+                                #if os(macOS)
                                 .dialogIcon(Image(systemName: "exclamationmark.triangle"))
+                                #endif
                             }
                         }
                         .alert("Transfer Error",

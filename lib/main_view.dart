@@ -1145,7 +1145,6 @@ class _MainViewState extends ConsumerState<MainView> {
       if (resp.statusCode == 302) {
         Map<Object, Object?> details = {};
         try {
-          print("Apple signin response: ${resp.body} ${resp.headers}");
           final v = jsonDecode(resp.body) as Map<Object, Object?>;
           details = v['confirm_session'] as Map<Object, Object?>? ?? {};
           if (details.isEmpty) {
@@ -1370,8 +1369,12 @@ class _MainViewState extends ConsumerState<MainView> {
                 ? const Text(
                     "Signed in with Apple. Starting cylonix network. "
                     "Please wait...",
+                    textAlign: TextAlign.center,
                   )
-                : const Text("Signing in with Apple. Please wait..."),
+                : const Text(
+                    "Signing in with Apple. Please wait...",
+                    textAlign: TextAlign.center,
+                  ),
           ],
           if (!_signingInWithApple && urlLaunched != loginURL) ...[
             SizedBox(

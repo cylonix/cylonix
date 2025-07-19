@@ -226,6 +226,7 @@ import UserNotifications
                     result("Success")
                     return
                 }
+                #if os(macOS)
                 if call.method == "startWebAuth" {
                     guard let url = call.arguments as? String else {
                         wg_log(.error, message: "Invalid URL for web auth")
@@ -236,6 +237,7 @@ import UserNotifications
                     result("Success")
                     return
                 }
+                #endif
 
                 // All cylonixd related calls should go through packet tunnel
                 // provider as it is a separate process.
@@ -546,6 +548,7 @@ import UserNotifications
         invokeMethod("sharedContent", arguments: jsonString)
     }
 
+#if os(macOS)
     private var authSession: ASWebAuthenticationSession?
 
     func startWebAuth(url: String) {
@@ -593,6 +596,7 @@ import UserNotifications
         authSession?.presentationContextProvider = self
         authSession?.start()
     }
+#endif
 }
 
 extension AppDelegate {
@@ -713,6 +717,7 @@ extension AppDelegate {
     }
 }
 
+#if os(macOS)
 extension AppDelegate: ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
         #if os(iOS)
@@ -722,3 +727,4 @@ extension AppDelegate: ASWebAuthenticationPresentationContextProviding {
         #endif
     }
 }
+#endif

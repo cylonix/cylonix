@@ -63,6 +63,7 @@ class RunExitNodeView extends ConsumerWidget {
                   const Text(
                     'Allow other devices to route their traffic '
                     'through this device.',
+                    textAlign: TextAlign.center,
                   ),
                 ],
                 if (isMobile() && !isAndroidTV) ...[

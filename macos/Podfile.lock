@@ -1,4 +1,6 @@
 PODS:
+  - device_info_plus (0.0.1):
+    - FlutterMacOS
   - downloadsfolder (0.0.1):
     - FlutterMacOS
   - file_picker (0.0.1):
@@ -22,6 +24,7 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - device_info_plus (from `Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos`)
   - downloadsfolder (from `Flutter/ephemeral/.symlinks/plugins/downloadsfolder/macos`)
   - file_picker (from `Flutter/ephemeral/.symlinks/plugins/file_picker/macos`)
   - flutter_local_notifications (from `Flutter/ephemeral/.symlinks/plugins/flutter_local_notifications/macos`)
@@ -34,6 +37,8 @@ DEPENDENCIES:
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
 
 EXTERNAL SOURCES:
+  device_info_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos
   downloadsfolder:
     :path: Flutter/ephemeral/.symlinks/plugins/downloadsfolder/macos
   file_picker:
@@ -56,6 +61,7 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
 
 SPEC CHECKSUMS:
+  device_info_plus: 1b14eed9bf95428983aed283a8d51cce3d8c4215
   downloadsfolder: f8c4d35588cc58b607898ebbbdbeb5c0e7f04a46
   file_picker: e716a70a9fe5fd9e09ebc922d7541464289443af
   flutter_local_notifications: 4b427ffabf278fc6ea9484c97505e231166927a5
