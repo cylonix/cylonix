@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'models/platform.dart';
 import 'providers/exit_node.dart';
 import 'providers/ipn.dart';
 import 'utils/utils.dart';
@@ -42,7 +43,7 @@ class RunExitNodeView extends ConsumerWidget {
                 const SizedBox(height: 24),
                 if (state.isRunningExitNode) ...[
                   Text(
-                    'Running as Exit Node',
+                    'Run Exit Node',
                     style: Theme.of(context)
                         .textTheme
                         .titleLarge
@@ -53,7 +54,7 @@ class RunExitNodeView extends ConsumerWidget {
                   ),
                 ] else ...[
                   Text(
-                    'Run this Device as an Exit Node',
+                    'Run this device as an exit node',
                     style: Theme.of(context)
                         .textTheme
                         .titleLarge
@@ -64,7 +65,7 @@ class RunExitNodeView extends ConsumerWidget {
                     'through this device.',
                   ),
                 ],
-                if (isMobile()) ...[
+                if (isMobile() && !isAndroidTV) ...[
                   const SizedBox(height: 24),
                   const Text(
                     'Caution: Running as an exit node may consume additional '
@@ -76,6 +77,7 @@ class RunExitNodeView extends ConsumerWidget {
                 const SizedBox(height: 24),
                 AdaptiveButton(
                   filled: true,
+                  autofocus: true,
                   onPressed: () async {
                     try {
                       await ref
@@ -86,8 +88,8 @@ class RunExitNodeView extends ConsumerWidget {
                           context,
                           'Success',
                           "Exit node status updated successfully. "
-                          "Network administrator may need to"
-                          "approve your exit node request if applicable.",
+                              "Network administrator may need to "
+                              "approve your exit node request if applicable.",
                           showSuccessIcon: true,
                         );
                       }
@@ -102,8 +104,8 @@ class RunExitNodeView extends ConsumerWidget {
                   },
                   child: Text(
                     state.isRunningExitNode
-                        ? 'Stop Running as Exit Node'
-                        : 'Start Running as Exit Node',
+                        ? 'Stop Running Exit Node'
+                        : 'Start Running Exit Node',
                   ),
                 ),
                 const SizedBox(height: 24),

@@ -122,3 +122,4 @@ flutter:
     - .env.local
     - lib/assets/images/cylonix_128.png
     - lib/assets/images/cylonix_512.png
+    - lib/assets/images/landing-banner.webp

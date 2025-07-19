@@ -524,7 +524,7 @@ class IpnService {
       response.transform(utf8.decoder).transform(const LineSplitter()).listen(
         (data) {
           if (data.isEmpty) return;
-          _logger.d("Notification: ${data.length} bytes", sendToIpn: false);
+          //_logger.d("Notification: ${data.length} bytes", sendToIpn: false);
           try {
             final json = jsonDecode(data);
             final notification = IpnNotification.fromJson(json);

@@ -311,9 +311,13 @@ class _MainViewState extends ConsumerState<MainView> {
             spacing: 16,
             children: <Widget>[
               ...common,
-              Expanded(
-                child: _buildCenteredWidget(const HealthStateWidget()),
-              ),
+              if (isAndroidTV) ...[
+                const HealthStateWidget(),
+              ],
+              if (!isAndroidTV)
+                Expanded(
+                  child: _buildCenteredWidget(const HealthStateWidget()),
+                ),
             ],
           )
         : Column(
@@ -326,13 +330,31 @@ class _MainViewState extends ConsumerState<MainView> {
               ),
             ],
           );
-    return Container(
+
+    final container = Container(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 800),
         child: child,
       ),
     );
+
+    if (isAndroidTV && !showDevices) {
+      return Column(
+        spacing: 32,
+        children: [
+          container,
+          Expanded(
+            child: Image.asset(
+              'lib/assets/images/landing-banner.webp',
+              width: MediaQuery.of(context).size.width,
+              fit: BoxFit.fill,
+            ),
+          ),
+        ],
+      );
+    }
+    return container;
   }
 
   Widget _buildCupertinoScaffold(BuildContext context, WidgetRef ref) {
