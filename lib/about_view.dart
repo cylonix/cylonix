@@ -7,6 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 
+const _cylonixIntro =
+    'Cylonix provides open source secure access service edge solutions. '
+    'It uses WireGuard® technology as the mesh service, leveraging the '
+    'Tailscale® design. For edge WireGuard aggregation nodes, it offers '
+    'Cilium® based firewall services and VPP-based software defined WAN '
+    'routing. The platform includes a Kubernetes-based open source '
+    'deployment system.';
+
 class AboutView extends ConsumerWidget {
   final VoidCallback? onNavigateBack;
   const AboutView({super.key, this.onNavigateBack});
@@ -99,12 +107,7 @@ class AboutView extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text(
-                  'Cylonix provides open source secure access service edge solutions. '
-                  'It uses WireGuard® technology as the mesh service, leveraging the '
-                  'Tailscale® design. For edge WireGuard aggregation nodes, it offers '
-                  'Cilium® based firewall services and VPP-based software defined WAN '
-                  'routing. The platform includes a Kubernetes-based open source '
-                  'deployment system.',
+                  _cylonixIntro,
                   style: TextStyle(
                     fontSize: 14,
                     color: isCupertino
