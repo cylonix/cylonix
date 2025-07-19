@@ -29,8 +29,12 @@ _$IpnStateImpl _$$IpnStateImplFromJson(Map<String, dynamic> json) =>
           ? null
           : HealthState.fromJson(json['health'] as Map<String, dynamic>),
       browseToURL: json['browseToURL'] as String?,
+      errMessage: json['errMessage'] as String?,
       outgoingFiles: (json['outgoingFiles'] as List<dynamic>?)
           ?.map((e) => OutgoingFile.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      filesWaiting: (json['filesWaiting'] as List<dynamic>?)
+          ?.map((e) => AwaitingFile.fromJson(e as Map<String, dynamic>))
           .toList(),
       currentProfile: json['currentProfile'] == null
           ? null
@@ -53,7 +57,9 @@ Map<String, dynamic> _$$IpnStateImplToJson(_$IpnStateImpl instance) =>
       'prefs': instance.prefs,
       'health': instance.health,
       'browseToURL': instance.browseToURL,
+      'errMessage': instance.errMessage,
       'outgoingFiles': instance.outgoingFiles,
+      'filesWaiting': instance.filesWaiting,
       'currentProfile': instance.currentProfile,
       'loginProfiles': instance.loginProfiles,
       'isRunningExitNode': instance.isRunningExitNode,
@@ -748,6 +754,18 @@ Map<String, dynamic> _$$ServiceImplToJson(_$ServiceImpl instance) =>
       'Description': instance.description,
     };
 
+_$AwaitingFileImpl _$$AwaitingFileImplFromJson(Map<String, dynamic> json) =>
+    _$AwaitingFileImpl(
+      name: json['Name'] as String,
+      size: (json['Size'] as num).toInt(),
+    );
+
+Map<String, dynamic> _$$AwaitingFileImplToJson(_$AwaitingFileImpl instance) =>
+    <String, dynamic>{
+      'Name': instance.name,
+      'Size': instance.size,
+    };
+
 _$PingResultImpl _$$PingResultImplFromJson(Map<String, dynamic> json) =>
     _$PingResultImpl(
       ip: json['IP'] as String?,
@@ -800,6 +818,7 @@ _$PeerStatusImpl _$$PeerStatusImplFromJson(Map<String, dynamic> json) =>
       id: json['ID'] as String,
       hostName: json['HostName'] as String,
       dnsName: json['DNSName'] as String,
+      os: json['OS'] as String?,
       tailscaleIPs: (json['TailscaleIPs'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
@@ -836,6 +855,7 @@ Map<String, dynamic> _$$PeerStatusImplToJson(_$PeerStatusImpl instance) =>
       'ID': instance.id,
       'HostName': instance.hostName,
       'DNSName': instance.dnsName,
+      'OS': instance.os,
       'TailscaleIPs': instance.tailscaleIPs,
       'Tags': instance.tags,
       'PrimaryRoutes': instance.primaryRoutes,

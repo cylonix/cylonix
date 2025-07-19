@@ -30,6 +30,7 @@ mixin _$IpnState {
   String? get browseToURL => throw _privateConstructorUsedError;
   String? get errMessage => throw _privateConstructorUsedError;
   List<OutgoingFile>? get outgoingFiles => throw _privateConstructorUsedError;
+  List<AwaitingFile>? get filesWaiting => throw _privateConstructorUsedError;
   LoginProfile? get currentProfile => throw _privateConstructorUsedError;
   List<LoginProfile> get loginProfiles => throw _privateConstructorUsedError;
   bool get isRunningExitNode => throw _privateConstructorUsedError;
@@ -60,6 +61,7 @@ abstract class $IpnStateCopyWith<$Res> {
       String? browseToURL,
       String? errMessage,
       List<OutgoingFile>? outgoingFiles,
+      List<AwaitingFile>? filesWaiting,
       LoginProfile? currentProfile,
       List<LoginProfile> loginProfiles,
       bool isRunningExitNode});
@@ -97,6 +99,7 @@ class _$IpnStateCopyWithImpl<$Res, $Val extends IpnState>
     Object? browseToURL = freezed,
     Object? errMessage = freezed,
     Object? outgoingFiles = freezed,
+    Object? filesWaiting = freezed,
     Object? currentProfile = freezed,
     Object? loginProfiles = null,
     Object? isRunningExitNode = null,
@@ -142,6 +145,10 @@ class _$IpnStateCopyWithImpl<$Res, $Val extends IpnState>
           ? _value.outgoingFiles
           : outgoingFiles // ignore: cast_nullable_to_non_nullable
               as List<OutgoingFile>?,
+      filesWaiting: freezed == filesWaiting
+          ? _value.filesWaiting
+          : filesWaiting // ignore: cast_nullable_to_non_nullable
+              as List<AwaitingFile>?,
       currentProfile: freezed == currentProfile
           ? _value.currentProfile
           : currentProfile // ignore: cast_nullable_to_non_nullable
@@ -261,6 +268,7 @@ abstract class _$$IpnStateImplCopyWith<$Res>
       String? browseToURL,
       String? errMessage,
       List<OutgoingFile>? outgoingFiles,
+      List<AwaitingFile>? filesWaiting,
       LoginProfile? currentProfile,
       List<LoginProfile> loginProfiles,
       bool isRunningExitNode});
@@ -302,6 +310,7 @@ class __$$IpnStateImplCopyWithImpl<$Res>
     Object? browseToURL = freezed,
     Object? errMessage = freezed,
     Object? outgoingFiles = freezed,
+    Object? filesWaiting = freezed,
     Object? currentProfile = freezed,
     Object? loginProfiles = null,
     Object? isRunningExitNode = null,
@@ -347,6 +356,10 @@ class __$$IpnStateImplCopyWithImpl<$Res>
           ? _value._outgoingFiles
           : outgoingFiles // ignore: cast_nullable_to_non_nullable
               as List<OutgoingFile>?,
+      filesWaiting: freezed == filesWaiting
+          ? _value._filesWaiting
+          : filesWaiting // ignore: cast_nullable_to_non_nullable
+              as List<AwaitingFile>?,
       currentProfile: freezed == currentProfile
           ? _value.currentProfile
           : currentProfile // ignore: cast_nullable_to_non_nullable
@@ -377,10 +390,12 @@ class _$IpnStateImpl implements _IpnState {
       this.browseToURL,
       this.errMessage,
       final List<OutgoingFile>? outgoingFiles,
+      final List<AwaitingFile>? filesWaiting,
       this.currentProfile,
       final List<LoginProfile> loginProfiles = const [],
       this.isRunningExitNode = false})
       : _outgoingFiles = outgoingFiles,
+        _filesWaiting = filesWaiting,
         _loginProfiles = loginProfiles;
 
   factory _$IpnStateImpl.fromJson(Map<String, dynamic> json) =>
@@ -416,6 +431,16 @@ class _$IpnStateImpl implements _IpnState {
     return EqualUnmodifiableListView(value);
   }
 
+  final List<AwaitingFile>? _filesWaiting;
+  @override
+  List<AwaitingFile>? get filesWaiting {
+    final value = _filesWaiting;
+    if (value == null) return null;
+    if (_filesWaiting is EqualUnmodifiableListView) return _filesWaiting;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(value);
+  }
+
   @override
   final LoginProfile? currentProfile;
   final List<LoginProfile> _loginProfiles;
@@ -433,7 +458,7 @@ class _$IpnStateImpl implements _IpnState {
 
   @override
   String toString() {
-    return 'IpnState(backendState: $backendState, vpnState: $vpnState, loggedInUser: $loggedInUser, selfNode: $selfNode, netmap: $netmap, prefs: $prefs, health: $health, browseToURL: $browseToURL, errMessage: $errMessage, outgoingFiles: $outgoingFiles, currentProfile: $currentProfile, loginProfiles: $loginProfiles, isRunningExitNode: $isRunningExitNode)';
+    return 'IpnState(backendState: $backendState, vpnState: $vpnState, loggedInUser: $loggedInUser, selfNode: $selfNode, netmap: $netmap, prefs: $prefs, health: $health, browseToURL: $browseToURL, errMessage: $errMessage, outgoingFiles: $outgoingFiles, filesWaiting: $filesWaiting, currentProfile: $currentProfile, loginProfiles: $loginProfiles, isRunningExitNode: $isRunningExitNode)';
   }
 
   @override
@@ -458,6 +483,8 @@ class _$IpnStateImpl implements _IpnState {
                 other.errMessage == errMessage) &&
             const DeepCollectionEquality()
                 .equals(other._outgoingFiles, _outgoingFiles) &&
+            const DeepCollectionEquality()
+                .equals(other._filesWaiting, _filesWaiting) &&
             (identical(other.currentProfile, currentProfile) ||
                 other.currentProfile == currentProfile) &&
             const DeepCollectionEquality()
@@ -480,6 +507,7 @@ class _$IpnStateImpl implements _IpnState {
       browseToURL,
       errMessage,
       const DeepCollectionEquality().hash(_outgoingFiles),
+      const DeepCollectionEquality().hash(_filesWaiting),
       currentProfile,
       const DeepCollectionEquality().hash(_loginProfiles),
       isRunningExitNode);
@@ -512,6 +540,7 @@ abstract class _IpnState implements IpnState {
       final String? browseToURL,
       final String? errMessage,
       final List<OutgoingFile>? outgoingFiles,
+      final List<AwaitingFile>? filesWaiting,
       final LoginProfile? currentProfile,
       final List<LoginProfile> loginProfiles,
       final bool isRunningExitNode}) = _$IpnStateImpl;
@@ -539,6 +568,8 @@ abstract class _IpnState implements IpnState {
   String? get errMessage;
   @override
   List<OutgoingFile>? get outgoingFiles;
+  @override
+  List<AwaitingFile>? get filesWaiting;
   @override
   LoginProfile? get currentProfile;
   @override
@@ -9068,6 +9099,183 @@ abstract class _Service implements Service {
       throw _privateConstructorUsedError;
 }
 
+AwaitingFile _$AwaitingFileFromJson(Map<String, dynamic> json) {
+  return _AwaitingFile.fromJson(json);
+}
+
+/// @nodoc
+mixin _$AwaitingFile {
+  @JsonKey(name: 'Name')
+  String get name => throw _privateConstructorUsedError;
+  @JsonKey(name: 'Size')
+  int get size => throw _privateConstructorUsedError;
+
+  /// Serializes this AwaitingFile to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of AwaitingFile
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $AwaitingFileCopyWith<AwaitingFile> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $AwaitingFileCopyWith<$Res> {
+  factory $AwaitingFileCopyWith(
+          AwaitingFile value, $Res Function(AwaitingFile) then) =
+      _$AwaitingFileCopyWithImpl<$Res, AwaitingFile>;
+  @useResult
+  $Res call(
+      {@JsonKey(name: 'Name') String name, @JsonKey(name: 'Size') int size});
+}
+
+/// @nodoc
+class _$AwaitingFileCopyWithImpl<$Res, $Val extends AwaitingFile>
+    implements $AwaitingFileCopyWith<$Res> {
+  _$AwaitingFileCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of AwaitingFile
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? name = null,
+    Object? size = null,
+  }) {
+    return _then(_value.copyWith(
+      name: null == name
+          ? _value.name
+          : name // ignore: cast_nullable_to_non_nullable
+              as String,
+      size: null == size
+          ? _value.size
+          : size // ignore: cast_nullable_to_non_nullable
+              as int,
+    ) as $Val);
+  }
+}
+
+/// @nodoc
+abstract class _$$AwaitingFileImplCopyWith<$Res>
+    implements $AwaitingFileCopyWith<$Res> {
+  factory _$$AwaitingFileImplCopyWith(
+          _$AwaitingFileImpl value, $Res Function(_$AwaitingFileImpl) then) =
+      __$$AwaitingFileImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call(
+      {@JsonKey(name: 'Name') String name, @JsonKey(name: 'Size') int size});
+}
+
+/// @nodoc
+class __$$AwaitingFileImplCopyWithImpl<$Res>
+    extends _$AwaitingFileCopyWithImpl<$Res, _$AwaitingFileImpl>
+    implements _$$AwaitingFileImplCopyWith<$Res> {
+  __$$AwaitingFileImplCopyWithImpl(
+      _$AwaitingFileImpl _value, $Res Function(_$AwaitingFileImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of AwaitingFile
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? name = null,
+    Object? size = null,
+  }) {
+    return _then(_$AwaitingFileImpl(
+      name: null == name
+          ? _value.name
+          : name // ignore: cast_nullable_to_non_nullable
+              as String,
+      size: null == size
+          ? _value.size
+          : size // ignore: cast_nullable_to_non_nullable
+              as int,
+    ));
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$AwaitingFileImpl implements _AwaitingFile {
+  const _$AwaitingFileImpl(
+      {@JsonKey(name: 'Name') required this.name,
+      @JsonKey(name: 'Size') required this.size});
+
+  factory _$AwaitingFileImpl.fromJson(Map<String, dynamic> json) =>
+      _$$AwaitingFileImplFromJson(json);
+
+  @override
+  @JsonKey(name: 'Name')
+  final String name;
+  @override
+  @JsonKey(name: 'Size')
+  final int size;
+
+  @override
+  String toString() {
+    return 'AwaitingFile(name: $name, size: $size)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$AwaitingFileImpl &&
+            (identical(other.name, name) || other.name == name) &&
+            (identical(other.size, size) || other.size == size));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(runtimeType, name, size);
+
+  /// Create a copy of AwaitingFile
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$AwaitingFileImplCopyWith<_$AwaitingFileImpl> get copyWith =>
+      __$$AwaitingFileImplCopyWithImpl<_$AwaitingFileImpl>(this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$AwaitingFileImplToJson(
+      this,
+    );
+  }
+}
+
+abstract class _AwaitingFile implements AwaitingFile {
+  const factory _AwaitingFile(
+      {@JsonKey(name: 'Name') required final String name,
+      @JsonKey(name: 'Size') required final int size}) = _$AwaitingFileImpl;
+
+  factory _AwaitingFile.fromJson(Map<String, dynamic> json) =
+      _$AwaitingFileImpl.fromJson;
+
+  @override
+  @JsonKey(name: 'Name')
+  String get name;
+  @override
+  @JsonKey(name: 'Size')
+  int get size;
+
+  /// Create a copy of AwaitingFile
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$AwaitingFileImplCopyWith<_$AwaitingFileImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
 PingResult _$PingResultFromJson(Map<String, dynamic> json) {
   return _PingResult.fromJson(json);
 }
@@ -9715,6 +9923,8 @@ mixin _$PeerStatus {
   String get hostName => throw _privateConstructorUsedError;
   @JsonKey(name: 'DNSName')
   String get dnsName => throw _privateConstructorUsedError;
+  @JsonKey(name: 'OS')
+  String? get os => throw _privateConstructorUsedError;
   @JsonKey(name: 'TailscaleIPs')
   List<String>? get tailscaleIPs => throw _privateConstructorUsedError;
   @JsonKey(name: 'Tags')
@@ -9768,6 +9978,7 @@ abstract class $PeerStatusCopyWith<$Res> {
       {@JsonKey(name: 'ID') String id,
       @JsonKey(name: 'HostName') String hostName,
       @JsonKey(name: 'DNSName') String dnsName,
+      @JsonKey(name: 'OS') String? os,
       @JsonKey(name: 'TailscaleIPs') List<String>? tailscaleIPs,
       @JsonKey(name: 'Tags') List<String>? tags,
       @JsonKey(name: 'PrimaryRoutes') List<String>? primaryRoutes,
@@ -9806,6 +10017,7 @@ class _$PeerStatusCopyWithImpl<$Res, $Val extends PeerStatus>
     Object? id = null,
     Object? hostName = null,
     Object? dnsName = null,
+    Object? os = freezed,
     Object? tailscaleIPs = freezed,
     Object? tags = freezed,
     Object? primaryRoutes = freezed,
@@ -9836,6 +10048,10 @@ class _$PeerStatusCopyWithImpl<$Res, $Val extends PeerStatus>
           ? _value.dnsName
           : dnsName // ignore: cast_nullable_to_non_nullable
               as String,
+      os: freezed == os
+          ? _value.os
+          : os // ignore: cast_nullable_to_non_nullable
+              as String?,
       tailscaleIPs: freezed == tailscaleIPs
           ? _value.tailscaleIPs
           : tailscaleIPs // ignore: cast_nullable_to_non_nullable
@@ -9930,6 +10146,7 @@ abstract class _$$PeerStatusImplCopyWith<$Res>
       {@JsonKey(name: 'ID') String id,
       @JsonKey(name: 'HostName') String hostName,
       @JsonKey(name: 'DNSName') String dnsName,
+      @JsonKey(name: 'OS') String? os,
       @JsonKey(name: 'TailscaleIPs') List<String>? tailscaleIPs,
       @JsonKey(name: 'Tags') List<String>? tags,
       @JsonKey(name: 'PrimaryRoutes') List<String>? primaryRoutes,
@@ -9967,6 +10184,7 @@ class __$$PeerStatusImplCopyWithImpl<$Res>
     Object? id = null,
     Object? hostName = null,
     Object? dnsName = null,
+    Object? os = freezed,
     Object? tailscaleIPs = freezed,
     Object? tags = freezed,
     Object? primaryRoutes = freezed,
@@ -9997,6 +10215,10 @@ class __$$PeerStatusImplCopyWithImpl<$Res>
           ? _value.dnsName
           : dnsName // ignore: cast_nullable_to_non_nullable
               as String,
+      os: freezed == os
+          ? _value.os
+          : os // ignore: cast_nullable_to_non_nullable
+              as String?,
       tailscaleIPs: freezed == tailscaleIPs
           ? _value._tailscaleIPs
           : tailscaleIPs // ignore: cast_nullable_to_non_nullable
@@ -10072,6 +10294,7 @@ class _$PeerStatusImpl implements _PeerStatus {
       {@JsonKey(name: 'ID') required this.id,
       @JsonKey(name: 'HostName') required this.hostName,
       @JsonKey(name: 'DNSName') required this.dnsName,
+      @JsonKey(name: 'OS') this.os,
       @JsonKey(name: 'TailscaleIPs') final List<String>? tailscaleIPs,
       @JsonKey(name: 'Tags') final List<String>? tags,
       @JsonKey(name: 'PrimaryRoutes') final List<String>? primaryRoutes,
@@ -10108,6 +10331,9 @@ class _$PeerStatusImpl implements _PeerStatus {
   @override
   @JsonKey(name: 'DNSName')
   final String dnsName;
+  @override
+  @JsonKey(name: 'OS')
+  final String? os;
   final List<String>? _tailscaleIPs;
   @override
   @JsonKey(name: 'TailscaleIPs')
@@ -10215,7 +10441,7 @@ class _$PeerStatusImpl implements _PeerStatus {
 
   @override
   String toString() {
-    return 'PeerStatus(id: $id, hostName: $hostName, dnsName: $dnsName, tailscaleIPs: $tailscaleIPs, tags: $tags, primaryRoutes: $primaryRoutes, addrs: $addrs, curAddr: $curAddr, relay: $relay, online: $online, exitNode: $exitNode, exitNodeOption: $exitNodeOption, active: $active, peerAPIUrl: $peerAPIUrl, capabilities: $capabilities, sshHostKeys: $sshHostKeys, shareeNode: $shareeNode, expired: $expired, location: $location)';
+    return 'PeerStatus(id: $id, hostName: $hostName, dnsName: $dnsName, os: $os, tailscaleIPs: $tailscaleIPs, tags: $tags, primaryRoutes: $primaryRoutes, addrs: $addrs, curAddr: $curAddr, relay: $relay, online: $online, exitNode: $exitNode, exitNodeOption: $exitNodeOption, active: $active, peerAPIUrl: $peerAPIUrl, capabilities: $capabilities, sshHostKeys: $sshHostKeys, shareeNode: $shareeNode, expired: $expired, location: $location)';
   }
 
   @override
@@ -10227,6 +10453,7 @@ class _$PeerStatusImpl implements _PeerStatus {
             (identical(other.hostName, hostName) ||
                 other.hostName == hostName) &&
             (identical(other.dnsName, dnsName) || other.dnsName == dnsName) &&
+            (identical(other.os, os) || other.os == os) &&
             const DeepCollectionEquality()
                 .equals(other._tailscaleIPs, _tailscaleIPs) &&
             const DeepCollectionEquality().equals(other._tags, _tags) &&
@@ -10261,6 +10488,7 @@ class _$PeerStatusImpl implements _PeerStatus {
         id,
         hostName,
         dnsName,
+        os,
         const DeepCollectionEquality().hash(_tailscaleIPs),
         const DeepCollectionEquality().hash(_tags),
         const DeepCollectionEquality().hash(_primaryRoutes),
@@ -10300,6 +10528,7 @@ abstract class _PeerStatus implements PeerStatus {
       {@JsonKey(name: 'ID') required final String id,
       @JsonKey(name: 'HostName') required final String hostName,
       @JsonKey(name: 'DNSName') required final String dnsName,
+      @JsonKey(name: 'OS') final String? os,
       @JsonKey(name: 'TailscaleIPs') final List<String>? tailscaleIPs,
       @JsonKey(name: 'Tags') final List<String>? tags,
       @JsonKey(name: 'PrimaryRoutes') final List<String>? primaryRoutes,
@@ -10329,6 +10558,9 @@ abstract class _PeerStatus implements PeerStatus {
   @override
   @JsonKey(name: 'DNSName')
   String get dnsName;
+  @override
+  @JsonKey(name: 'OS')
+  String? get os;
   @override
   @JsonKey(name: 'TailscaleIPs')
   List<String>? get tailscaleIPs;

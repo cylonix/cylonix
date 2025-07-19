@@ -9,8 +9,10 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'files_waiting_view.dart';
 import 'health_view.dart';
 import 'models/ipn.dart';
+import 'models/platform.dart';
 import 'providers/ipn.dart';
 import 'providers/settings.dart';
 import 'providers/theme.dart';
@@ -21,6 +23,7 @@ import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/exit_node_status.dart';
 import 'widgets/peer_list.dart';
+import 'widgets/qr_code_image.dart';
 
 class MainView extends ConsumerStatefulWidget {
   final Function() onNavigateToSettings;
@@ -52,6 +55,7 @@ class _MainViewState extends ConsumerState<MainView> {
   int _launchCountDown = 10;
   bool _signingInWithApple = false;
   bool _signInWithAppSuccess = false;
+  bool _showingSigninQRCode = false;
 
   @override
   void dispose() {
@@ -143,10 +147,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
     return ipnState.when(
       loading: () => null,
-      error: (error, _) => AdaptiveSwitch(
-        value: false,
-        onChanged: (v) => _toggleVPN(context, ref, v),
-      ),
+      error: (error, _) => null,
       data: (state) {
         final value = state.vpnState == VpnState.connected;
         return mdmState.when(
@@ -294,20 +295,34 @@ class _MainViewState extends ConsumerState<MainView> {
         );
     }
 
+    if (_showingSigninQRCode) {
+      _showingSigninQRCode = false;
+      Navigator.pop(context);
+    }
+
+    final common = [
+      _buildExpiryNotification(context, netmap, ref),
+      _buildFilesWaitingSummary(context, ref),
+      ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
+    ];
+
     final child = !showDevices
         ? Column(
             spacing: 16,
-            children: [
-              ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
-              Expanded(
-                child: _buildCenteredWidget(const HealthStateWidget()),
-              ),
+            children: <Widget>[
+              ...common,
+              if (isAndroidTV) ...[
+                const HealthStateWidget(),
+              ],
+              if (!isAndroidTV)
+                Expanded(
+                  child: _buildCenteredWidget(const HealthStateWidget()),
+                ),
             ],
           )
         : Column(
             children: [
-              _buildExpiryNotification(context, netmap, ref),
-              ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
+              ...common,
               Expanded(
                 child: PeerList(
                   onPeerTap: widget.onNavigateToPeerDetails,
@@ -315,13 +330,31 @@ class _MainViewState extends ConsumerState<MainView> {
               ),
             ],
           );
-    return Container(
+
+    final container = Container(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 800),
         child: child,
       ),
     );
+
+    if (isAndroidTV && !showDevices) {
+      return Column(
+        spacing: 32,
+        children: [
+          container,
+          Expanded(
+            child: Image.asset(
+              'lib/assets/images/landing-banner.webp',
+              width: MediaQuery.of(context).size.width,
+              fit: BoxFit.fill,
+            ),
+          ),
+        ],
+      );
+    }
+    return container;
   }
 
   Widget _buildCupertinoScaffold(BuildContext context, WidgetRef ref) {
@@ -397,6 +430,41 @@ class _MainViewState extends ConsumerState<MainView> {
       icon: user == null
           ? const Icon(CupertinoIcons.ellipsis_circle)
           : AdaptiveAvatar(radius: 18, user: user),
+    );
+  }
+
+  Widget _buildFilesWaitingSummary(BuildContext context, WidgetRef ref) {
+    final files = ref.watch(filesWaitingProvider);
+    if (files.isEmpty) return const SizedBox.shrink();
+    final totalSize = files.fold<int>(0, (sum, f) => sum + f.size);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      margin: const EdgeInsets.all(16),
+      child: AdaptiveListTile(
+          backgroundColor: isApple()
+              ? CupertinoColors.systemBrown
+                  .resolveFrom(
+                    context,
+                  )
+                  .withValues(alpha: 0.1)
+              : Theme.of(context).colorScheme.primaryContainer,
+          leading: const Icon(Icons.folder),
+          title: Text("Files Waiting: ${files.length}"),
+          subtitle: Text("Total Size: ${formatBytes(totalSize)}"),
+          onTap: () {
+            var height = MediaQuery.of(context).size.height * 0.9;
+            if (height > 900) {
+              height = height * 0.7;
+            }
+
+            AdaptiveModalPopup(
+              maxWidth: 800,
+              height: height,
+              child: const FilesWaitingView(),
+            ).show(context);
+          },
+          trailing: const AdaptiveListTileChevron()),
     );
   }
 
@@ -685,7 +753,8 @@ class _MainViewState extends ConsumerState<MainView> {
       data: (state) {
         if (state.browseToURL != null) {
           // Apple user to choose manually open the URL or sign in with apple.
-          if (!isApple()) _setAutoLaunchUrl(state.browseToURL!);
+          // AndroidTV shows a login QR code instead.
+          if (!isApple() && !isAndroidTV) _setAutoLaunchUrl(state.browseToURL!);
           _waitingForURL = false;
         }
         if (state.vpnState == VpnState.connecting ||
@@ -730,7 +799,16 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
             ),
             const AdaptiveLoadingWidget(),
-            _cancelAndRetryButton,
+            AdaptiveButton(
+              width: 250,
+              onPressed: () => _resetIpnStateNotifier(),
+              child: const Text('Cancel and Retry'),
+            ),
+            AdaptiveButton(
+              width: 250,
+              onPressed: () => _startSignin(context, ref),
+              child: const Text('Start Signin'),
+            ),
             const HealthWarningList(color: CupertinoColors.systemBackground),
           ],
         ),
@@ -757,11 +835,6 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildNotRunningView(
       BuildContext context, WidgetRef ref, IpnState state) {
-    _logger.d(
-      "Building not running view: state="
-      "${state.backendState.name} ${state.vpnState.name}",
-    );
-
     if (state.backendState == BackendState.needsMachineAuth) {
       return _buildAuthRequiredView(
         context,
@@ -793,13 +866,6 @@ class _MainViewState extends ConsumerState<MainView> {
     return _buildConnectingView(
       context,
       state.vpnState != VpnState.disconnecting,
-    );
-  }
-
-  Widget get _cancelAndRetryButton {
-    return AdaptiveButton(
-      onPressed: () => _resetIpnStateNotifier(),
-      child: const Text('Cancel and Retry'),
     );
   }
 
@@ -1277,6 +1343,7 @@ class _MainViewState extends ConsumerState<MainView> {
           const SizedBox(height: 16),
           if (!_waitingForURL)
             AdaptiveButton(
+              autofocus: true,
               filled: true,
               onPressed: () => _startSignin(context, ref),
               child: const Text('Start Signin'),
@@ -1325,7 +1392,52 @@ class _MainViewState extends ConsumerState<MainView> {
             ),
           ],
         ],
-        if (loginURL != null && !_canSignInWithAppleInApp) ...[
+        if (loginURL != null && isAndroidTV) ...[
+          const SizedBox(height: 16),
+          Text(
+            "Please scan the QR code with your phone to sign in.",
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.apply(
+                  color: isApple()
+                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                      : null,
+                ),
+          ),
+          const SizedBox(height: 16),
+          AdaptiveButton(
+              autofocus: true,
+              filled: true,
+              onPressed: () async {
+                _showingSigninQRCode = true;
+                await showDialog(
+                  context: context,
+                  builder: (c) {
+                    return AlertDialog(
+                      title: const Text("Sign in with QR Code"),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        spacing: 16,
+                        children: [
+                          Text(
+                            "Scan this QR code with your phone to sign in "
+                            "at $loginURL.",
+                          ),
+                          QrCodeImage(loginURL),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(c),
+                          child: const Text("Close"),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+              child: const Text("Show Signin QR Code")),
+        ],
+        if (loginURL != null && !isAndroidTV && !_canSignInWithAppleInApp) ...[
           urlLaunched == loginURL
               ? const AdaptiveLoadingWidget()
               : Text("$_launchCountDown seconds until auto-launch"),

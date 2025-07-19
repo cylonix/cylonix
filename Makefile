@@ -4,8 +4,12 @@ app-icons:
 	dart run flutter_launcher_icons
 
 config:
+ifeq ($(OS),Windows_NT)
+	powershell new-item .env.local
+else
 	touch .env.local
-	cd scripts; sh .//generate_local_config.sh
+	cd scripts; sh ./generate_local_config.sh
+endif
 
 models:
 	dart run build_runner build --delete-conflicting-outputs
@@ -35,15 +39,6 @@ subver:
 	@echo "platform is ${OS} date ${date} user ${user} ${branch}"
 	@echo "sub version is ${SUB_VERSION}"
 
-linux chrome windows macos:
-	flutter run -v -d $@ ${DART_DEFINES}
-
-ios:
-	flutter run ${DART_DEFINES}
-
-ios-release:
-	flutter run --release ${DART_DEFINES}
-
 # build package
 build=flutter build -v $1 ${DART_DEFINES} $2
 
@@ -65,37 +60,33 @@ aab:
 # please use the Xcode project
 
 # windows build:
-NSIS_CMD="C:\Program Files (x86)\NSIS\makensis.exe"
 SIGN_CMD=signtool.exe
-PFX_PATH="tools\packaging\windows\cylonix_package_TemporaryKey.pfx"
-EXE_PATH="tools\packaging\windows\cylonix_install.exe"
+EXE_PATH="windows\installer\bin\CylonixInstaller.msi"
+
+# To be executed in the wsl terminal
+windows_cylonixd:
+	cd ./tailscale && BUILD_NUMBER=${BUILD_NUMBER} GOOS=windows GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscaled 
+	cd ./tailscale && BUILD_NUMBER=${BUILD_NUMBER} GOOS=windows GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscale
+	mv ./tailscale/tailscaled.exe windows/installer/cylonixd.exe
+	mv ./tailscale/tailscale.exe windows/installer/cylonixc.exe
+# To be executed in the cmd or powershell terminal
 build_windows:
-	$(call build,windows)
-copy_cylonixd_exe=copy ".\tailscale\build\windows\$1\release\tailscaled.exe" ".\tools\packaging\windows\$2\cylonixd.exe"
-copy_cylonixc_exe=copy ".\tailscale\build\windows\$1\release\tailscale.exe" ".\tools\packaging\windows\$2\cylonixc.exe"
-pack_nsis=cd tools\packaging\windows && ${NSIS_CMD} \
-	-DPRODUCT_SUB_VERSION=${SUB_VERSION} \
-	-DPRODUCT_PUBLISHER_EN=${PUBLISHER_EN} \
-	-DPRODUCT_WEB_SITE=${PUBLISHER_WEBSITE} \
-	-DWIN32=$2 $1
+	flutter build windows --release
 pack_windows:
-	$(call copy_cylonixd_exe,amd64,cylonixd)
-	$(call copy_cylonixc_exe,amd64,cylonixd)
-	$(call pack_nsis,cylonix_ch.nsi)
+	cd .\windows\installer && powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+# Requires WiX Toolset to be installed and sign scripts be to be setup.
+# Both signengine.bat and sign.bat should be provisioned in the windows\installer directory.
+sign_windows_exe:
+	wix burn detach windows\installer\bin\CylonixSetup.exe -engine windows\installer\bin\burnengine.exe
+	.\windows\installer\signengine.bat
+	wix burn reattach windows\installer\bin\CylonixSetup.exe -engine windows\installer\bin\burnengine.exe -o windows\installer\bin\CylonixSetup.exe
+	.\windows\installer\sign.bat
+
 sign_windows:
 	${SIGN_CMD} sign /tr http://timestamp.sectigo.com /td sha256 /fd sha256 /a ${EXE_PATH}
 install_windows:
 	$(shell powershell ${EXE_PATH})
-
-copy_windows_cylonixd:
-	$(call copy_cylonixd_exe,amd64,cylonixd)
-	$(call copy_cylonixc_exe,amd64,cylonixd)
-pack_windows_cli: copy_windows_cylonixd
-	$(call pack_nsis,cylonix_cli_ch.nsi)
-pack_win32_cli:
-	$(call copy_cylonixd_exe,386,cylonixd)
-	$(call copy_cylonixc_exe,386,cylonixd)
-	$(call pack_nsis,cylonix_cli_ch.nsi,win32)
 
 # docker builds
 GO_COMMIT_ID=$(shell cat tailscale/go.toolchain.rev)

@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import '../models/ipn.dart';
+import '../models/platform.dart';
 import '../utils/utils.dart';
+import 'tv_widgets.dart';
 
 class AdaptiveSearchBar extends StatelessWidget {
   final String placeholder;
@@ -148,6 +150,14 @@ class AdaptiveOnlineIcon extends Icon {
         );
 }
 
+Color focusedButtonColor(BuildContext context, Color color) {
+  return HSLColor.fromColor(color)
+      .withLightness(
+        (HSLColor.fromColor(color).lightness * 1.2).clamp(0.0, 1.0),
+      )
+      .toColor();
+}
+
 class AdaptiveButton extends StatelessWidget {
   final VoidCallback onPressed;
   final Widget child;
@@ -155,6 +165,7 @@ class AdaptiveButton extends StatelessWidget {
   final bool textButton;
   final bool small;
   final bool large;
+  final bool autofocus;
   final double? width;
   final double? height;
   final EdgeInsetsGeometry? padding;
@@ -164,6 +175,7 @@ class AdaptiveButton extends StatelessWidget {
     this.textButton = false,
     this.small = false,
     this.large = false,
+    this.autofocus = false,
     this.width,
     this.height,
     this.padding,
@@ -229,8 +241,20 @@ class AdaptiveButton extends StatelessWidget {
         child: child,
       );
     }
+    if (isAndroidTV) {
+      return TVButton(
+        autofocus: autofocus,
+        onPressed: onPressed,
+        child: child,
+        width: width,
+        height: height,
+        filled: filled,
+        padding: padding,
+      );
+    }
     return SizedBox(
       width: width,
+      height: height,
       child: filled
           ? FilledButton(
               onPressed: onPressed,
@@ -298,9 +322,11 @@ class AdaptiveLoadingWidget extends StatelessWidget {
                     Size(maxWidth!, maxWidth!),
                   )
                 : null,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              color ?? Theme.of(context).primaryColor,
-            ),
+            valueColor: color != null
+                ? AlwaysStoppedAnimation<Color>(
+                    color!,
+                  )
+                : null,
           );
   }
 }
@@ -656,14 +682,16 @@ class AdaptiveModalPopup extends StatelessWidget {
   final Widget child;
   final double? height;
   final double? maxWidth;
+  final EdgeInsetsGeometry? padding;
   final VoidCallback? onDismiss;
 
   const AdaptiveModalPopup({
     super.key,
-    required this.child,
     this.height,
     this.maxWidth,
+    this.padding,
     this.onDismiss,
+    required this.child,
   });
 
   @override
@@ -675,9 +703,9 @@ class AdaptiveModalPopup extends StatelessWidget {
             : Theme.of(context).colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      width: maxWidth ?? double.infinity,
+      width: double.infinity,
       height: height ?? MediaQuery.of(context).size.height * 0.7,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: padding,
       margin: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
@@ -694,7 +722,10 @@ class AdaptiveModalPopup extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: child,
+              child: SizedBox(
+                width: maxWidth ?? double.infinity,
+                child: child,
+              ),
             ),
           ],
         ),
@@ -711,6 +742,7 @@ class AdaptiveModalPopup extends StatelessWidget {
     } else {
       await showModalBottomSheet(
         constraints: const BoxConstraints(
+          minWidth: double.infinity,
           maxWidth: double.infinity,
         ),
         isScrollControlled: true,
@@ -849,6 +881,68 @@ class AdaptiveGroupedHeader extends StatelessWidget {
   }
 }
 
+class AdaptiveGroupedFooter extends StatelessWidget {
+  final String title;
+
+  const AdaptiveGroupedFooter(
+    this.title, {
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: adaptiveGroupedFooterStyle(context),
+    );
+  }
+}
+
 Color? appleScaffoldBackgroundColor(BuildContext context) {
   return CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context);
+}
+
+IconData osIcon(String os) {
+  switch (os.toLowerCase()) {
+    case 'android':
+      return Icons.android;
+    case 'ios':
+      return Icons.phone_iphone;
+    case 'macos':
+      return Icons.laptop_mac;
+    case 'windows':
+      return Icons.laptop_windows;
+    case 'linux':
+      return Icons.computer;
+    default:
+      return isApple() ? CupertinoIcons.device_desktop : Icons.computer;
+  }
+}
+
+class LoadingIndicator extends StatelessWidget {
+  final Widget child;
+  final bool isLoading;
+
+  const LoadingIndicator({
+    super.key,
+    required this.child,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        child,
+        if (isLoading) ...[
+          const Opacity(
+            opacity: 0.6,
+            child: ModalBarrier(dismissible: false, color: Colors.black),
+          ),
+          const AdaptiveLoadingWidget(),
+        ],
+      ],
+    );
+  }
 }

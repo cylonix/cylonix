@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Include>
+  <!-- Product Information -->
+  <?define ProductName = "Cylonix Node Agent" ?>
+  <?define ProductVersion = "1.0.8" ?>
+  <?define ProductManufacturer = "EZBLOCK INC." ?>
+  <?define ProductUpgradeCode = "{8ECC1F1E-F887-41C3-801C-4D21EA6B6F47}" ?>
+
+  <!-- GUIDs -->
+  <?define MainExecutableGuid = "{6BB56A2C-43F1-45DE-AAA8-657668C318BD}" ?>
+  <?define ShareLauncherExecutableGuid = "{62239083-71BB-4201-BCF9-4F850F007FD8}" ?>
+  <?define RuntimeLibrariesGuid = "{12F4CE2E-3E57-460B-B7F2-9D817EA83B99}" ?>
+  <?define DocumentationGuid = "{DC4E8045-C708-4862-AEE7-8E1285580782}" ?>
+  <?define FlutterDataGuid = "{212F9E72-F628-46C6-9A73-835ACE876A4E}" ?>
+  <?define CylonixdExecutableGuid = "{1B89975C-8F82-4164-A63A-8140F338C0CD}" ?>
+  <?define ApplicationShortcutsGuid = "{17B9E8B9-EC2C-4140-95F8-5E92E02EF631}" ?>
+  <?define FirewallRulesGuid = "{C4684057-865A-40F6-9297-9BA1FB2199A3}" ?>
+  <?define RegistryEntriesGuid = "{55AA3548-EB1A-4056-BE37-5F9CB96E21EE}" ?>
+
+  <!-- Directory Paths -->
+  <?define FlutterReleaseDir = "..\..\build\windows\x64\runner\Release" ?>
+  <?define FlutterDataDir = "..\..\build\windows\x64\runner\Release\data" ?>
+  <?define CylonixdDir = "." ?>
+
+  <!-- Service Information -->
+  <?define ServiceName = "Cylonixd" ?>
+  <?define ServiceDisplayName = "Cylonix Service" ?>
+  <?define ServiceDescription = "Cylonix Service" ?>
+
+  <!-- Registry Keys -->
+  <?define ProductRegKey = "SOFTWARE\Cylonix\CylonixClient" ?>
+  <?define UninstallRegKey = "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(var.ProductUpgradeCode)" ?>
+</Include>

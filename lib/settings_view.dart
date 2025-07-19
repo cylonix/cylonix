@@ -250,7 +250,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       isApple() ? null : Theme.of(context).textTheme.titleLarge,
                 ),
                 children: [
-                  AdaptiveListTile(
+                  AdaptiveListTile.notched(
                     title: const Text('DNS Settings'),
                     subtitle: Text(corpDNSEnabled
                         ? 'Using Cylonix DNS'

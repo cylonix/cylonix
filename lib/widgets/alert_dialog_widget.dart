@@ -1,3 +1,4 @@
+import 'package:cylonix/widgets/adaptive_widgets.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'dialog_action.dart';
@@ -19,6 +20,7 @@ class AlertDialogWidget extends StatelessWidget {
   final void Function()? onCancel;
   final void Function()? onOK;
   final bool showOK;
+  final bool showSuccessIcon;
 
   const AlertDialogWidget({
     required this.title,
@@ -36,6 +38,7 @@ class AlertDialogWidget extends StatelessWidget {
     this.onCancel,
     this.onOK,
     this.showOK = true,
+    this.showSuccessIcon = false,
   }) : super(key: key);
 
   Future<bool?> show(BuildContext context) async {
@@ -80,7 +83,12 @@ class AlertDialogWidget extends StatelessWidget {
           controller: ScrollController(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            spacing: 8,
             children: [
+              if (showSuccessIcon)
+                AdaptiveSuccessIcon(
+                  size: 48,
+                ),
               if (content != null)
                 Text(
                   content!,
@@ -168,6 +176,7 @@ Future<bool?> showAlertDialog(
   String? cancelText,
   Widget? otherActions,
   bool showCancel = false,
+  bool showSuccessIcon = false,
   void Function()? onPressOK,
   void Function()? onAdditionalAskedPressed,
 }) {
@@ -185,5 +194,6 @@ Future<bool?> showAlertDialog(
     onCancel: showCancel ? () => {} : null,
     onOK: onPressOK,
     onAdditionalAskPressed: onAdditionalAskedPressed,
+    showSuccessIcon: showSuccessIcon,
   ).show(context);
 }

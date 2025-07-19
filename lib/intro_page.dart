@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:introduction_screen/introduction_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:introduction_screen/introduction_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'models/platform.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
+import 'widgets/tv_widgets.dart';
 
 class IntroPage extends ConsumerStatefulWidget {
   const IntroPage({Key? key}) : super(key: key);
@@ -109,6 +111,10 @@ class _State extends ConsumerState<IntroPage> {
   }
 
   void _launchURL(String url) async {
+    if (isAndroidTV) {
+      await showQrCodeForURL(context, url);
+      return;
+    }
     try {
       if (!await launchUrl(Uri.parse(url))) {
         throw Exception('Could not launch $url');
@@ -313,7 +319,7 @@ class _State extends ConsumerState<IntroPage> {
     var maxHeight = 0.0;
     final height = MediaQuery.of(context).size.height;
     if (height <= 1000) {
-      _logger.w("Screen height is too small: $height. Using minimum height.");
+      //_logger.w("Screen height is too small: $height. Using minimum height.");
     } else if (height < 1200) {
       maxHeight = 600;
     } else {

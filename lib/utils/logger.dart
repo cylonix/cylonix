@@ -3,26 +3,34 @@ import '../services/ipn.dart';
 
 class Logger {
   final String tag;
-  final _ipnService = IpnService();
+  final bool defaultSendToIpn;
   final _logger = AppLog.logger;
-  Logger({required this.tag});
-  void d(String log) {
+  Logger({required this.tag, this.defaultSendToIpn = true});
+  void d(String log, {bool? sendToIpn}) {
     _logger.d("$tag: $log");
-    _ipnService.sendLog("[APP] [DEBUG] [$tag] $log");
+    if (sendToIpn ?? defaultSendToIpn) {
+      IpnService.sendLog("[APP] [DEBUG] [$tag] $log");
+    }
   }
 
-  void w(String log) {
+  void w(String log, {bool? sendToIpn}) {
     _logger.w("$tag: $log");
-    _ipnService.sendLog("[APP] [WARNING] [$tag] $log");
+    if (sendToIpn ?? defaultSendToIpn) {
+      IpnService.sendLog("[APP] [WARNING] [$tag] $log", priority: true);
+    }
   }
 
-  void i(String log) {
+  void i(String log, {bool? sendToIpn}) {
     _logger.i("$tag: $log");
-    _ipnService.sendLog("[APP] [INFO] [$tag] $log");
+    if (sendToIpn ?? defaultSendToIpn) {
+      IpnService.sendLog("[APP] [INFO] [$tag] $log");
+    }
   }
 
-  void e(String log) {
+  void e(String log, {bool? sendToIpn}) {
     _logger.e("$tag: $log");
-    _ipnService.sendLog("[APP] [ERROR] [$tag] $log");
+    if (sendToIpn ?? defaultSendToIpn) {
+      IpnService.sendLog("[APP] [ERROR] [$tag] $log", priority: true);
+    }
   }
 }

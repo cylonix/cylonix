@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension"
+     xmlns:fire="http://schemas.microsoft.com/wix/FirewallExtension">
+
+  <?include Variables.wxs ?>
+
+  <Product Id="*"
+           Name="$(var.ProductName)"
+           Language="1033"
+           Version="$(var.ProductVersion)"
+           Manufacturer="$(var.ProductManufacturer)"
+           UpgradeCode="$(var.ProductUpgradeCode)">
+
+    <Package InstallerVersion="300"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="$(var.ProductName) Installer"
+             Comments="Cylonix Node Agent Application Installer"
+             Manufacturer="$(var.ProductManufacturer)" />
+
+    <Icon Id="CylonixIcon" SourceFile="cylonix.ico"/>
+    <Property Id="ARPPRODUCTICON" Value="CylonixIcon"/>
+
+    <Binary Id="BannerBitmap" SourceFile="cylonix_banner.bmp" />
+    <Binary Id="DialogBitmap" SourceFile="cylonix_dialog.bmp" />
+    <!-- Set WixVariable for custom bitmaps -->
+    <WixVariable Id="WixUIBannerBmp" Value="cylonix_banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="cylonix_dialog.bmp" />
+
+    <!-- Upgrade handling -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of $(var.ProductName) is already installed."
+                  Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Features -->
+    <Feature Id="ProductFeature" Title="$(var.ProductName)" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentGroupRef Id="CylonixdService" />
+      <ComponentGroupRef Id="FlutterDataFiles" />
+      <ComponentGroupRef Id="FlutterRuntimeFiles" />
+      <ComponentRef Id="ApplicationShortcuts" />
+      <ComponentRef Id="FirewallRules" />
+      <ComponentRef Id="RegistryEntries" />
+      <ComponentRef Id="ShareTarget" />
+    </Feature>
+
+    <!-- Directory Structure -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="Cylonix">
+          <Directory Id="CYLONIXDFOLDER" Name="cylonixd" />
+          <Directory Id="FlutterDataFolder" Name="data" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Cylonix" />
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <!-- UI Configuration -->
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- License file -->
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+  </Product>
+</Wix>

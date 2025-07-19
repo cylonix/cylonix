@@ -51,7 +51,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   MDMSettingsService get mdmSettings => _mdmSettings;
 
   Future<void> _initialize() async {
-    if (!mounted) return;
     _logger.d("Initializing IpnStateNotifier. Set ipn state to connecting");
     state = const AsyncValue.data(IpnState(vpnState: VpnState.connecting));
 
@@ -62,14 +61,24 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         _notificationQueue.add(notification);
         _processNextNotification();
       });
-      await _ipnService.initializeEngine();
-
-      if (!mounted) return;
+      await _ipnService.initializeEngine(_onError);
     } catch (error, stack) {
-      _logger.e("Failed to initialize engine: $error, stackTrace: $stack");
-      if (!mounted) return;
-      state = AsyncValue.error(error, stack);
+      _onError(error, stack);
     }
+  }
+
+  void _onError(Object error, StackTrace stack) {
+    _logger.e("Error in IpnStateNotifier: $error, stackTrace: $stack");
+    var e = error;
+    if (Platform.isLinux) {
+      if (error
+          .toString()
+          .contains("OS Error: No such file or directory, errno = 2")) {
+        e = Exception("Cylonix backend initialization failed. "
+            "Please ensure the Cylonixd service is running.");
+      }
+    }
+    state = AsyncValue.error(e, stack);
   }
 
   Future<void> _processNextNotification() async {
@@ -166,12 +175,16 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         final filteredWarnings = Map<String, UnhealthyState?>.from(warnings);
         // Remove specific warnings that are not relevant for mobile or macOS
         // which has the backend bundled in the app.
-        filteredWarnings.removeWhere(
-            (key, warning) =>
+        filteredWarnings.removeWhere((key, warning) =>
             warning?.warnableCode == "update-available" ||
             warning?.warnableCode == "is-using-unstable-version");
         health = HealthState(warnings: filteredWarnings);
       }
+    }
+
+    List<AwaitingFile>? awaitingFiles;
+    if (notification.filesWaiting != null) {
+      awaitingFiles = await getWaitingFiles();
     }
 
     // Create new state or update existing one
@@ -186,8 +199,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           selfNode: peerCategorizer.selfNode ?? currentState.selfNode,
           browseToURL: browseToURL,
           errMessage: notification.errMessage ?? currentState.errMessage,
-          outgoingFiles:
-              notification.outgoingFiles ?? currentState.outgoingFiles,
+          outgoingFiles: notification.outgoingFiles,
+          filesWaiting: awaitingFiles,
           loginProfiles: ((loginProfiles ?? []).isNotEmpty
                   ? loginProfiles
                   : currentState.loginProfiles) ??
@@ -206,6 +219,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           errMessage: notification.errMessage,
           loginProfiles: loginProfiles ?? [],
           outgoingFiles: notification.outgoingFiles,
+          filesWaiting: awaitingFiles,
         );
 
     if (newState.loggedInUser != null) {
@@ -375,8 +389,14 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
   Future<void> addProfile(String? controlURL) async {
     try {
+      await _ipnService.addProfile();
+    } catch (error, stack) {
+      _logger.e("Failed to add profile: $error, stackTrace: $stack");
+      rethrow;
+    }
+    try {
       _logger.d(
-        "Adding profile with controlURL: $controlURL. "
+        "Added profile with controlURL: $controlURL. "
         "Set ipn state to connecting",
       );
       state = AsyncValue.data(
@@ -384,7 +404,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           vpnState: VpnState.connecting,
         ),
       );
-      await _ipnService.addProfile();
       await _ipnService.login(controlURL: controlURL);
       await _ipnService.startVpn();
     } catch (error, stack) {
@@ -580,6 +599,62 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       _logger
           .e("Failed to confirm device connection: $error, stackTrace: $stack");
       state = AsyncValue.error(error, stack);
+    }
+  }
+
+  Future<void> editPrefs(MaskedPrefs prefs) async {
+    _logger.d("Editing preferences: $prefs");
+    try {
+      final current = await _ipnService.editPrefs(prefs);
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(prefs: current),
+      );
+    } catch (error, stack) {
+      _logger.e("Failed to edit preferences: $error, stackTrace: $stack");
+      state = AsyncValue.error(error, stack);
+    }
+  }
+
+  Future<List<AwaitingFile>?> getWaitingFiles() async {
+    try {
+      return await _ipnService.getWaitingFiles();
+    } catch (error, stack) {
+      _logger.e("Failed to get awaiting files: $error, stackTrace: $stack");
+      state = AsyncValue.error(error, stack);
+      return null;
+    }
+  }
+
+  Future<void> saveFile(String file, String path) async {
+    await _ipnService.saveFile(file, path);
+  }
+
+  Future<String> getFilePath(String file) async {
+    return await _ipnService.getFilePath(file);
+  }
+
+  Future<void> deleteFile(String file) async {
+    await _ipnService.deleteFile(file);
+  }
+
+  Future<void> setRunAsExitNode(bool isOn) async {
+    _logger.d("Setting run as exit node: $isOn");
+    final on = isOn ? "on" : "off";
+    try {
+      final prefs =
+          await _ipnService.setRunningExitNode(state.valueOrNull?.prefs, isOn);
+      _logger.d(
+        "Run as exit node set to $on. New prefs: $prefs",
+        sendToIpn: false,
+      );
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(prefs: prefs),
+      );
+    } catch (error, stack) {
+      final msg = "Failed to set run as exit node $on: $error";
+      _logger.e(msg);
+      state = AsyncValue.error(error, stack);
+      throw Exception(msg);
     }
   }
 }

@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ipn.dart';
 import 'providers/exit_node.dart';
+import 'providers/ipn.dart';
+import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
+import 'widgets/alert_dialog_widget.dart';
 
 class ExitNodePicker extends ConsumerWidget {
   const ExitNodePicker({
@@ -17,17 +20,11 @@ class ExitNodePicker extends ConsumerWidget {
   final VoidCallback? onNavigateBackHome;
   final VoidCallback? onNavigateToMullvad;
   final VoidCallback onNavigateToRunAsExitNode;
+  static final _logger = Logger(tag: "ExitNodePicker");
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isLoading = ref.watch(exitNodeLoadingProvider);
     final model = ref.watch(exitNodePickerProvider);
-
-    if (isLoading) {
-      return isApple()
-          ? const CupertinoActivityIndicator()
-          : const CircularProgressIndicator();
-    }
 
     return isApple()
         ? _buildCupertinoView(context, ref, model)
@@ -36,6 +33,7 @@ class ExitNodePicker extends ConsumerWidget {
 
   Widget _buildCupertinoView(
       BuildContext context, WidgetRef ref, ExitNodeState model) {
+    final isLoading = ref.watch(exitNodeLoadingProvider);
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
@@ -48,12 +46,16 @@ class ExitNodePicker extends ConsumerWidget {
                 onPressed: onNavigateBackHome,
               ),
       ),
-      child: _buildContent(context, ref, model, true),
+      child: LoadingIndicator(
+        isLoading: isLoading,
+        child: _buildContent(context, ref, model, true),
+      ),
     );
   }
 
   Widget _buildMaterialView(
       BuildContext context, WidgetRef ref, ExitNodeState model) {
+    final isLoading = ref.watch(exitNodeLoadingProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Choose Exit Node'),
@@ -64,50 +66,72 @@ class ExitNodePicker extends ConsumerWidget {
                 onPressed: onNavigateBackHome,
               ),
       ),
-      body: _buildContent(context, ref, model, false),
+      body: LoadingIndicator(
+        isLoading: isLoading,
+        child: _buildContent(context, ref, model, false),
+      ),
     );
   }
 
   Widget _buildContent(BuildContext context, WidgetRef ref, ExitNodeState model,
       bool isCupertino) {
-    var children = [
-      if (model.forcedExitNodeId != null)
-        _buildManagedByOrgText(
-            context, model.managedByOrganization, isCupertino)
-      else
-        ExitNodeItem(
-          node: ExitNode(
-            label: 'None',
-            online: true,
-            selected: !model.anyActive,
-          ),
-          onTap: () =>
-              ref.read(exitNodePickerProvider.notifier).setExitNode(null),
-          isCupertino: isCupertino,
-        ),
-      if (model.showRunAsExitNode)
-        _buildRunAsExitNodeItem(context, ref, model, isCupertino),
-      ...model.tailnetExitNodes.map(
-        (node) => ExitNodeItem(
-          node: node,
-          onTap: () =>
-              ref.read(exitNodePickerProvider.notifier).setExitNode(node),
-          isCupertino: isCupertino,
-        ),
-      ),
-      if (model.mullvadExitNodeCount > 0) ...[
-        _buildMullvadItem(context, model, isCupertino),
-      ] else if (model.shouldShowMullvadInfo) ...[
-        _buildMullvadInfoItem(context, isCupertino),
-      ],
-      if (!model.isLanAccessHidden) ...[
-        _buildAllowLanAccess(context, ref, model, isCupertino),
-      ],
-    ];
-    children = [
+    final exitNodeID = ref.watch(exitNodeIDProvider);
+    final netmap = ref.watch(netmapProvider);
+    final exitNodeInNetmap = exitNodeID != null &&
+        netmap?.peers?.any((peer) => peer.stableID == exitNodeID) == true;
+    final children = [
       AdaptiveListSection.insetGrouped(
-        children: children,
+        header: const Text("Exit Node Settings"),
+        footer: const Text(
+          "Choose an exit node to route your traffic through.",
+        ),
+        children: [
+          if (model.forcedExitNodeID != null)
+            _buildManagedByOrgText(
+              context,
+              model.managedByOrganization,
+              isCupertino,
+            )
+          else
+            ExitNodeItem(
+              node: ExitNode(
+                label: 'None',
+                online: true,
+                selected: !model.anyActive && exitNodeID == null,
+              ),
+              onTap: () => _setExitNode(context, ref, null),
+            ),
+          if (!exitNodeInNetmap && exitNodeID != null)
+            ExitNodeItem(
+              node: ExitNode(
+                id: exitNodeID,
+                label: "$exitNodeID (Not connected! All Traffic is dropped)",
+                online: false,
+                selected: true,
+              ),
+            ),
+          ...model.tailnetExitNodes.map(
+            (node) => ExitNodeItem(
+              node: node,
+              onTap: () => _setExitNode(context, ref, node),
+            ),
+          ),
+          if (model.mullvadExitNodeCount > 0) ...[
+            _buildMullvadItem(context, model, isCupertino),
+          ] else if (model.shouldShowMullvadInfo) ...[
+            _buildMullvadInfoItem(context, isCupertino),
+          ],
+          if (!model.isLanAccessHidden) ...[
+            _buildAllowLanAccess(context, ref, model, isCupertino),
+          ],
+        ],
       ),
+      if (model.showRunAsExitNode)
+        AdaptiveListSection.insetGrouped(
+          children: [
+            _buildRunAsExitNodeItem(context, ref, model, isCupertino),
+          ],
+        ),
     ];
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -119,6 +143,21 @@ class ExitNodePicker extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _setExitNode(BuildContext context, WidgetRef ref, ExitNode? node) async {
+    try {
+      await ref.read(exitNodePickerProvider.notifier).setExitNode(node);
+    } catch (e) {
+      _logger.e("Failed to set exit node: $e");
+      if (context.mounted) {
+        await showAlertDialog(
+          context,
+          'Error',
+          'Failed to set exit node: $e',
+        );
+      }
+    }
   }
 
   Widget _buildManagedByOrgText(
@@ -141,9 +180,31 @@ class ExitNodePicker extends ConsumerWidget {
   Widget _buildRunAsExitNodeItem(BuildContext context, WidgetRef ref,
       ExitNodeState model, bool isCupertino) {
     final widget = AdaptiveListTile(
+      leading: model.isRunningExitNodePendingApproval
+          ? Icon(
+              isApple()
+                  ? CupertinoIcons.exclamationmark_triangle
+                  : Icons.pending,
+              color: Colors.orange,
+            )
+          : null,
       title: const Text('Run as exit node'),
-      trailing: const CupertinoListTileChevron(),
-      onTap: onNavigateToRunAsExitNode,
+      subtitle: model.isRunningExitNode
+          ? null
+          : Text(
+              model.isRunningExitNodePendingApproval
+                  ? 'Pending approval from your network administrator'
+                  : 'Allow this device to act as an exit node for your network',
+            ),
+      trailing: model.isRunningExitNodePendingApproval
+          ? TextButton(
+              onPressed: () => _setRunAsExitNode(context, ref, false),
+              child: const Text('Cancel'),
+            )
+          : const CupertinoListTileChevron(),
+      onTap: model.isRunningExitNodePendingApproval
+          ? null
+          : onNavigateToRunAsExitNode,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -164,6 +225,21 @@ class ExitNodePicker extends ConsumerWidget {
           ),
       ],
     );
+  }
+
+  void _setRunAsExitNode(BuildContext context, WidgetRef ref, bool isOn) async {
+    try {
+      await ref.read(exitNodePickerProvider.notifier).setRunAsExitNode(isOn);
+    } catch (e) {
+      _logger.e("Failed to set run as exit node: $e");
+      if (context.mounted) {
+        await showAlertDialog(
+          context,
+          'Error',
+          'Failed to set run as exit node: $e',
+        );
+      }
+    }
   }
 
   Widget _buildMullvadItem(
@@ -227,20 +303,39 @@ class ExitNodePicker extends ConsumerWidget {
       return AdaptiveListTile.notched(
         leading: const Icon(CupertinoIcons.wifi),
         title: const Text('Allow LAN Access'),
+        subtitle: const Text(
+          'Allow access to your local network why using an exit node',
+        ),
         trailing: CupertinoSwitch(
           value: model.allowLANAccess,
-          onChanged: (value) =>
-              ref.read(exitNodePickerProvider.notifier).toggleAllowLANAccess(),
+          onChanged: (value) => _toggleAllowLANAccess(context, ref),
         ),
       );
     }
 
     return SwitchListTile(
       title: const Text('Allow LAN Access'),
+      subtitle: const Text(
+        'Allow access to your local network why using an exit node',
+      ),
       value: model.allowLANAccess,
-      onChanged: (value) =>
-          ref.read(exitNodePickerProvider.notifier).toggleAllowLANAccess(),
+      onChanged: (value) => _toggleAllowLANAccess(context, ref),
     );
+  }
+
+  void _toggleAllowLANAccess(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(exitNodePickerProvider.notifier).toggleAllowLANAccess();
+    } catch (e) {
+      _logger.e("Failed to toggle LAN access: $e");
+      if (context.mounted) {
+        await showAlertDialog(
+          context,
+          'Error',
+          'Failed to toggle LAN access: $e',
+        );
+      }
+    }
   }
 }
 
@@ -248,22 +343,20 @@ class ExitNodeItem extends StatelessWidget {
   const ExitNodeItem({
     super.key,
     required this.node,
-    required this.onTap,
-    required this.isCupertino,
+    this.onTap,
   });
 
   final ExitNode node;
-  final VoidCallback onTap;
-  final bool isCupertino;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = node.online && !node.isRunningExitNode;
+    final enabled = node.online;
 
     return AdaptiveListTile.notched(
       leading: CircleAvatar(
         backgroundColor: node.online
-            ? isCupertino
+            ? isApple()
                 ? CupertinoColors.activeGreen.resolveFrom(context)
                 : Colors.green
             : null,
@@ -274,16 +367,31 @@ class ExitNodeItem extends StatelessWidget {
         ),
       ),
       title: Text(node.city.isEmpty ? node.label : node.city),
-      subtitle: !node.online ? const Text('Offline') : null,
+      subtitle: Text(
+        'Priority: ${node.priority} '
+        '${node.city.isEmpty ? '' : node.label}',
+      ),
       trailing: node.selected
           ? Padding(
               padding: const EdgeInsetsGeometry.only(right: 4),
-              child: Icon(
-                isCupertino ? CupertinoIcons.check_mark_circled : Icons.check,
-                size: 32,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 8,
+                children: [
+                  if (!node.online) const Text('Offline'),
+                  Icon(
+                    isApple() ? CupertinoIcons.check_mark_circled : Icons.check,
+                    size: 32,
+                  ),
+                ],
               ),
             )
-          : null,
+          : node.online
+              ? null
+              : const Padding(
+                  padding: EdgeInsetsGeometry.only(right: 4),
+                  child: Text('Offline'),
+                ),
       onTap: enabled ? onTap : null,
     );
   }

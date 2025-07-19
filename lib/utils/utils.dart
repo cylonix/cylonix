@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../models/platform.dart';
 
 const double baseHeight = 480;
 const double baseWidth = 1080;
@@ -26,6 +27,9 @@ bool isMediumScreen(BuildContext context) {
 }
 
 bool useNavigationRail(BuildContext context) {
+  if (isAndroidTV) {
+    return false; // Don't use navigation rail on Android TV
+  }
   return MediaQuery.of(context).size.width >= 800.0;
 }
 
@@ -118,7 +122,7 @@ bool isDesktop() {
   return !isMobile();
 }
 
-String formatBytes(int bytes, int decimals) {
+String formatBytes(int bytes, [int decimals = 2]) {
   if (bytes <= 0) return "";
   const suffixes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
   var i = (log(bytes) / log(1024)).floor();

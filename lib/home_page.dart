@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'about_view.dart';
 import 'custom_login_view.dart';
@@ -10,8 +11,11 @@ import 'main_view.dart';
 import 'models/ipn.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
+import 'providers/share_file.dart';
 import 'providers/theme.dart';
+import 'run_exit_node_view.dart';
 import 'settings_view.dart';
+import 'share_view.dart';
 import 'utils/applog.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
@@ -116,6 +120,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         return _peerDetailsView;
       case Page.permissions:
         return _permissionsView;
+      case Page.runExitNodeView:
+        return RunExitNodeView(
+          onNavigateBackToExitNodes: () => _selectPage(Page.exitNodes.value),
+        );
       default:
         return _mainViewWithRail;
     }
@@ -140,8 +148,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget get _exitNodesView {
     return ExitNodePicker(
       onNavigateBackHome: () => _selectPage(Page.mainView.value),
-      onNavigateToRunAsExitNode: () =>
-          Navigator.pushNamed(context, '/run-as-exit-node'),
+      onNavigateToRunAsExitNode: () => _selectPage(Page.runExitNodeView.value),
     );
   }
 
@@ -269,6 +276,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
           onNavigateToHome: () => _selectPage(Page.mainView.value),
           onNavigateToExitNodes: () => _selectPage(Page.exitNodes.value),
+          onNavigateToSendFiles: _sendFiles,
           onNavigateToHealth: () => _selectPage(Page.health.value),
           onNavigateToSettings: () => _selectPage(Page.settings.value),
           onNavigateToAbout: () => _selectPage(Page.about.value),
@@ -288,6 +296,37 @@ class _HomePageState extends ConsumerState<HomePage> {
         ),
       ],
     );
+  }
+
+  void _sendFiles() async {
+    _logger.d("Sending files initiated from HomePage");
+    final result = await FilePicker.platform.pickFiles(
+      dialogTitle: "Select files to send",
+      allowMultiple: true,
+      type: FileType.any,
+    );
+    if (result == null || result.files.isEmpty) {
+      _logger.d("No files selected for sending.");
+      return;
+    }
+    if (!mounted) {
+      _logger.w("HomePage is not mounted, cannot send files.");
+      return;
+    }
+    ref.read(transfersProvider.notifier).reset();
+    _logger.d("Files selected for sending: ${result.files.length}");
+    final height = MediaQuery.of(context).size.height * 0.9;
+    await AdaptiveModalPopup(
+      height: height,
+      maxWidth: 800,
+      child: ShareView(
+        paths: result.files.map((file) => file.path).nonNulls.toList(),
+        onCancel: () {
+          _logger.d("ShareView cancelled");
+          Navigator.of(context).pop();
+        },
+      ),
+    ).show(context);
   }
 
   Widget _makePage(Widget body) {
@@ -312,7 +351,8 @@ enum Page {
   customControl(6),
   about(7),
   perDetails(8),
-  permissions(9);
+  permissions(9),
+  runExitNodeView(10);
 
   const Page(this.value);
   final int value;

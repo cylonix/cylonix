@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import '../models/ipn.dart';
+import '../models/platform.dart';
 import '../providers/ipn.dart';
 import '../utils/utils.dart';
 import '../widgets/adaptive_widgets.dart';
@@ -48,11 +49,16 @@ class _PeerListState extends State<PeerList> {
           },
           child: Column(
             children: [
-              _buildSearchBar(context),
+              if (!isAndroidTV) _buildSearchBar(context),
               showNoResults
                   ? _buildNoResults(context)
                   : Expanded(
-                      child: _buildPeersList(context, filteredSets, ref),
+                      child: Padding(
+                        padding: const EdgeInsetsGeometry.symmetric(
+                          horizontal: 16,
+                        ),
+                        child: _buildPeersList(context, filteredSets, ref),
+                      ),
                     ),
             ],
           ),
@@ -139,7 +145,7 @@ class _PeerListState extends State<PeerList> {
   Color get _offlineColor =>
       isApple() ? CupertinoColors.systemGrey : Theme.of(context).disabledColor;
 
-  Widget userTitle(UserProfile? user) {
+  Widget _userTitle(UserProfile? user) {
     final style = isApple()
         ? TextStyle(color: CupertinoColors.label.resolveFrom(context))
         : null;
@@ -194,11 +200,22 @@ class _PeerListState extends State<PeerList> {
                       horizontal: 16.0,
                       vertical: 8.0,
                     ),
-                    centerTitle: !useNavigationRail(context),
-                    title: userTitle(peerSet.user),
+                    centerTitle: !useNavigationRail(context) && !isAndroidTV,
+                    title: _userTitle(peerSet.user),
                   ),
-                  actions: const [SizedBox.shrink()],
-                  pinned: true,
+                  actions: [
+                    isAndroidTV
+                        ? TextButton(
+                            onPressed: () => {},
+                            child: Text(
+                              peerSet.peers.length == 1
+                                  ? '1 device'
+                                  : '${peerSet.peers.length} devices',
+                            ),
+                          )
+                        : const SizedBox.shrink()
+                  ],
+                  pinned: !isAndroidTV,
                 ),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
@@ -206,45 +223,7 @@ class _PeerListState extends State<PeerList> {
                       final peer = peerSet.peers[index];
                       final online = (peer.online == true) ||
                           (peer.stableID == selfNode?.stableID && isConnected);
-                      return AdaptiveListTile(
-                        backgroundColor: Colors.transparent,
-                        title: Text(peer.name,
-                            style: isApple()
-                                ? null
-                                : Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w500)),
-                        subtitle: Text(
-                          peer.addresses.join(', '),
-                          style: isApple()
-                              ? null
-                              : Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(fontWeight: FontWeight.w300),
-                        ),
-                        leading: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (peer.isExitNode)
-                              Icon(
-                                isApple()
-                                    ? CupertinoIcons.arrow_up_right_circle
-                                    : Icons.exit_to_app,
-                                color: online ? _onlineColor : _offlineColor,
-                                size: 12,
-                              ),
-                            const SizedBox(width: 4),
-                            AdaptiveOnlineIcon(
-                              online: online,
-                              disabledColor: Theme.of(context).disabledColor,
-                            ),
-                          ],
-                        ),
-                        dense: true,
-                        onTap: () => widget.onPeerTap(peer),
-                      );
+                      return _buildPeer(peer, online);
                     },
                     childCount: peerSet.peers.length,
                   ),
@@ -252,6 +231,48 @@ class _PeerListState extends State<PeerList> {
               ],
             ),
       ],
+    );
+  }
+
+  Widget _buildPeer(Node peer, bool online) {
+    return AdaptiveListTile(
+      backgroundColor: Colors.transparent,
+      title: Text(peer.name,
+          style: isApple()
+              ? null
+              : Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w500)),
+      subtitle: Text(
+        peer.addresses.join(', '),
+        style: isApple()
+            ? null
+            : Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(fontWeight: FontWeight.w300),
+      ),
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (peer.isExitNode)
+            Icon(
+              isApple()
+                  ? CupertinoIcons.arrow_up_right_circle
+                  : Icons.exit_to_app,
+              color: online ? _onlineColor : _offlineColor,
+              size: 12,
+            ),
+          const SizedBox(width: 4),
+          AdaptiveOnlineIcon(
+            online: online,
+            disabledColor: Theme.of(context).disabledColor,
+          ),
+        ],
+      ),
+      dense: true,
+      onTap: () => widget.onPeerTap(peer),
     );
   }
 }

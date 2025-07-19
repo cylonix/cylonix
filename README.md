@@ -4,6 +4,11 @@
 
 Cylonix is an open source client application for the Cylonix Secure Access Service Edge (SASE) service. On devices, it runs a modified version of Tailscale™ (WireGuard-based mesh VPN) to provide secure, private connectivity.
 
+## System Diagram
+
+Please refer to [System Architecture](./system.md) for details.
+![System](./system.svg)
+
 ## Features
 
 - Exit Node as a Service  
@@ -36,4 +41,6 @@ Contributions welcome! See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 ## Trademarks
 
 “Tailscale” is a trademark of Tailscale Inc.  
-“WireGuard” is a registered trademark of Jason A. Donenfeld.  
+“WireGuard” is a registered trademark of Jason A. Donenfeld.
+"Cilium" is a registered trademark of Isovalent Inc.
+All other trademarks are property of their respective owners.

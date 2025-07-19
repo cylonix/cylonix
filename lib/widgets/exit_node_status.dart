@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
+import '../providers/exit_node.dart';
 import '../providers/ipn.dart';
 import '../utils/utils.dart';
 import 'adaptive_widgets.dart';
@@ -17,45 +18,25 @@ class ExitNodeStatusWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final nodeState = ref.watch(nodeStateProvider);
+    final exitNodeID = ref.watch(exitNodeIDProvider);
     final exitNode = ref.watch(exitNodeProvider);
     final managedByOrg = ref.watch(managedByOrganizationProvider);
+    final isRunningExitNode =
+        ref.watch(exitNodePickerProvider).isRunningExitNode;
 
-    return isApple()
-        ? _buildCupertinoContainer(context, nodeState, exitNode, managedByOrg)
-        : _buildMaterialContainer(context, nodeState, exitNode, managedByOrg);
-  }
-
-  Widget _buildMaterialContainer(
-    BuildContext context,
-    NodeState nodeState,
-    Node? exitNode,
-    bool managedByOrg,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      color: Theme.of(context).colorScheme.surface,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (nodeState == NodeState.offlineMdm)
-            _buildMdmWarning(context, managedByOrg),
-          _buildMaterialExitNodeTile(context, nodeState, exitNode),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCupertinoContainer(
-    BuildContext context,
-    NodeState nodeState,
-    Node? exitNode,
-    bool managedByOrg,
-  ) {
     return AdaptiveListSection.insetGrouped(
       children: [
         if (nodeState == NodeState.offlineMdm)
-          _buildCupertinoMdmWarning(context, managedByOrg),
-        _buildCupertinoExitNodeTile(context, nodeState, exitNode),
+          isApple()
+              ? _buildCupertinoMdmWarning(context, managedByOrg)
+              : _buildMdmWarning(context, managedByOrg),
+        _buildExitNodeTile(
+          context,
+          nodeState,
+          exitNode,
+          exitNodeID,
+          isRunningExitNode,
+        ),
       ],
     );
   }
@@ -136,37 +117,22 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildMaterialExitNodeTile(
+  Widget _getSubtitle(
     BuildContext context,
     NodeState nodeState,
     Node? exitNode,
+    String? exitNodeID,
+    bool isRunningExitNode,
   ) {
-    final bool isActive = nodeState == NodeState.activeAndRunning;
-
-    return ListTile(
-      title: const Text('Exit Node'),
-      subtitle: _getSubtitle(context, nodeState, exitNode),
-      leading: nodeState == NodeState.none
-          ? null
-          : Icon(
-              isActive ? Icons.exit_to_app : Icons.exit_to_app_outlined,
-              color: isActive
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).disabledColor,
-            ),
-      trailing: Icon(
-        Icons.chevron_right,
-        color: Theme.of(context).disabledColor,
-      ),
-      onTap: onNavigate,
-    );
-  }
-
-  Widget _getSubtitle(
-      BuildContext context, NodeState nodeState, Node? exitNode) {
     final bool isOffline = nodeState == NodeState.activeNotRunning;
+    var nodeName = exitNode?.name ?? "Not connected";
+    if (exitNodeID != null && exitNode == null) {
+      nodeName = "$exitNodeID (Offline! All Traffic is dropped)";
+    }
     return Text(
-      nodeState == NodeState.none ? "None" : exitNode?.name ?? 'Not connected',
+      nodeState == NodeState.none
+          ? "None${isRunningExitNode ? ' (self is running as exit node)' : ''}"
+          : nodeName,
       style: TextStyle(
         color: nodeState == NodeState.none
             ? null
@@ -179,27 +145,47 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildCupertinoExitNodeTile(
+  Widget _buildExitNodeTile(
     BuildContext context,
     NodeState nodeState,
     Node? exitNode,
+    String? exitNodeID,
+    bool isRunningExitNode,
   ) {
     final bool isActive = nodeState == NodeState.activeAndRunning;
+    final bool isNotConnected = exitNode == null && exitNodeID != null;
 
     return AdaptiveListTile.notched(
       title: const Text('Exit Node'),
-      subtitle: _getSubtitle(context, nodeState, exitNode),
+      subtitle: _getSubtitle(
+        context,
+        nodeState,
+        exitNode,
+        exitNodeID,
+        isRunningExitNode,
+      ),
       leading: nodeState == NodeState.none
           ? null
-          : Icon(
-              isActive
-                  ? CupertinoIcons.arrow_up_right_circle_fill
-                  : CupertinoIcons.arrow_up_right_circle,
-              color: isActive
-                  ? CupertinoColors.activeBlue
-                  : CupertinoColors.systemGrey,
-            ),
-      trailing: const CupertinoListTileChevron(),
+          : isApple()
+              ? Icon(
+                  isActive
+                      ? CupertinoIcons.arrow_up_right_circle_fill
+                      : CupertinoIcons.arrow_up_right_circle,
+                  color: isActive
+                      ? CupertinoColors.activeBlue.resolveFrom(context)
+                      : isNotConnected
+                          ? CupertinoColors.systemRed.resolveFrom(context)
+                          : CupertinoColors.systemGrey.resolveFrom(context),
+                )
+              : Icon(
+                  isActive ? Icons.exit_to_app : Icons.exit_to_app_outlined,
+                  color: isActive
+                      ? Theme.of(context).colorScheme.primary
+                      : isNotConnected
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).disabledColor,
+                ),
+      trailing: const AdaptiveListTileChevron(),
       onTap: onNavigate,
     );
   }

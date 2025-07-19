@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="en-us" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="InstallHeader">Welcome to Cylonix Node Agent Setup</String>
+  <String Id="InstallMessage">This will install Cylonix Node Agent on your computer. Click Install to continue or Cancel to exit Setup.</String>
+  <String Id="InstallLicenseLinkText">View License Agreement</String>
+  <String Id="InstallAcceptCheckbox">I accept the terms in the License Agreement</String>
+  <String Id="InstallInstallButton">Install</String>
+  <String Id="InstallCloseButton">Cancel</String>
+
+  <String Id="ProgressHeader">Installing Cylonix Node Agent</String>
+  <String Id="ProgressLabel">Please wait while Setup installs Cylonix Node Agent on your computer.</String>
+  <String Id="ProgressProgressText">Preparing to install...</String>
+  <String Id="ProgressCancelButton">Cancel</String>
+
+  <String Id="SuccessHeader">Cylonix Node Agent Setup Completed</String>
+  <String Id="SuccessMessage">Cylonix Node Agent has been successfully installed on your computer.</String>
+  <String Id="SuccessLaunchCheckbox">Launch Cylonix Node Agent</String>
+  <String Id="SuccessCloseButton">Finish</String>
+
+  <String Id="FailureHeader">Cylonix Node Agent Setup Failed</String>
+  <String Id="FailureMessage">Setup was unable to install Cylonix Node Agent on your computer. Contact support for assistance.</String>
+  <String Id="FailureCloseButton">Close</String>
+</WixLocalization>

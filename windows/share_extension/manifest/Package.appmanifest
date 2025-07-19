@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap4="http://schemas.microsoft.com/appx/manifest/uap/windows10/4">
+
+  <Identity
+    Name="Cylonix.ShareExtension"
+    ProcessorArchitecture="x64"
+    Publisher="CN=Cylonix"
+    Version="1.0.0.0" />
+
+  <Properties>
+    <DisplayName>Cylonix Share Extension</DisplayName>
+    <PublisherDisplayName>Cylonix</PublisherDisplayName>
+    <Description>Share files with Cylonix nodes</Description>
+    <Logo>Assets\icon.png</Logo>
+  </Properties>
+
+  <Applications>
+    <Application Id="CylonixShare"
+                 Executable="CylonixShare.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Share with Cylonix"
+        Description="Share files with Cylonix nodes"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\icon.png"
+        Square44x44Logo="Assets\icon.png" />
+      <Extensions>
+        <uap:Extension Category="windows.shareTarget">
+          <uap:ShareTarget Description="Share with Cylonix nodes">
+            <uap:SupportedFileTypes>
+              <uap:FileType>.txt</uap:FileType>
+              <uap:FileType>.jpg</uap:FileType>
+              <uap:FileType>.png</uap:FileType>
+              <uap:FileType>*</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap:DataFormat>Text</uap:DataFormat>
+            <uap:DataFormat>Uri</uap:DataFormat>
+            <uap:DataFormat>FileDrop</uap:DataFormat>
+          </uap:ShareTarget>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

@@ -26,6 +26,13 @@ import java.util.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+// SAF for shared download folder.
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+
 import com.tailscale.ipn.R as IPNR
 import com.tailscale.ipn.setIpnStateChangeCallback
 import com.tailscale.ipn.setNotificationCallback
@@ -60,7 +67,51 @@ class MainActivity: FlutterFragmentActivity() {
         App.get().setNotificationCallback(::onNotificationReceived)
         Log.d(LOG_TAG, "onCreate: setting up VPN permission launcher")
         setVpnPermissionLauncher()
+        //checkDownloadsFolderPermission()
 	}
+
+    private var downloadsUri: Uri? = null
+    private val PREFS_NAME = "DownloadsFolderPrefs"
+    private val KEY_DOWNLOADS_URI = "downloads_uri"
+
+    private val openDocumentTreeLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            result.data?.data?.let { uri ->
+                downloadsUri = uri
+                // Take persistable read/write permissions
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                // Save URI to SharedPreferences for later use
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_DOWNLOADS_URI, uri.toString())
+                    .apply()
+                Log.d(LOG_TAG, "Access granted to Downloads folder")
+            }
+        } else {
+            Log.d(LOG_TAG, "User denied access to Downloads folder")
+        }
+    }
+
+    private fun checkDownloadsFolderPermission() {
+        val savedUriString = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getString(KEY_DOWNLOADS_URI, null)
+        if (savedUriString != null && contentResolver.persistedUriPermissions.any { it.uri == Uri.parse(savedUriString) && it.isWritePermission }) {
+            downloadsUri = Uri.parse(savedUriString)
+            Log.d(LOG_TAG, "Using saved Downloads folder URI")
+        } else {
+            requestDownloadsFolderAccess()
+        }
+    }
+
+    private fun requestDownloadsFolderAccess() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            putExtra(DocumentsContract.EXTRA_INITIAL_URI, DocumentsContract.buildDocumentUri(
+                "com.android.providers.downloads.documents", "downloads"))
+        }
+        openDocumentTreeLauncher.launch(intent)
+    }
 
     private lateinit var vpnPermissionLauncher: ActivityResultLauncher<Intent>
     private val viewModel: MainViewModel by lazy {

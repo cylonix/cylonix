@@ -47,6 +47,11 @@ final peersProvider = Provider<List<Node>>((ref) {
   return netmap?.peers ?? [];
 });
 
+final prefsProvider = Provider<IpnPrefs?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.prefs;
+});
+
 final searchTermProvider = StateProvider<String>((ref) => '');
 
 final filteredPeersProvider = Provider<List<Node>>((ref) {
@@ -93,16 +98,6 @@ final nodeStateProvider = Provider<NodeState>((ref) {
   return NodeState.none;
 });
 
-final exitNodeProvider = Provider<Node?>((ref) {
-  final ipnState = ref.watch(ipnStateProvider);
-  final exitNodeId = ipnState?.prefs?.exitNodeID ?? "";
-  if (exitNodeId.isEmpty) return null;
-
-  return ipnState?.netmap?.peers?.firstWhereOrNull(
-    (peer) => peer.stableID == exitNodeId,
-  );
-});
-
 // User profile related providers
 final userProfileProvider = Provider<UserProfile?>((ref) {
   return ref.watch(ipnStateProvider)?.loggedInUser;
@@ -144,8 +139,34 @@ final backendStateProvider = Provider<BackendState?>(
   (ref) => ref.watch(ipnStateProvider)?.backendState,
 );
 
+final filesWaitingProvider = Provider<List<AwaitingFile>>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.filesWaiting ?? [];
+});
+
+class FilesSaved extends StateNotifier<List<String>> {
+  FilesSaved() : super([]);
+  void addFile(String file) {
+    state.add(file);
+  }
+
+  void remove(String file) {
+    state = state.where((f) => f != file).toList();
+  }
+}
+
+final filesSavedProvider =
+    StateNotifierProvider<FilesSaved, List<String>>((ref) {
+  return FilesSaved();
+});
+
 final healthWarningsProvider = Provider<HealthState?>((ref) {
   return ref.watch(ipnStateProvider)?.health;
+});
+
+final selfNodeProvider = Provider<Node?>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.selfNode;
 });
 
 // Health and warning indicators

@@ -13,7 +13,8 @@ class AppLog {
   static final _appOutput = MemoryOutput(bufferSize: _defaultLogBufferSize);
   static const _rotateLogInterval = 6; // hours
   static final _printer = SimplePrinter(printTime: true, colors: false);
-  static final logger = Logger(
+  static bool _initDone = false;
+  static var logger = Logger(
     filter: ProductionFilter(),
     printer: _printer,
     level: Level.debug,
@@ -29,13 +30,22 @@ class AppLog {
 
   /// Rotate log file to a new one and keep only the last 10 files.
   static Future<void> _rotateLogFile(Directory dir) async {
-    final currentLogFileName = path.join(dir.path, "cylonix_log.txt");
-    final current = File(currentLogFileName);
+    final currentLogFileName = _logFile.path;
+    final current = _logFile;
     const maxLogFileSize = 100000; // 100KB
     const maxLogFileDays = 2; // number of days for log files outstanding
     try {
+      if (!await current.exists()) {
+        logger.d(
+          "Log file does not exist, creating empty log file: "
+          "$currentLogFileName",
+        );
+        await current.create(recursive: true);
+        return;
+      }
       final size = await current.length();
       logger.d("rotate log file size $size bytes max $maxLogFileSize bytes");
+      logger.i("log file $currentLogFileName");
       if (size > maxLogFileSize) {
         final now = DateTime.now().toLocal().toIso8601String();
         final logDirName = path.join(dir.path, "cylonix-logs");
@@ -61,6 +71,7 @@ class AppLog {
       logger.e("log file rotation failed: $e");
     }
   }
+
   static List<String> getAppBufferLogs() {
     var logs = <String>[];
     for (var event in _appOutput.buffer) {
@@ -74,14 +85,28 @@ class AppLog {
   }
 
   static Future<void> init() async {
+    if (_initDone) {
+      logger.w("AppLog already initialized, skipping init");
+      return;
+    }
+    _initDone = true;
     log_console.LogConsole.init(bufferSize: _defaultLogBufferSize);
     log_console.LogConsole.setLogOutput(_appOutput);
 
-    _logDirectory = await getApplicationSupportDirectory();
+    if (Platform.isWindows) {
+      // Use %ProgramData%\Cylonix\Logs\
+      final programData =
+          Platform.environment['ProgramData'] ?? r'C:\ProgramData';
+      final logDirPath = path.join(programData, 'Cylonix', 'Logs');
+      _logDirectory = await Directory(logDirPath).create(recursive: true);
+      logger.d("Using log directory: ${_logDirectory.path}");
+    } else {
+      _logDirectory = await getApplicationSupportDirectory();
+    }
+    _logFile = File(path.join(_logDirectory.path, "cylonix-log.txt"));
     await _rotateLogFile(_logDirectory);
     _startLoggerPeriodical();
 
-    _logFile = File(path.join(_logDirectory.path, "cylonix_log.txt"));
     final fileOutput = FileOutput(file: _logFile);
     final multiOutputWithFile = MultiOutput([
       fileOutput,
@@ -92,7 +117,7 @@ class AppLog {
     const bool verbose = bool.fromEnvironment('VERBOSE', defaultValue: true);
     if (isDebug || verbose) {
       logger.d("Debug or verbose mode");
-      Logger(
+      logger = Logger(
         filter: ProductionFilter(),
         printer: _printer,
         level: Level.debug,
@@ -100,10 +125,10 @@ class AppLog {
       );
     } else {
       logger.d("Production mode");
-      Logger(
+      logger = Logger(
         filter: ProductionFilter(),
         printer: _printer,
-        level: Level.warning,
+        level: Level.debug, // use debug level for production for now.
         output: multiOutputWithFile,
       );
     }
