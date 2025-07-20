@@ -29,27 +29,29 @@ class FilesWaitingView extends ConsumerWidget {
             child: const Text('Close'),
           ),
         ),
-        files.isEmpty
-            ? const Center(child: Text('No files waiting'))
-            : SingleChildScrollView(
-                child: AdaptiveListSection.insetGrouped(
-                  header: const AdaptiveGroupedHeader("Files Waiting"),
-                  footer: const AdaptiveGroupedFooter(
-                    'Save or delete files as needed',
+        Expanded(
+          child: files.isEmpty
+              ? const Center(child: Text('No files waiting'))
+              : SingleChildScrollView(
+                  child: AdaptiveListSection.insetGrouped(
+                    header: const AdaptiveGroupedHeader("Files Waiting"),
+                    footer: const AdaptiveGroupedFooter(
+                      'Save or delete files as needed',
+                    ),
+                    children: files
+                        .map(
+                          (file) => _buildFileTile(
+                            context,
+                            file.name,
+                            file.size,
+                            filesSaved,
+                            ref,
+                          ),
+                        )
+                        .toList(),
                   ),
-                  children: files
-                      .map(
-                        (file) => _buildFileTile(
-                          context,
-                          file.name,
-                          file.size,
-                          filesSaved,
-                          ref,
-                        ),
-                      )
-                      .toList(),
                 ),
-              ),
+        ),
       ],
     );
   }
@@ -121,7 +123,10 @@ class FilesWaitingView extends ConsumerWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('File saved successfully to $showPath'),
+              child: Text(
+                'File saved successfully to $showPath',
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
           displayDuration: const Duration(seconds: 5),
@@ -151,7 +156,10 @@ class FilesWaitingView extends ConsumerWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('File deleted successfully: $fileName'),
+              child: Text(
+                'File deleted successfully: $fileName',
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
         );

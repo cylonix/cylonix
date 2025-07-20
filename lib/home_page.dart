@@ -71,6 +71,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget get _mainView {
     return MainView(
       onNavigateToSettings: () => Navigator.pushNamed(context, '/settings'),
+      onNavigateToSendFiles: _sendFiles,
       onNavigateToUserSwitcher: () => Navigator.pushNamed(
         context,
         '/user-switcher',
@@ -89,6 +90,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget get _mainViewWithRail {
     return MainView(
       onNavigateToSettings: () => _selectPage(Page.settings.value),
+      onNavigateToSendFiles: _sendFiles,
       onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
       onNavigateToPeerDetails: (Node node) {
         _nodeID = node.id;

@@ -733,7 +733,7 @@ class AdaptiveModalPopup extends StatelessWidget {
     );
   }
 
-  Future<void> show(BuildContext context) async {
+  Future<void> show(BuildContext context, {double? minHeight}) async {
     if (isApple()) {
       await showCupertinoModalPopup(
         context: context,
@@ -741,9 +741,10 @@ class AdaptiveModalPopup extends StatelessWidget {
       );
     } else {
       await showModalBottomSheet(
-        constraints: const BoxConstraints(
+        constraints: BoxConstraints(
           minWidth: double.infinity,
           maxWidth: double.infinity,
+          minHeight: minHeight ?? 0,
         ),
         isScrollControlled: true,
         useSafeArea: true,

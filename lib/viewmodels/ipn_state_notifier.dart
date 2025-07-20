@@ -634,7 +634,19 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> deleteFile(String file) async {
-    await _ipnService.deleteFile(file);
+    try {
+      await _ipnService.deleteFile(file);
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(
+          filesWaiting: state.valueOrNull?.filesWaiting
+              ?.where((f) => f.name != file)
+              .toList(),
+        ),
+      );
+    } catch (e) {
+      _logger.e("Failed to delete file: $file, error: $e");
+      rethrow;
+    }
   }
 
   Future<void> setRunAsExitNode(bool isOn) async {

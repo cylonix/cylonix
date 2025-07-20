@@ -3,12 +3,14 @@ import 'package:cylonix/widgets/alert_dialog_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import 'models/shared_file.dart';
 import 'models/ipn.dart';
 import 'models/peer_transfer_state.dart';
+import 'models/platform.dart';
+import 'models/shared_file.dart';
 import 'providers/share_file.dart';
 import 'services/ipn.dart';
 import 'utils/logger.dart';
+import 'widgets/adaptive_widgets.dart';
 
 class ShareView extends ConsumerStatefulWidget {
   final List<String> paths;
@@ -115,6 +117,7 @@ class _ShareViewState extends ConsumerState<ShareView> {
 
   PreferredSizeWidget _buildHeader() {
     return AppBar(
+      forceMaterialTransparency: true,
       leadingWidth: 48,
       leading: Padding(
         padding: const EdgeInsets.only(left: 16),
@@ -126,12 +129,8 @@ class _ShareViewState extends ConsumerState<ShareView> {
       ),
       title: const Text('Send Files'),
       actions: [
-        FilledButton(
-          style: OutlinedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
+        AdaptiveButton(
+          filled: true,
           onPressed: widget.onCancel,
           child: const Text('Done'),
         ),
@@ -146,14 +145,16 @@ class _ShareViewState extends ConsumerState<ShareView> {
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                hintText: 'Search name or OS…',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
+            child: isAndroidTV
+                ? const Text("Select a device to send files to")
+                : TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      hintText: 'Search name or OS…',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
           ),
           const SizedBox(width: 16),
           Row(
@@ -343,13 +344,8 @@ class _PeerRow extends StatelessWidget {
       if (!(peer.online ?? false)) {
         return null;
       }
-      return OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        onPressed: peer.online ?? false ? onSend : null,
+      return AdaptiveButton(
+        onPressed: onSend,
         child: const Text('Send'),
       );
     }

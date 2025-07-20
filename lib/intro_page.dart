@@ -86,6 +86,7 @@ class _State extends ConsumerState<IntroPage> {
 
   Widget get _doneButton {
     return AdaptiveButton(
+      autofocus: true,
       filled: true,
       onPressed: _handleIntroDone,
       child: const Text("Setup Cylonix"),
@@ -175,6 +176,7 @@ class _State extends ConsumerState<IntroPage> {
         spacing: 16,
         children: [
           AdaptiveButton(
+            autofocus: true,
             filled: true,
             onPressed: _nextPage,
             child: const Text("Get Started"),
@@ -235,6 +237,7 @@ class _State extends ConsumerState<IntroPage> {
       Column(
         children: [
           AdaptiveButton(
+            autofocus: true,
             filled: true,
             onPressed: () {
               _privacyAgreed = true;

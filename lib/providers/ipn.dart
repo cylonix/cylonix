@@ -147,7 +147,7 @@ final filesWaitingProvider = Provider<List<AwaitingFile>>((ref) {
 class FilesSaved extends StateNotifier<List<String>> {
   FilesSaved() : super([]);
   void addFile(String file) {
-    state.add(file);
+    state = state + [file];
   }
 
   void remove(String file) {

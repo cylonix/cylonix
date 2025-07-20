@@ -269,23 +269,13 @@ class MainActivity: FlutterFragmentActivity() {
 				}
                 "checkVPNPermission" -> {
                     Log.d(LOG_TAG, "checkVPNPermission")
-                    try {
-                        val id = call.arguments as String
-                        Log.d(LOG_TAG, "Checking VPN permission for id: $id")
-                        val state = vpnViewModel.vpnPrepared.value ?: false
-                        methodChannel?.invokeMethod("tunnelCreated", mapOf(
-                            "isCreated" to state,
-                            "id" to id
-                        ))
-                        result.success("Success")
-                    } catch (e: Exception) {
-                        Log.e(LOG_TAG, "Error in checkVPNPermission: ${e.message}")
-                        result.error(
-                            "INVALID_ARGUMENT",
-                            "Failed to process VPN permission check: ${e.message}",
-                            null
-                        )
-                    }
+                    val state = vpnViewModel.vpnPrepared.value ?: false
+                    result.success(state)
+                }
+                "requestVPNPermission" -> {
+                    Log.d(LOG_TAG, "requestVPNPermission called")
+                    viewModel.showVPNPermissionLauncherIfUnauthorized()
+                    result.success("Success")
                 }
                 "sendCommand" -> {
                     try {

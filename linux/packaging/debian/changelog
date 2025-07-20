@@ -1,5 +1,6 @@
-cylonix (1.0.0-0-0) unstable; urgency=low
+cylonix (1.0.8-0-1) unstable; urgency=low
 
-  * Initial release.
+  * Exit node support 2025/07/20
+  * Initial release 2025/06/20
 
- -- Cylonix authors <contact@cylonix.io>  Fri, 20 Jun 2025 10:00:00 +0000
+ -- Cylonix authors <contact@cylonix.io>  Sun, 20 Jul 2025 10:00:00 +0000

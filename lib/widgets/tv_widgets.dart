@@ -5,6 +5,7 @@ class TVButton extends StatefulWidget {
   final VoidCallback onPressed;
   final Widget child;
   final bool filled;
+  final bool iconButton;
   final bool autofocus;
   final double? width;
   final double? height;
@@ -15,6 +16,7 @@ class TVButton extends StatefulWidget {
     required this.onPressed,
     required this.child,
     this.filled = false,
+    this.iconButton = false,
     this.autofocus = false,
     this.width,
     this.height,
@@ -36,68 +38,109 @@ class _TVButtonState extends State<TVButton> {
 
   @override
   Widget build(BuildContext context) {
-    return Focus(
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: widget.filled
+          ? _filledButton
+          : widget.iconButton
+              ? _iconButton
+              : _outlinedButton,
+    );
+  }
+
+  WidgetStateProperty<OutlinedBorder?>? get _buttonShape {
+    return WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.focused)) {
+        if (widget.iconButton) {
+          return const CircleBorder(
+            side: BorderSide(
+              color: Colors.tealAccent,
+              width: 2,
+            ),
+          );
+        }
+        return RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(32),
+          side: const BorderSide(
+            color: Colors.tealAccent,
+            width: 2,
+          ),
+        );
+      }
+      return null;
+    });
+  }
+
+  Widget get _outlinedButton {
+    return OutlinedButton(
       focusNode: focusNode,
-      child: SizedBox(
-        width: widget.width,
-        height: widget.height,
-        child: widget.filled
-            ? FilledButton(
-                autofocus: widget.autofocus,
-                onPressed: widget.onPressed,
-                style: ButtonStyle(
-                  backgroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.focused)) {
-                      return Theme.of(context).colorScheme.primaryContainer;
-                    }
-                    return null; // Use default color when not focused
-                  }),
-                  foregroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.focused)) {
-                      return Theme.of(context).colorScheme.onPrimaryContainer;
-                    }
-                    return null; // Use default color when not focused
-                  }),
-                  shape: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.focused)) {
-                      return RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(32),
-                        side: const BorderSide(
-                          color: Colors.tealAccent,
-                          width: 2,
-                        ),
-                      );
-                    }
-                    return null;
-                  }),
-                  padding: WidgetStateProperty.all(
-                    widget.padding ??
-                        const EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                ),
-                child: widget.child,
-              )
-            : OutlinedButton(
-                autofocus: widget.autofocus,
-                onPressed: widget.onPressed,
-                style: ButtonStyle(
-                  backgroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.focused)) {
-                      return Theme.of(context)
-                          .colorScheme
-                          .primaryContainer
-                          .withValues(alpha: 0.2);
-                    }
-                    return null;
-                  }),
-                  padding: WidgetStateProperty.all(
-                    widget.padding ??
-                        const EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                ),
-                child: widget.child,
-              ),
+      autofocus: widget.autofocus,
+      onPressed: widget.onPressed,
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return Theme.of(context)
+                .colorScheme
+                .primaryContainer
+                .withValues(alpha: 0.2);
+          }
+          return null;
+        }),
+        shape: _buttonShape,
+        padding: WidgetStateProperty.all(
+          widget.padding ?? const EdgeInsets.symmetric(horizontal: 16),
+        ),
       ),
+      child: widget.child,
+    );
+  }
+
+  Widget get _iconButton {
+    return IconButton(
+      focusNode: focusNode,
+      autofocus: widget.autofocus,
+      onPressed: widget.onPressed,
+      style: ButtonStyle(
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return Theme.of(context)
+                .colorScheme
+                .primaryContainer
+                .withValues(alpha: 0.2);
+          }
+          return null;
+        }),
+        shape: _buttonShape,
+      ),
+      icon: widget.child,
+    );
+  }
+
+  Widget get _filledButton {
+    return FilledButton(
+      focusNode: focusNode,
+      autofocus: widget.autofocus,
+      onPressed: widget.onPressed,
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return Theme.of(context).colorScheme.primaryContainer;
+          }
+          return null; // Use default color when not focused
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return Theme.of(context).colorScheme.onPrimaryContainer;
+          }
+          return null; // Use default color when not focused
+        }),
+        shape: _buttonShape,
+        padding: WidgetStateProperty.all(
+          widget.padding ?? const EdgeInsets.symmetric(horizontal: 16),
+        ),
+      ),
+      child: widget.child,
     );
   }
 }

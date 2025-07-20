@@ -269,7 +269,6 @@ class IpnService {
       }
     } finally {
       sub.cancel();
-      print("Canceling send peer files timer");
       currentTimer?.cancel();
     }
   }
@@ -380,6 +379,22 @@ class IpnService {
         // On Linux and Windows, we don't need to check VPN permission.
         return true;
       }
+      if (Platform.isAndroid) {
+        for (var i = 0; i < 10; i++) {
+          final result = await _channel.invokeMethod("checkVPNPermission");
+          if (result is bool) {
+            if (result) {
+              return true;
+            }
+          } else {
+            throw Exception(
+              "checkVPNPermission returned unexpected result: $result",
+            );
+          }
+          await Future.delayed(const Duration(seconds: 1));
+        }
+        return false;
+      }
       final completer = Completer<bool>();
       final id = const Uuid().v4();
       _commandCompleters[id] = completer;
@@ -403,13 +418,22 @@ class IpnService {
   Future<bool> requestVPNPermission() async {
     try {
       final id = const Uuid().v4();
-      final completer = Completer<bool>();
-      _commandCompleters[id] = completer;
-      await createTunnelsManager(id);
-      final created = await completer.future.timeout(
-        const Duration(seconds: 120),
-      );
-      return created;
+      if (isApple()) {
+        final completer = Completer<bool>();
+        _commandCompleters[id] = completer;
+        await createTunnelsManager(id);
+        final granted = await completer.future.timeout(
+          const Duration(seconds: 120),
+        );
+        return granted;
+      } else if (Platform.isAndroid) {
+        await _channel.invokeMethod("requestVPNPermission", id);
+        return await checkVPNPermission();
+      } else {
+        throw Exception(
+          "VPN permission request is not supported on this platform",
+        );
+      }
     } catch (e) {
       throw Exception("request VPN permission failed: $e");
     }

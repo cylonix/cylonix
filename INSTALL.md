@@ -11,7 +11,7 @@ This document explains how to build and run the Cylonix client on all supported 
 - Flutter & Dart SDK
 - Xcode (for iOS/macOS)
 - Android SDK (for Android)
-- NSIS & SignTool (for Windows installer)
+- Wix tools & SignTool (for Windows installer)
 - Docker (optional, for reproducible builds)
 
 ---
@@ -100,8 +100,8 @@ Each target invokes `flutter run` with `--dart-define=BUILD_SUB_VERSION=${SUB_VE
 ### Android
 
 ```bash
-make apk         # 64-bit split-ABI APK
-make appbundle   # AAB package
+make apk   # 64-bit split-ABI APK
+make aab   # AAB package
 ```
 
 Internally copies Tailscale AARs into `android/app/libs` before build.
@@ -109,7 +109,7 @@ Internally copies Tailscale AARs into `android/app/libs` before build.
 ### Debian (Linux)
 
 ```bash
-make debian
+make deb
 ```
 
 - Cleans `build/`
@@ -123,26 +123,18 @@ Use Xcode to open `ios/Runner.xcworkspace` and build the appropriate scheme.
 
 ### Windows
 
+On WSL ubuntu terminal side execute the following command to build the local
+tailscale backend first.
+
+```bash
+make windows_cylonixd
+```
+
+Then in the powershell terminal:
+
 ```bash
 make build_windows    # Flutter desktop build
-make pack_windows     # Package NSIS installer (64-bit)
-make sign_windows     # Code-sign the installer
-make install_windows  # Run the installer
-```
-
-#### CLI-Only
-
-```bash
-make pack_windows_cli   # 64-bit CLI
-make pack_win32_cli     # 32-bit CLI
-```
-
----
-
-## Docker-Based Builds
-
-```bash
-make docker_deb          # Build Debian packages inside Docker
+make pack_windows     # Package installer
 ```
 
 ---

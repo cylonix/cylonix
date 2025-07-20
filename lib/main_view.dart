@@ -24,9 +24,11 @@ import 'widgets/alert_dialog_widget.dart';
 import 'widgets/exit_node_status.dart';
 import 'widgets/peer_list.dart';
 import 'widgets/qr_code_image.dart';
+import 'widgets/tv_widgets.dart';
 
 class MainView extends ConsumerStatefulWidget {
   final Function() onNavigateToSettings;
+  final Function() onNavigateToSendFiles;
   final Function() onNavigateToUserSwitcher;
   final Function(Node) onNavigateToPeerDetails;
   final Function() onNavigateToExitNodes;
@@ -36,6 +38,7 @@ class MainView extends ConsumerStatefulWidget {
   const MainView({
     Key? key,
     required this.onNavigateToSettings,
+    required this.onNavigateToSendFiles,
     required this.onNavigateToUserSwitcher,
     required this.onNavigateToPeerDetails,
     required this.onNavigateToExitNodes,
@@ -295,9 +298,41 @@ class _MainViewState extends ConsumerState<MainView> {
         );
     }
 
+    // Running state.
     if (_showingSigninQRCode) {
       _showingSigninQRCode = false;
       Navigator.pop(context);
+    }
+
+    // For android, we need to make sure vpn is prepared.
+    if (Platform.isAndroid) {
+      final vpnPreparedState = ref.watch(vpnPermissionNotifierProvider);
+      final ret = vpnPreparedState.when<Widget?>(
+        data: (state) {
+          if (state.isGranted) {
+            return null;
+          }
+          if (!state.hasBeenAsked) {
+            return _buildPermissionRequest(context, ref);
+          }
+          return _buildErrorWidget(
+            context,
+            ref,
+            "VPN permission not granted",
+            _resetVPNPermissionNotifier,
+          );
+        },
+        loading: () => _buildLoadingWithLogoView(context, ref),
+        error: (error, stack) => _buildErrorWidget(
+          context,
+          ref,
+          '$error',
+          _resetVPNPermissionNotifier,
+        ),
+      );
+      if (ret != null) {
+        return _buildCenteredWidget(ret);
+      }
     }
 
     final common = [
@@ -421,15 +456,24 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildProfileButton(
       BuildContext context, WidgetRef ref, UserProfile? user) {
     if (useNavigationRail(context)) return const SizedBox.shrink();
+    final icon = user == null
+        ? const Icon(CupertinoIcons.ellipsis_circle)
+        : AdaptiveAvatar(radius: 18, user: user);
+
+    if (isAndroidTV) {
+      return TVButton(
+        iconButton: true,
+        onPressed: () => _showMaterialMenu(context, ref, user),
+        child: icon,
+      );
+    }
 
     return IconButton(
       padding: const EdgeInsets.all(0),
       onPressed: () => isApple()
           ? _showCupertinoMenu(context, ref, user)
           : _showMaterialMenu(context, ref, user),
-      icon: user == null
-          ? const Icon(CupertinoIcons.ellipsis_circle)
-          : AdaptiveAvatar(radius: 18, user: user),
+      icon: icon,
     );
   }
 
@@ -444,9 +488,7 @@ class _MainViewState extends ConsumerState<MainView> {
       child: AdaptiveListTile(
           backgroundColor: isApple()
               ? CupertinoColors.systemBrown
-                  .resolveFrom(
-                    context,
-                  )
+                  .resolveFrom(context)
                   .withValues(alpha: 0.1)
               : Theme.of(context).colorScheme.primaryContainer,
           leading: const Icon(Icons.folder),
@@ -462,7 +504,7 @@ class _MainViewState extends ConsumerState<MainView> {
               maxWidth: 800,
               height: height,
               child: const FilesWaitingView(),
-            ).show(context);
+            ).show(context, minHeight: height);
           },
           trailing: const AdaptiveListTileChevron()),
     );
@@ -502,6 +544,14 @@ class _MainViewState extends ConsumerState<MainView> {
                 onTap: () {
                   Navigator.pop(context);
                   widget.onNavigateToSettings();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.upload_file_outlined, size: 24),
+                title: const Text('Send Files'),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.onNavigateToSendFiles();
                 },
               ),
               ListTile(
