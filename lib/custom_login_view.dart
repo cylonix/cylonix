@@ -59,13 +59,13 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
     final strings = LoginViewStrings(
       title: widget.isAuthKey ? 'Auth Key' : 'Custom Control',
       explanation: widget.isAuthKey
-          ? 'Enter your auth key to connect to your tailnet'
+          ? 'Enter your auth key to connect to your mesh network'
           : 'Choose a control server provider or select the "Custom" '
               'option to enter your custom control server URL',
       inputTitle: widget.isAuthKey ? 'Auth Key' : 'Control URL',
       placeholder: widget.isAuthKey
-          ? 'tskey-xxxxxx-xxxxxxxxxxxxxxx'
-          : 'https://controlplane.tailscale.com',
+          ? 'cy-auth-xxxxxx-xxxxxxxxxxxxxxx'
+          : 'https://manage.cylonix.io',
       submitLabel: widget.isAuthKey ? "Add Account" : "Set Custom Control URL",
     );
 

@@ -1005,6 +1005,7 @@ class GoTimeUtil {
   static DateTime dateFromGoString(String goTime) => DateTime.parse(goTime);
 
   static bool isWithinExpiryNotificationWindow(Duration window, String goTime) {
+    if (goTime == zeroTimeString) return false;
     final expTime = epochMillisFromGoTime(goTime);
     final now = DateTime.now().millisecondsSinceEpoch;
     return (expTime - now) ~/ 1000 < window.inSeconds;

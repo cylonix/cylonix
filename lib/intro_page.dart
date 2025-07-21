@@ -319,15 +319,7 @@ class _State extends ConsumerState<IntroPage> {
     Widget topBody,
     Widget bottomBody,
   ) {
-    var maxHeight = 0.0;
-    final height = MediaQuery.of(context).size.height;
-    if (height <= 1000) {
-      //_logger.w("Screen height is too small: $height. Using minimum height.");
-    } else if (height < 1200) {
-      maxHeight = 600;
-    } else {
-      maxHeight = 800;
-    }
+    final isLongScreen = MediaQuery.of(context).size.height > 800;
     return PageViewModel(
       image: _topImage(top),
       title: title,
@@ -345,7 +337,7 @@ class _State extends ConsumerState<IntroPage> {
                 fontWeight: FontWeight.bold,
               ),
         titlePadding: EdgeInsets.only(
-          top: maxHeight > 0 ? 32 : 16,
+          top: isLongScreen ? 32 : 16,
         ),
       ),
       useRowInLandscape: true,
@@ -354,30 +346,18 @@ class _State extends ConsumerState<IntroPage> {
         child: Container(
           constraints: const BoxConstraints(maxWidth: 800),
           margin: EdgeInsets.only(
-            top: maxHeight > 0 ? 64 : 16,
+            top: isLongScreen ? 64 : 16,
             left: 20,
             right: 20,
           ),
-          child: maxHeight > 0
-              ? ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: maxHeight),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: SingleChildScrollView(child: topBody),
-                      ),
-                      bottomBody,
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                )
-              : Column(
-                  spacing: 16,
-                  children: [
-                    topBody,
-                    bottomBody,
-                  ],
-                ),
+          child: Column(
+            spacing: isLongScreen ? 32 : 16,
+            children: [
+              topBody,
+              bottomBody,
+              SizedBox(height: isLongScreen ? 64 : 32),
+            ],
+          ),
         ),
       ),
     );
