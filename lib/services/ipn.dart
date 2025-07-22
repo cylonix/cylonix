@@ -236,6 +236,7 @@ class IpnService {
       });
     }
 
+    Timer? pollingTimer;
     try {
       sub = eventBus.on<BackendNotifyEvent>().listen((event) {
         final outgoingFiles = event.notification.outgoingFiles ?? [];
@@ -245,6 +246,48 @@ class IpnService {
           setTimeout();
         }
       });
+
+      // Namedpipe socket is still not reliable. Let's also do polling
+      // for outgoing files.
+      if (Platform.isWindows && !useWindowsTcpClient) {
+        pollingTimer =
+            Timer.periodic(const Duration(seconds: 1), (timer) async {
+          try {
+            final result = await _sendCommandOverHttp(
+              Uri(
+                scheme: 'http',
+                host: _localApiHost,
+                path: '$_localApiPrefix/files/',
+                queryParameters: {
+                  'outgoing': "true",
+                },
+              ),
+              'GET',
+            );
+            final list = jsonDecode(result) as List<dynamic>?;
+            final outgoingFiles = <OutgoingFile>[];
+            for (final item in list ?? []) {
+              final file = OutgoingFile.fromJson(item);
+              if (file.peerID == peerID) {
+                outgoingFiles.add(file);
+              }
+            }
+            if (outgoingFiles.isNotEmpty) {
+              _logger.d(
+                "Polling found ${outgoingFiles.length} outgoing files for peer $peerID",
+                sendToIpn: !_useHttpLocalApi,
+              );
+              eventBus.fire(
+                BackendNotifyEvent(
+                  IpnNotification(outgoingFiles: outgoingFiles),
+                ),
+              );
+            }
+          } catch (e) {
+            _logger.e("Failed to get outgoing files: $e");
+          }
+        });
+      }
 
       final result = _useHttpLocalApi
           ? await _sendPeerFilesOverHttp(
@@ -270,6 +313,7 @@ class IpnService {
     } finally {
       sub.cancel();
       currentTimer?.cancel();
+      pollingTimer?.cancel();
     }
   }
 
@@ -1101,7 +1145,7 @@ class IpnService {
     // connections, so we need to wait for previous log to be sent to
     // avoid sending logs in parallel.
     try {
-      if (Platform.isWindows) {
+      if (Platform.isWindows && !useWindowsTcpClient) {
         try {
           await _waitForHttpLock(timeoutMs: 1000);
         } catch (e) {
@@ -1228,6 +1272,8 @@ class IpnService {
     }
   }
 
+  static const useWindowsTcpClient = true;
+
   static HttpClient get _httpClient {
     if (!Platform.isLinux && !Platform.isWindows) {
       throw UnsupportedError(
@@ -1244,7 +1290,9 @@ class IpnService {
         assert(proxyPort == null);
         return Platform.isLinux
             ? Socket.startConnect(address, 0)
-            : NamedPipeSocket(socket, uri.path).createConnectionTask();
+            : useWindowsTcpClient
+                ? Socket.startConnect("127.0.0.1", 41112)
+                : NamedPipeSocket(socket, uri.path).createConnectionTask();
       }
       ..findProxy = (Uri uri) => 'DIRECT';
     return client;
@@ -1386,10 +1434,32 @@ class IpnService {
     ];
 
     try {
-      return await _postMultipart(
+      final result = await _postMultipart(
         'file-put/$peerID',
         parts,
       );
+      // For windows, a success means the files are sent.
+      if (result.startsWith("Success") && Platform.isWindows) {
+        final outgoingFiles = files.map((e) => OutgoingFile(
+              id: e.id,
+              peerID: e.peerID,
+              name: e.name,
+              declaredSize: e.declaredSize,
+              finished: true,
+              sent: e.declaredSize,
+              succeeded: true,
+            ));
+        _logger.d(
+          "Files sent successfully to peer $peerID: ${outgoingFiles.length}",
+          sendToIpn: false,
+        );
+        eventBus.fire(
+          BackendNotifyEvent(
+            IpnNotification(outgoingFiles: outgoingFiles.toList()),
+          ),
+        );
+      }
+      return result;
     } finally {
       // Clean up temporary manifest file
       await parts.first.file.delete();

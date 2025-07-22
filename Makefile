@@ -65,8 +65,8 @@ EXE_PATH="windows\installer\bin\CylonixInstaller.msi"
 
 # To be executed in the wsl terminal
 windows_cylonixd:
-	cd ./tailscale && BUILD_NUMBER=${BUILD_NUMBER} GOOS=windows GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscaled 
-	cd ./tailscale && BUILD_NUMBER=${BUILD_NUMBER} GOOS=windows GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscale
+	cd ./tailscale && BUILD_TAGS=ts_tcp_safesocket GOOS=windows GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscaled
+	cd ./tailscale && BUILD_TAGS=ts_tcp_safesocket GOOS=windows GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscale
 	mv ./tailscale/tailscaled.exe windows/installer/cylonixd.exe
 	mv ./tailscale/tailscale.exe windows/installer/cylonixc.exe
 # To be executed in the cmd or powershell terminal

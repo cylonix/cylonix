@@ -234,7 +234,7 @@ class NamedPipeSocket extends StreamView<Uint8List> implements Socket {
     );
   }
 
-  static bool _debugNotificationData = false;
+  static const _debugNotificationData = false;
   static void _showDebugData(
     String id,
     Uint8List data,
