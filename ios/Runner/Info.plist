@@ -91,5 +91,7 @@
 	</array>
 	<key>NSUserNotificationUsageDescription</key>
 	<string>We need to notify you when files are received</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Cylonix allows user to share files to cylonix peers. Only when user chooses to share photos or videos, the photos library is accessed.</string>
 </dict>
 </plist>

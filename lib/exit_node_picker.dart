@@ -134,7 +134,7 @@ class ExitNodePicker extends ConsumerWidget {
         ),
     ];
     return Container(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
       alignment: Alignment.topCenter,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 800),

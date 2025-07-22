@@ -354,7 +354,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     trailing: _isTogglingTailchat
                         ? const CupertinoActivityIndicator()
                         : AdaptiveButton(
-                            padding: EdgeInsets.zero,
+                            textButton: true,
                             child: Text(tailchatRunning ? 'Stop' : 'Start'),
                             onPressed: _toggleTailchatService,
                           ),
