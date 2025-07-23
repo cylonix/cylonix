@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -93,7 +94,7 @@ class IpnLogsWidget extends ConsumerWidget {
       showRefreshButton: true,
       dark: Theme.of(context).brightness == Brightness.dark,
       saveFile: _save,
-      shareFile: (logs) => _share(context, logs),
+      shareFile: Platform.isLinux ? null : (logs) => _share(context, logs),
       useAnsiParser: false,
     );
   }

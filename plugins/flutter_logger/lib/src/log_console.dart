@@ -581,23 +581,23 @@ class _LogConsoleState extends State<LogConsole> {
                         color: Colors.blue,
                         fontWeight: FontWeight.bold,
                       ),
-                      recognizer: TapGestureRecognizer()
-                        ..onTap = () async {
-                          if (Platform.isWindows) return;
-                          try {
-                            final uri = Uri.parse(filesAppUri);
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(uri);
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              await _showAlertDialog(
-                                "Error",
-                                "Failed to open files app: $e",
-                              );
-                            }
-                          }
-                        },
+                      recognizer:
+                          Platform.isWindows ? null : TapGestureRecognizer()
+                            ?..onTap = () async {
+                              try {
+                                final uri = Uri.parse(filesAppUri);
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri);
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  await _showAlertDialog(
+                                    "Error",
+                                    "Failed to open files app: $e",
+                                  );
+                                }
+                              }
+                            },
                     ),
                   ],
                 ],

@@ -344,6 +344,9 @@ class IpnService {
     if (Platform.isWindows) {
       return await WindowsServiceLogReader.readLatestServiceLog();
     }
+    if (Platform.isLinux) {
+      return await LinuxServiceLogReader.readLatestServiceLog();
+    }
     final completer = Completer<List<String>>();
     final id = const Uuid().v4();
     _commandCompleters[id] = completer;

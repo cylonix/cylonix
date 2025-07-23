@@ -113,7 +113,41 @@ class LogFile {
   }
 }
 
-class WindowsServiceLogReader {
+abstract class ServiceLogReader {
+  // Helper to read last N lines of a file
+  static Future<List<String>> readLastLines(File file, int count,
+      {String? match}) async {
+    final lines = <String>[];
+
+    // Read file backwards in chunks
+    final length = await file.length();
+    var position = length;
+    const chunkSize = 4096;
+
+    while (position > 0 && lines.length < count) {
+      final size = position > chunkSize ? chunkSize : position;
+      position -= size;
+
+      final chunk = await file.openRead(position, position + size).toList();
+      final text = String.fromCharCodes(chunk.expand((x) => x));
+      var chunkLines = text.split('\n');
+      if (match != null) {
+        chunkLines = chunkLines.where((e) => e.contains(match)).toList();
+      }
+
+      lines.insertAll(0, chunkLines);
+
+      // Keep only last N lines
+      if (lines.length > count) {
+        lines.removeRange(0, lines.length - count);
+      }
+    }
+
+    return lines;
+  }
+}
+
+class WindowsServiceLogReader extends ServiceLogReader {
   static Future<List<String>> readLatestServiceLog({int lines = 5000}) async {
     // Get ProgramData path from environment
     final programData = Platform.environment['ProgramData'];
@@ -148,33 +182,16 @@ class WindowsServiceLogReader {
     final file = File(latestLog.path);
 
     // Read last N lines
-    return await _readLastLines(file, lines);
+    return await ServiceLogReader.readLastLines(file, lines);
   }
+}
 
-  // Helper to read last N lines of a file
-  static Future<List<String>> _readLastLines(File file, int count) async {
-    final lines = <String>[];
+class LinuxServiceLogReader extends ServiceLogReader {
+  static Future<List<String>> readLatestServiceLog({int lines = 5000}) async {
 
-    // Read file backwards in chunks
-    final length = await file.length();
-    var position = length;
-    const chunkSize = 4096;
+    final file = File('/var/log/syslog');
 
-    while (position > 0 && lines.length < count) {
-      final size = position > chunkSize ? chunkSize : position;
-      position -= size;
-
-      final chunk = await file.openRead(position, position + size).toList();
-      final text = String.fromCharCodes(chunk.expand((x) => x));
-
-      lines.insertAll(0, text.split('\n'));
-
-      // Keep only last N lines
-      if (lines.length > count) {
-        lines.removeRange(0, lines.length - count);
-      }
-    }
-
-    return lines;
+    // Read last N lines
+    return await ServiceLogReader.readLastLines(file, lines, match: 'cylonixd');
   }
 }
