@@ -3,7 +3,6 @@ import 'package:flutter_logger/flutter_logger.dart';
 import 'package:logger/logger.dart';
 import '../models/log_file.dart';
 import '../utils/logger.dart' as logger;
-import '../utils/utils.dart';
 import 'adaptive_widgets.dart';
 
 class UILogsWidget extends StatelessWidget {
@@ -54,8 +53,8 @@ class UILogsWidget extends StatelessWidget {
 
   Widget _buildLogConsole(BuildContext context) {
     return LogConsole(
-      backButton: isApple() && onNavigateBack != null
-          ? AppleBackButton(
+      backButton: onNavigateBack != null
+          ? AdaptiveBackButton(
               onPressed: onNavigateBack,
             )
           : null,

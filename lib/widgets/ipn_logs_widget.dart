@@ -83,8 +83,8 @@ class IpnLogsWidget extends ConsumerWidget {
   ) {
     final viewModel = ref.read(ipnLogsProvider.notifier);
     return LogConsole(
-      backButton: isApple() && onNavigateBack != null
-          ? AppleBackButton(
+      backButton: onNavigateBack != null
+          ? AdaptiveBackButton(
               onPressed: onNavigateBack,
             )
           : null,

@@ -583,6 +583,7 @@ class _LogConsoleState extends State<LogConsole> {
                       ),
                       recognizer: TapGestureRecognizer()
                         ..onTap = () async {
+                          if (Platform.isWindows) return;
                           try {
                             final uri = Uri.parse(filesAppUri);
                             if (await canLaunchUrl(uri)) {

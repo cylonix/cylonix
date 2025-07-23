@@ -121,6 +121,22 @@ class AppleBackButton extends StatelessWidget {
   }
 }
 
+class AdaptiveBackButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+
+  const AdaptiveBackButton({super.key, this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return isApple()
+        ? AppleBackButton(onPressed: onPressed)
+        : IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: onPressed,
+          );
+  }
+}
+
 class CircledCheckIcon extends Icon {
   CircledCheckIcon({super.size, super.color, super.key})
       : super(

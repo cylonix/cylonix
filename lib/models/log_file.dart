@@ -112,3 +112,69 @@ class LogFile {
     }
   }
 }
+
+class WindowsServiceLogReader {
+  static Future<List<String>> readLatestServiceLog({int lines = 5000}) async {
+    // Get ProgramData path from environment
+    final programData = Platform.environment['ProgramData'];
+    if (programData == null) {
+      throw Exception('ProgramData environment variable not found');
+    }
+
+    // Build path to logs directory
+    final logPath = p.join(programData, 'Cylonix', 'Logs');
+    final logDir = Directory(logPath);
+
+    if (!await logDir.exists()) {
+      throw Exception('Log directory not found: $logPath');
+    }
+
+    // Find latest cylonix-service log file
+    final logs = await logDir
+        .list()
+        .where((f) =>
+            f is File && p.basename(f.path).startsWith('cylonix-service'))
+        .cast<File>()
+        .toList();
+
+    if (logs.isEmpty) {
+      throw Exception('No cylonix-service log files found');
+    }
+
+    // Sort by last modified time to get the latest
+    logs.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+
+    final latestLog = logs.first;
+    final file = File(latestLog.path);
+
+    // Read last N lines
+    return await _readLastLines(file, lines);
+  }
+
+  // Helper to read last N lines of a file
+  static Future<List<String>> _readLastLines(File file, int count) async {
+    final lines = <String>[];
+
+    // Read file backwards in chunks
+    final length = await file.length();
+    var position = length;
+    const chunkSize = 4096;
+
+    while (position > 0 && lines.length < count) {
+      final size = position > chunkSize ? chunkSize : position;
+      position -= size;
+
+      final chunk = await file.openRead(position, position + size).toList();
+      final text = String.fromCharCodes(chunk.expand((x) => x));
+
+      lines.insertAll(0, text.split('\n'));
+
+      // Keep only last N lines
+      if (lines.length > count) {
+        lines.removeRange(0, lines.length - count);
+      }
+    }
+
+    return lines;
+  }
+}

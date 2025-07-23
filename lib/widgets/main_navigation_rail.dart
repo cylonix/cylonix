@@ -8,6 +8,7 @@ import '../models/platform.dart';
 import '../providers/ipn.dart';
 import '../providers/theme.dart';
 import '../utils/utils.dart';
+import '../viewmodels/state_notifier.dart';
 
 class MainNavigationRail extends ConsumerStatefulWidget {
   final Function() onNavigateToUserSwitcher;
@@ -34,7 +35,6 @@ class MainNavigationRail extends ConsumerStatefulWidget {
 }
 
 class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
-  int _selectedIndex = 0;
   bool get _extended => isApple() || isAndroidTV ? true : _isExtended;
   bool _isExtended = false;
 
@@ -168,6 +168,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     final user = ref.watch(userProfileProvider);
     final health = ref.watch(healthProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final selectedIndex = ref.watch(navigationRailIndexProvider);
 
     if (isApple()) {
       return _buildAppleRail(context);
@@ -215,12 +216,13 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
         ),
         if (!isAndroidTV)
           NavigationRailDestination(
-          icon: _railIcon(const Icon(Icons.upload_file_outlined), "Send Files"),
-          label: Text(
-            'Send Files',
-            style: _labelStyle,
+            icon:
+                _railIcon(const Icon(Icons.upload_file_outlined), "Send Files"),
+            label: Text(
+              'Send Files',
+              style: _labelStyle,
+            ),
           ),
-        ),
         NavigationRailDestination(
           icon: _railIcon(_buildHeathIcon(health), "Health"),
           label: Text(
@@ -230,15 +232,15 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
         ),
         if (!isAndroidTV)
           NavigationRailDestination(
-          icon: _railIcon(
-            Icon(isDarkMode ? _lightModeIcon : _darkModeIcon),
-            isDarkMode ? "Light Mode" : "Dark Mode",
+            icon: _railIcon(
+              Icon(isDarkMode ? _lightModeIcon : _darkModeIcon),
+              isDarkMode ? "Light Mode" : "Dark Mode",
+            ),
+            label: Text(
+              isDarkMode ? "Light Mode" : "Dark Mode",
+              style: _labelStyle,
+            ),
           ),
-          label: Text(
-            isDarkMode ? "Light Mode" : "Dark Mode",
-            style: _labelStyle,
-          ),
-        ),
         NavigationRailDestination(
           icon: _railIcon(Icon(_infoIcon), "About Cylonix"),
           label: Text(
@@ -247,11 +249,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
           ),
         ),
       ],
-      selectedIndex: _selectedIndex,
+      selectedIndex: selectedIndex,
       onDestinationSelected: (index) {
-        setState(() {
-          _selectedIndex = index;
-        });
+        ref.read(navigationRailIndexProvider.notifier).setState(index);
         _handleNavigation(index);
       },
     );

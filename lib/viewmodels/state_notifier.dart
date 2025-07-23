@@ -143,3 +143,8 @@ final introViewedProvider =
     prefs: prefs,
   );
 });
+
+final navigationRailIndexProvider =
+    StateNotifierProvider<SimpleStateNotifier<int>, int>((ref) {
+  return SimpleStateNotifier<int>(0);
+});

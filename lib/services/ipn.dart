@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../models/backend_notify_event.dart';
 import '../models/ipn.dart';
+import '../models/log_file.dart';
 import '../utils/logger.dart';
 import '../utils/utils.dart';
 import 'named_pipe_socket.dart';
@@ -340,6 +341,9 @@ class IpnService {
   }
 
   Future<List<String>> getLogs() async {
+    if (Platform.isWindows) {
+      return await WindowsServiceLogReader.readLatestServiceLog();
+    }
     final completer = Completer<List<String>>();
     final id = const Uuid().v4();
     _commandCompleters[id] = completer;
@@ -908,6 +912,22 @@ class IpnService {
   }
 
   Future<void> setAlwaysUseDerp(bool on) async {
+    if (_useHttpLocalApi) {
+      // Http api returns 201 with empty body for success.
+      // Failures will throw exceptions.
+      await _sendCommandOverHttp(
+        Uri(
+          scheme: 'http',
+          host: _localApiHost,
+          path: '$_localApiPrefix/envknob',
+          queryParameters: {
+            'env': jsonEncode({'TS_DEBUG_ALWAYS_USE_DERP': on ? "1" : "0"}),
+          },
+        ),
+        'POST',
+      );
+      return;
+    }
     final result = await _sendCommand(
       'set_env_knobs',
       'TS_DEBUG_ALWAYS_USE_DERP=${on ? 1 : 0}',

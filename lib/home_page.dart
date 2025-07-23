@@ -223,6 +223,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _selectPage(int index) {
+    if (index == Page.mainView.value) {
+      ref.read(navigationRailIndexProvider.notifier).setState(0);
+    }
     setState(() {
       _rightSide = null; // Clear the right side widget
       _previousPage = _page.value;

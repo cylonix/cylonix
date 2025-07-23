@@ -314,6 +314,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               ],
             ),
             AdaptiveListSection.insetGrouped(
+              margin: const EdgeInsets.only(bottom: 16),
               header: const AdaptiveGroupedHeader(
                 'Advanced Options',
               ),

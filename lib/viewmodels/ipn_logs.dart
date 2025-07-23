@@ -45,7 +45,7 @@ class IpnLogsViewModel extends StateNotifier<AsyncValue<List<String>>> {
 
         final timestampMatch = timestampRegex.firstMatch(line);
 
-        if (Platform.isLinux || timestampMatch != null) {
+        if (Platform.isLinux || Platform.isWindows || timestampMatch != null) {
           // New log entry starts
           if (currentLogEvent != null) {
             // Add previous log entry
