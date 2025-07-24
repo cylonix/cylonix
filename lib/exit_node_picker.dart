@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -313,7 +316,7 @@ class ExitNodePicker extends ConsumerWidget {
       );
     }
 
-    return SwitchListTile(
+    return SwitchListTile.adaptive(
       title: const Text('Allow LAN Access'),
       subtitle: const Text(
         'Allow access to your local network why using an exit node',

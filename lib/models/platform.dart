@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 

@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:collection';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'ipn.dart';
 
 class BackendNotifyEvent {

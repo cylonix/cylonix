@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:io';
 import 'package:cylonix/widgets/adaptive_widgets.dart';
 import 'package:flutter/cupertino.dart';

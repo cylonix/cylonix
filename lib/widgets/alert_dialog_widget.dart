@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:cylonix/widgets/adaptive_widgets.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +22,7 @@ class AlertDialogWidget extends StatelessWidget {
   final void Function()? onAdditionalAskPressed;
   final void Function()? onCancel;
   final void Function()? onOK;
+  final List<DialogAction>? actions;
   final bool showOK;
   final bool showSuccessIcon;
 
@@ -39,6 +43,7 @@ class AlertDialogWidget extends StatelessWidget {
     this.onOK,
     this.showOK = true,
     this.showSuccessIcon = false,
+    this.actions,
   }) : super(key: key);
 
   Future<bool?> show(BuildContext context) async {
@@ -157,6 +162,7 @@ class AlertDialogWidget extends StatelessWidget {
             ),
             onPressed: () => Navigator.of(context).pop(false),
           ),
+        ...actions ?? []
       ],
       actionsAlignment: isApple() ? null : MainAxisAlignment.center,
     );
@@ -175,8 +181,10 @@ Future<bool?> showAlertDialog(
   String? okText,
   String? cancelText,
   Widget? otherActions,
+  bool showOK = true,
   bool showCancel = false,
   bool showSuccessIcon = false,
+  List<DialogAction>? actions,
   void Function()? onPressOK,
   void Function()? onAdditionalAskedPressed,
 }) {
@@ -194,6 +202,8 @@ Future<bool?> showAlertDialog(
     onCancel: showCancel ? () => {} : null,
     onOK: onPressOK,
     onAdditionalAskPressed: onAdditionalAskedPressed,
+    showOK: showOK,
     showSuccessIcon: showSuccessIcon,
+    actions: actions,
   ).show(context);
 }

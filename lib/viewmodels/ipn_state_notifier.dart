@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:collection';
 import 'dart:io';
 import 'dart:async';
@@ -602,16 +605,18 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
-  Future<void> editPrefs(MaskedPrefs prefs) async {
+  Future<IpnPrefs> editPrefs(MaskedPrefs prefs) async {
     _logger.d("Editing preferences: $prefs");
     try {
       final current = await _ipnService.editPrefs(prefs);
       state = AsyncValue.data(
         (state.valueOrNull ?? const IpnState()).copyWith(prefs: current),
       );
+      return current;
     } catch (error, stack) {
       _logger.e("Failed to edit preferences: $error, stackTrace: $stack");
       state = AsyncValue.error(error, stack);
+      throw Exception("Failed to edit preferences: $error");
     }
   }
 
@@ -664,6 +669,30 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       );
     } catch (error, stack) {
       final msg = "Failed to set run as exit node $on: $error";
+      _logger.e(msg);
+      state = AsyncValue.error(error, stack);
+      throw Exception(msg);
+    }
+  }
+
+  Future<void> toggleCorpDNS() async {
+    _logger.d("Toggling Cylonix DNS");
+    try {
+      final prefs = await _ipnService.editPrefs(
+        MaskedPrefs(
+          corpDNS: !(state.valueOrNull?.prefs?.corpDNS ?? false),
+          corpDNSSet: true,
+        ),
+      );
+      _logger.d(
+        "Cylonix DNS toggled. New prefs: $prefs",
+        sendToIpn: false,
+      );
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(prefs: prefs),
+      );
+    } catch (error, stack) {
+      final msg = "Failed to toggle Cylonix DNS: $error";
       _logger.e(msg);
       state = AsyncValue.error(error, stack);
       throw Exception(msg);

@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -518,6 +521,7 @@ class IpnService {
     try {
       final json = jsonDecode(result) as Map<String, dynamic>;
       final prefs = IpnPrefs.fromJson(json);
+      _logger.d("Edited prefs: $prefs", sendToIpn: false);
       return prefs;
     } catch (e) {
       _logger.e("Failed to parse returned prefs: $result: $e");

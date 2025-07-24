@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'ipn.dart';
 

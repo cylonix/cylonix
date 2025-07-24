@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -6,6 +9,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'about_view.dart';
 import 'custom_login_view.dart';
+import 'dns_settings_view.dart';
 import 'exit_node_picker.dart';
 import 'health_view.dart';
 import 'home_page.dart';
@@ -15,6 +19,7 @@ import 'providers/theme.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
+import 'subnet_routing_view.dart';
 import 'theme.dart';
 import 'user_switcher_view.dart';
 import 'utils/utils.dart';
@@ -105,6 +110,12 @@ class App extends ConsumerWidget {
             isAuthKey: true,
           ),
         );
+      case '/dns-settings':
+        return MaterialPageRoute(
+          builder: (_) => DNSSettingsView(
+            onBackToSettings: () => Navigator.pop(_),
+          ),
+        );
       case '/exit-nodes':
         return MaterialPageRoute(
           builder: (_) => ExitNodePicker(
@@ -160,6 +171,8 @@ class App extends ConsumerWidget {
                 Navigator.pushNamed(context, '/dns-settings'),
             onNavigateToSplitTunneling: () =>
                 Navigator.pushNamed(context, '/split-tunneling'),
+            onNavigateToSubnetRouting: () =>
+                Navigator.pushNamed(context, '/subnet-routing'),
             onNavigateToTailnetLock: () =>
                 Navigator.pushNamed(context, '/tailnet-lock'),
             onNavigateToPermissions: () =>
@@ -173,6 +186,14 @@ class App extends ConsumerWidget {
                 Navigator.pushNamed(context, '/mdm-settings'),
           ),
         );
+
+      case '/subnet-routing':
+        return MaterialPageRoute(
+          builder: (_) => SubnetRoutingView(
+            onBackToSettings: () => Navigator.pop(_),
+          ),
+        );
+
       case '/user-switcher':
         return MaterialPageRoute(
           builder: (context) => UserSwitcherView(

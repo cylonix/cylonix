@@ -263,7 +263,7 @@ _$MaskedPrefsImpl _$$MaskedPrefsImplFromJson(Map<String, dynamic> json) =>
     _$MaskedPrefsImpl(
       controlURLSet: json['ControlURLSet'] as bool?,
       routeAllSet: json['RouteAllSet'] as bool?,
-      corpDNSSet: json['CoprDNSSet'] as bool?,
+      corpDNSSet: json['CorpDNSSet'] as bool?,
       exitNodeIDSet: json['ExitNodeIDSet'] as bool?,
       exitNodeAllowLANAccessSet: json['ExitNodeAllowLANAccessSet'] as bool?,
       wantRunningSet: json['WantRunningSet'] as bool?,
@@ -291,7 +291,7 @@ Map<String, dynamic> _$$MaskedPrefsImplToJson(_$MaskedPrefsImpl instance) =>
     <String, dynamic>{
       'ControlURLSet': instance.controlURLSet,
       'RouteAllSet': instance.routeAllSet,
-      'CoprDNSSet': instance.corpDNSSet,
+      'CorpDNSSet': instance.corpDNSSet,
       'ExitNodeIDSet': instance.exitNodeIDSet,
       'ExitNodeAllowLANAccessSet': instance.exitNodeAllowLANAccessSet,
       'WantRunningSet': instance.wantRunningSet,

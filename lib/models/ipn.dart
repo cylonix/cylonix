@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:collection/collection.dart';
@@ -230,7 +233,7 @@ class MaskedPrefs with _$MaskedPrefs {
   const factory MaskedPrefs({
     @JsonKey(name: 'ControlURLSet') bool? controlURLSet,
     @JsonKey(name: 'RouteAllSet') bool? routeAllSet,
-    @JsonKey(name: 'CoprDNSSet') bool? corpDNSSet,
+    @JsonKey(name: 'CorpDNSSet') bool? corpDNSSet,
     @JsonKey(name: 'ExitNodeIDSet') bool? exitNodeIDSet,
     @JsonKey(name: 'ExitNodeAllowLANAccessSet') bool? exitNodeAllowLANAccessSet,
     @JsonKey(name: 'WantRunningSet') bool? wantRunningSet,

@@ -1,15 +1,21 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/backend_notify_event.dart';
 import '../services/ipn.dart';
 import '../utils/logger.dart';
+import 'ipn.dart';
 
-// Basic state providers
 final isAdminProvider = StateProvider<bool>((ref) => false);
 final managedByOrgProvider = StateProvider<String?>((ref) => null);
 final tailnetLockEnabledProvider = StateProvider<bool>((ref) => false);
-final corpDNSEnabledProvider = StateProvider<bool>((ref) => false);
-final showTailnetLockProvider = StateProvider<bool>((ref) => true);
+final showTailnetLockProvider = StateProvider<bool>((ref) => false);
+
+final corpDNSEnabledProvider = StateProvider<bool>((ref) {
+  return ref.watch(ipnStateProvider)?.prefs?.corpDNS ?? false;
+});
 
 class VpnPermissionState {
   final bool isGranted;

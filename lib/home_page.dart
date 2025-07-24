@@ -1,9 +1,13 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'about_view.dart';
 import 'custom_login_view.dart';
+import 'dns_settings_view.dart';
 import 'exit_node_picker.dart';
 import 'health_view.dart';
 import 'intro_page.dart';
@@ -16,6 +20,7 @@ import 'providers/theme.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
+import 'subnet_routing_view.dart';
 import 'utils/applog.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
@@ -126,6 +131,14 @@ class _HomePageState extends ConsumerState<HomePage> {
         return RunExitNodeView(
           onNavigateBackToExitNodes: () => _selectPage(Page.exitNodes.value),
         );
+      case Page.dnsSettingsView:
+        return DNSSettingsView(
+          onBackToSettings: () => _selectPage(Page.settings.value),
+        );
+      case Page.subnetRouting:
+        return SubnetRoutingView(
+          onBackToSettings: () => _selectPage(Page.settings.value),
+        );
       default:
         return _mainViewWithRail;
     }
@@ -196,8 +209,8 @@ class _HomePageState extends ConsumerState<HomePage> {
       onNavigateToCustomLogin: () => _selectPage(Page.customLogin.value),
       onNavigateToCustomControlURL: () => _selectPage(Page.customControl.value),
       onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
-      onNavigateToDNSSettings: () =>
-          Navigator.pushNamed(context, '/dns-settings'),
+      onNavigateToDNSSettings: () => _selectPage(Page.dnsSettingsView.value),
+      onNavigateToSubnetRouting: () => _selectPage(Page.subnetRouting.value),
       onNavigateToSplitTunneling: () =>
           Navigator.pushNamed(context, '/split-tunneling'),
       onNavigateToTailnetLock: () =>
@@ -357,7 +370,9 @@ enum Page {
   about(7),
   perDetails(8),
   permissions(9),
-  runExitNodeView(10);
+  runExitNodeView(10),
+  dnsSettingsView(11),
+  subnetRouting(12);
 
   const Page(this.value);
   final int value;

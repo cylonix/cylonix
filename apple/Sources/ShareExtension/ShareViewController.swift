@@ -1,7 +1,7 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 #if os(iOS)
-    // import MobileCoreServices
-    // import Photos
-    // import Social
     import UIKit
     typealias FileDropHostingController = UIHostingController<FileDropView>
 #else

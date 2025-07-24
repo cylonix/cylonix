@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -23,6 +26,7 @@ class SettingsView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToUserSwitcher;
   final VoidCallback onNavigateToDNSSettings;
   final VoidCallback onNavigateToSplitTunneling;
+  final VoidCallback onNavigateToSubnetRouting;
   final VoidCallback onNavigateToTailnetLock;
   final VoidCallback onNavigateToPermissions;
   final VoidCallback onNavigateToManagedBy;
@@ -31,22 +35,24 @@ class SettingsView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToMDMSettings;
   final Function(Widget)? onPushNewPage;
 
-  const SettingsView(
-      {super.key,
-      this.onNavigateBackHome,
-      this.onNavigateBackToSettings,
-      required this.onNavigateToCustomLogin,
-      required this.onNavigateToCustomControlURL,
-      required this.onNavigateToUserSwitcher,
-      required this.onNavigateToDNSSettings,
-      required this.onNavigateToSplitTunneling,
-      required this.onNavigateToTailnetLock,
-      required this.onNavigateToPermissions,
-      required this.onNavigateToManagedBy,
-      required this.onNavigateToBugReport,
-      required this.onNavigateToAbout,
-      required this.onNavigateToMDMSettings,
-      this.onPushNewPage});
+  const SettingsView({
+    super.key,
+    this.onNavigateBackHome,
+    this.onNavigateBackToSettings,
+    required this.onNavigateToCustomLogin,
+    required this.onNavigateToCustomControlURL,
+    required this.onNavigateToUserSwitcher,
+    required this.onNavigateToDNSSettings,
+    required this.onNavigateToSplitTunneling,
+    required this.onNavigateToSubnetRouting,
+    required this.onNavigateToTailnetLock,
+    required this.onNavigateToPermissions,
+    required this.onNavigateToManagedBy,
+    required this.onNavigateToBugReport,
+    required this.onNavigateToAbout,
+    required this.onNavigateToMDMSettings,
+    this.onPushNewPage,
+  });
 
   @override
   ConsumerState<SettingsView> createState() => _SettingsViewState();
@@ -56,7 +62,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   static final _logger = Logger(tag: "SettingsView");
   bool _isTogglingTailchat = false;
   bool _isTogglingAlwaysUseDerp = false;
-  static const bool _isNetworkFeaturesReady = false;
 
   @override
   Widget build(BuildContext context) {
@@ -242,41 +247,48 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           children: [
             if (isVPNPrepared) _buildUserSection(context, ref, user),
             if (isAdmin) _buildAdminSection(context),
-            if (_isNetworkFeaturesReady)
-              AdaptiveListSection.insetGrouped(
-                header: Text(
-                  'NETWORK',
-                  style:
-                      isApple() ? null : Theme.of(context).textTheme.titleLarge,
-                ),
-                children: [
-                  AdaptiveListTile.notched(
-                    title: const Text('DNS Settings'),
-                    subtitle: Text(corpDNSEnabled
+            AdaptiveListSection.insetGrouped(
+              header: const AdaptiveGroupedHeader('NETWORK'),
+              children: [
+                AdaptiveListTile.notched(
+                  title: const Text('DNS Settings'),
+                  subtitle: Text(
+                    corpDNSEnabled
                         ? 'Using Cylonix DNS'
-                        : 'Not using Cylonix DNS'),
-                    trailing: _trailingIcon,
-                    onTap: widget.onNavigateToDNSSettings,
+                        : 'Not using Cylonix DNS',
                   ),
+                  trailing: _trailingIcon,
+                  onTap: widget.onNavigateToDNSSettings,
+                ),
+                AdaptiveListTile.notched(
+                  title: const Text('Subnet Routing'),
+                  subtitle: const Text(
+                    "Manage access for devices not installed with Cylonix",
+                  ),
+                  trailing: _trailingIcon,
+                  onTap: widget.onNavigateToSubnetRouting,
+                ),
+                if (Platform.isAndroid)
                   AdaptiveListTile.notched(
                     title: const Text('Split Tunneling'),
-                    subtitle:
-                        const Text('Exclude certain apps from using Cylonix'),
+                    subtitle: const Text(
+                      'Exclude certain apps from using Cylonix',
+                    ),
                     trailing: _trailingIcon,
                     onTap: widget.onNavigateToSplitTunneling,
                   ),
-                  if (showTailnetLock)
-                    AdaptiveListTile.notched(
-                      title: const Text('Tailnet Lock'),
-                      subtitle:
-                          Text(tailnetLockEnabled ? 'Enabled' : 'Disabled'),
-                      trailing: _trailingIcon,
-                      onTap: widget.onNavigateToTailnetLock,
-                    ),
-                ],
-              ),
+                if (showTailnetLock)
+                  AdaptiveListTile.notched(
+                    title: const Text('Tailnet Lock'),
+                    subtitle: Text(tailnetLockEnabled ? 'Enabled' : 'Disabled'),
+                    trailing: _trailingIcon,
+                    onTap: widget.onNavigateToTailnetLock,
+                  ),
+              ],
+            ),
             if (isMobile() || Platform.isMacOS)
               AdaptiveListSection.insetGrouped(
+                header: const AdaptiveGroupedHeader('Permissions'),
                 children: [
                   AdaptiveListTile.notched(
                     title: const Text('Permissions'),
@@ -292,6 +304,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 ],
               ),
             AdaptiveListSection.insetGrouped(
+              header: const AdaptiveGroupedHeader('Others'),
               children: [
                 AdaptiveListTile.notched(
                   title: const Text('Report an Issue'),

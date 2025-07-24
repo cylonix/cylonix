@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'dart:async';
 import 'dart:convert';
 import 'package:cylonix/widgets/alert_dialog_widget.dart';

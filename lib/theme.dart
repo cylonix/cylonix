@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'utils/utils.dart';

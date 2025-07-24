@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/ipn.dart';
 import 'state_notifier.dart';

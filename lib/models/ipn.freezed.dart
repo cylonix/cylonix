@@ -2590,7 +2590,7 @@ mixin _$MaskedPrefs {
   bool? get controlURLSet => throw _privateConstructorUsedError;
   @JsonKey(name: 'RouteAllSet')
   bool? get routeAllSet => throw _privateConstructorUsedError;
-  @JsonKey(name: 'CoprDNSSet')
+  @JsonKey(name: 'CorpDNSSet')
   bool? get corpDNSSet => throw _privateConstructorUsedError;
   @JsonKey(name: 'ExitNodeIDSet')
   bool? get exitNodeIDSet => throw _privateConstructorUsedError;
@@ -2650,7 +2650,7 @@ abstract class $MaskedPrefsCopyWith<$Res> {
   $Res call(
       {@JsonKey(name: 'ControlURLSet') bool? controlURLSet,
       @JsonKey(name: 'RouteAllSet') bool? routeAllSet,
-      @JsonKey(name: 'CoprDNSSet') bool? corpDNSSet,
+      @JsonKey(name: 'CorpDNSSet') bool? corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') bool? exitNodeIDSet,
       @JsonKey(name: 'ExitNodeAllowLANAccessSet')
       bool? exitNodeAllowLANAccessSet,
@@ -2815,7 +2815,7 @@ abstract class _$$MaskedPrefsImplCopyWith<$Res>
   $Res call(
       {@JsonKey(name: 'ControlURLSet') bool? controlURLSet,
       @JsonKey(name: 'RouteAllSet') bool? routeAllSet,
-      @JsonKey(name: 'CoprDNSSet') bool? corpDNSSet,
+      @JsonKey(name: 'CorpDNSSet') bool? corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') bool? exitNodeIDSet,
       @JsonKey(name: 'ExitNodeAllowLANAccessSet')
       bool? exitNodeAllowLANAccessSet,
@@ -2973,7 +2973,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
   const _$MaskedPrefsImpl(
       {@JsonKey(name: 'ControlURLSet') this.controlURLSet,
       @JsonKey(name: 'RouteAllSet') this.routeAllSet,
-      @JsonKey(name: 'CoprDNSSet') this.corpDNSSet,
+      @JsonKey(name: 'CorpDNSSet') this.corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') this.exitNodeIDSet,
       @JsonKey(name: 'ExitNodeAllowLANAccessSet')
       this.exitNodeAllowLANAccessSet,
@@ -3007,7 +3007,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
   @JsonKey(name: 'RouteAllSet')
   final bool? routeAllSet;
   @override
-  @JsonKey(name: 'CoprDNSSet')
+  @JsonKey(name: 'CorpDNSSet')
   final bool? corpDNSSet;
   @override
   @JsonKey(name: 'ExitNodeIDSet')
@@ -3180,7 +3180,7 @@ abstract class _MaskedPrefs extends MaskedPrefs {
   const factory _MaskedPrefs(
       {@JsonKey(name: 'ControlURLSet') final bool? controlURLSet,
       @JsonKey(name: 'RouteAllSet') final bool? routeAllSet,
-      @JsonKey(name: 'CoprDNSSet') final bool? corpDNSSet,
+      @JsonKey(name: 'CorpDNSSet') final bool? corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') final bool? exitNodeIDSet,
       @JsonKey(name: 'ExitNodeAllowLANAccessSet')
       final bool? exitNodeAllowLANAccessSet,
@@ -3216,7 +3216,7 @@ abstract class _MaskedPrefs extends MaskedPrefs {
   @JsonKey(name: 'RouteAllSet')
   bool? get routeAllSet;
   @override
-  @JsonKey(name: 'CoprDNSSet')
+  @JsonKey(name: 'CorpDNSSet')
   bool? get corpDNSSet;
   @override
   @JsonKey(name: 'ExitNodeIDSet')

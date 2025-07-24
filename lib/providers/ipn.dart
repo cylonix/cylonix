@@ -1,3 +1,6 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
@@ -25,6 +28,11 @@ final ipnStateProvider = Provider<IpnState?>((ref) {
     loading: () => null,
     error: (_, __) => null,
   );
+});
+
+final ipnLoadingProvider = Provider<bool>((ref) {
+  final state = ref.watch(ipnStateNotifierProvider);
+  return state.isLoading;
 });
 
 final ipnErrMessageProvider = Provider<String?>((ref) {
