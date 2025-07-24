@@ -966,3 +966,44 @@ class LoadingIndicator extends StatelessWidget {
     );
   }
 }
+
+class AdaptiveSwitchListTile extends StatelessWidget {
+  final Widget title;
+  final Widget? subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Widget? leading;
+  final Widget? trailing;
+
+  const AdaptiveSwitchListTile({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.subtitle,
+    this.leading,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isApple()) {
+      return AdaptiveListTile.notched(
+        leading: leading,
+        title: title,
+        subtitle: subtitle,
+        trailing: CupertinoSwitch(
+          value: value,
+          onChanged: onChanged,
+        ),
+      );
+    }
+
+    return SwitchListTile(
+      title: title,
+      subtitle: subtitle,
+      value: value,
+      onChanged: onChanged,
+    );
+  }
+}

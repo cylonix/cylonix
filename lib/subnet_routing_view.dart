@@ -80,7 +80,7 @@ class SubnetRoutingView extends ConsumerWidget {
                 onDeleted: () =>
                     ref.read(subnetRoutingProvider.notifier).dismissError(),
               ),
-            SwitchListTile(
+            AdaptiveSwitchListTile(
               title: const Text('Use Cylonix Subnets'),
               value: state.routeAll,
               onChanged: (_) =>

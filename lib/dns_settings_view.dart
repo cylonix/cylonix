@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/ipn.dart';
 import 'providers/settings.dart';
+import 'utils/utils.dart';
 import 'viewmodels/settings.dart';
 import 'widgets/adaptive_widgets.dart';
 
@@ -19,12 +21,19 @@ class DNSSettingsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dnsSettings = ref.watch(dnsSettingsProvider);
-    final isLoading = ref.watch(dnsSettingsLoadingProvider);
-    final resolvers = dnsSettings.dnsConfig?.resolvers ?? [];
-    final domains = dnsSettings.dnsConfig?.domains ?? [];
-    final routes = dnsSettings.dnsConfig?.routes ?? {};
-    final corpDNS = ref.watch(corpDNSEnabledProvider);
+    if (isApple()) {
+      return CupertinoPageScaffold(
+        navigationBar: CupertinoNavigationBar(
+          middle: const Text('DNS Settings'),
+          leading: CupertinoButton(
+            padding: EdgeInsets.zero,
+            child: const Icon(CupertinoIcons.back),
+            onPressed: onBackToSettings,
+          ),
+        ),
+        child: _buildContext(context, ref),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('DNS Settings'),
@@ -33,25 +42,35 @@ class DNSSettingsView extends ConsumerWidget {
           onPressed: onBackToSettings,
         ),
       ),
-      body: LoadingIndicator(
-          isLoading: isLoading,
-          child: Container(
-            alignment: Alignment.topCenter,
-            child: Container(
-              alignment: Alignment.topCenter,
-              constraints: const BoxConstraints(maxWidth: 800),
-              child: ListView(
-                children: [
-                  _buildStateSection(context, dnsSettings, ref),
-                  if (corpDNS && resolvers.isNotEmpty)
-                    _buildResolversSection(resolvers),
-                  if (corpDNS && domains.isNotEmpty)
-                    _buildDomainsSection(domains),
-                  if (corpDNS && routes.isNotEmpty) _buildRouteSection(routes),
-                ],
-              ),
-            ),
-          )),
+      body: _buildContext(context, ref),
+    );
+  }
+
+  Widget _buildContext(BuildContext context, WidgetRef ref) {
+    final dnsSettings = ref.watch(dnsSettingsProvider);
+    final isLoading = ref.watch(dnsSettingsLoadingProvider);
+    final resolvers = dnsSettings.dnsConfig?.resolvers ?? [];
+    final domains = dnsSettings.dnsConfig?.domains ?? [];
+    final routes = dnsSettings.dnsConfig?.routes ?? {};
+    final corpDNS = ref.watch(corpDNSEnabledProvider);
+    return LoadingIndicator(
+      isLoading: isLoading,
+      child: Container(
+        alignment: Alignment.topCenter,
+        child: Container(
+          alignment: Alignment.topCenter,
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: ListView(
+            children: [
+              _buildStateSection(context, dnsSettings, ref),
+              if (corpDNS && resolvers.isNotEmpty)
+                _buildResolversSection(resolvers),
+              if (corpDNS && domains.isNotEmpty) _buildDomainsSection(domains),
+              if (corpDNS && routes.isNotEmpty) _buildRouteSection(routes),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -72,7 +91,7 @@ class DNSSettingsView extends ConsumerWidget {
           subtitle: Text(settings.enablementState.caption),
         ),
         if (!settings.isDNSSettingsHidden) ...[
-          SwitchListTile.adaptive(
+          AdaptiveSwitchListTile(
             title: const Text('Use Cylonix DNS'),
             value: settings.useCorpDNS,
             onChanged: (value) async {
@@ -147,7 +166,7 @@ class ClipboardValueTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
+    return AdaptiveListTile(
       title: Text(value),
       trailing: IconButton(
         icon: const Icon(Icons.copy),

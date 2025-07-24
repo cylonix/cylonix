@@ -125,7 +125,7 @@ class ExitNodePicker extends ConsumerWidget {
             _buildMullvadInfoItem(context, isCupertino),
           ],
           if (!model.isLanAccessHidden) ...[
-            _buildAllowLanAccess(context, ref, model, isCupertino),
+            _buildAllowLanAccess(context, ref, model),
           ],
         ],
       ),
@@ -300,23 +300,10 @@ class ExitNodePicker extends ConsumerWidget {
     );
   }
 
-  Widget _buildAllowLanAccess(BuildContext context, WidgetRef ref,
-      ExitNodeState model, bool isCupertino) {
-    if (isCupertino) {
-      return AdaptiveListTile.notched(
-        leading: const Icon(CupertinoIcons.wifi),
-        title: const Text('Allow LAN Access'),
-        subtitle: const Text(
-          'Allow access to your local network why using an exit node',
-        ),
-        trailing: CupertinoSwitch(
-          value: model.allowLANAccess,
-          onChanged: (value) => _toggleAllowLANAccess(context, ref),
-        ),
-      );
-    }
-
-    return SwitchListTile.adaptive(
+  Widget _buildAllowLanAccess(
+      BuildContext context, WidgetRef ref, ExitNodeState model) {
+    return AdaptiveSwitchListTile(
+      leading: const Icon(CupertinoIcons.wifi),
       title: const Text('Allow LAN Access'),
       subtitle: const Text(
         'Allow access to your local network why using an exit node',
