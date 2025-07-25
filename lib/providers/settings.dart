@@ -1,9 +1,13 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/backend_notify_event.dart';
+import '../models/ipn.dart';
 import '../services/ipn.dart';
 import '../utils/logger.dart';
 import 'ipn.dart';
@@ -29,7 +33,7 @@ class VpnPermissionState {
 
 final vpnPermissionNotifierProvider = StateNotifierProvider<
     VpnPermissionNotifier, AsyncValue<VpnPermissionState>>((ref) {
-  return VpnPermissionNotifier();
+  return VpnPermissionNotifier(ref);
 });
 
 // Simplified state providers for UI consumption
@@ -48,13 +52,27 @@ class VpnPermissionNotifier
   static final _logger = Logger(tag: "VpnPermissionNotifier");
   static const _kVpnPermissionAskedKey = 'vpn_permission_asked';
   static final _ipnService = IpnService();
+  static StreamSubscription<VpnPermissionEvent>? _eventSubscription;
+  final Ref ref;
 
-  VpnPermissionNotifier() : super(const AsyncValue.loading()) {
-    _initialize();
+  VpnPermissionNotifier(this.ref) : super(const AsyncValue.loading()) {
+    if (Platform.isAndroid) {
+      // Re-check permission state on Android whenever ipn changes to
+      // running state since it can be revoked (root cause unknown).
+      final backendState = ref.watch(backendStateProvider);
+      if (backendState == BackendState.running) {
+        _logger.d("Backend is running, initializing VPN permission state");
+        _initialize();
+      }
+    } else {
+      _initialize();
+    }
   }
 
   Future<void> _initialize() async {
-    IpnService.eventBus.on<VpnPermissionEvent>().listen((event) {
+    _eventSubscription?.cancel();
+    _eventSubscription =
+        IpnService.eventBus.on<VpnPermissionEvent>().listen((event) {
       _logger.d("Received VpnPermissionEvent: $event");
       state = AsyncValue.data(VpnPermissionState(
         isGranted: event.isGranted,

@@ -698,4 +698,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       throw Exception(msg);
     }
   }
+
+  Future<void> excludeAppFromVPN(String packageName, bool isOn) async {
+    await _ipnService.excludeAppFromVPN(packageName, isOn);
+  }
 }

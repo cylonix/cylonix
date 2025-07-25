@@ -280,6 +280,32 @@ class MainActivity: FlutterFragmentActivity() {
                     viewModel.showVPNPermissionLauncherIfUnauthorized()
                     result.success("Success")
                 }
+                "excludeAppFromVPN" -> {
+                    Log.d(LOG_TAG, "excludeAppFromVPN called")
+                    try {
+                        val packageName = call.argument<String>("packageName")
+                        val isOn = call.argument<Boolean>("isOn") ?: true
+                        if (packageName != null) {
+                            if (isOn) {
+                                Log.d(LOG_TAG, "Excluding app from VPN: $packageName")
+                                App.get().addUserDisallowedPackageName(packageName)
+                            } else {
+                                App.get().removeUserDisallowedPackageName(packageName)
+                                Log.d(LOG_TAG, "Unexcluded app from VPN: $packageName")
+                            }
+                            result.success("Success")
+                        } else {
+                            result.error("INVALID_ARGUMENT", "Package name is required", null)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Error in excludeAppFromVPN: ${e.message}")
+                        result.error(
+                            "INVALID_ARGUMENT",
+                            "Failed to process excludeAppFromVPN request: ${e.message}",
+                            null
+                        )
+                    }
+                }
                 "sendCommand" -> {
                     try {
                         val command = call.argument<String>("cmd")

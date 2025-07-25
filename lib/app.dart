@@ -19,6 +19,7 @@ import 'providers/theme.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
+import 'split_tunnel_view.dart';
 import 'subnet_routing_view.dart';
 import 'theme.dart';
 import 'user_switcher_view.dart';
@@ -184,6 +185,13 @@ class App extends ConsumerWidget {
             onNavigateToAbout: () => Navigator.pushNamed(context, '/about'),
             onNavigateToMDMSettings: () =>
                 Navigator.pushNamed(context, '/mdm-settings'),
+          ),
+        );
+
+      case '/split-tunneling':
+        return MaterialPageRoute(
+          builder: (_) => SplitTunnelAppPickerView(
+            onBackToSettings: () => Navigator.pop(_),
           ),
         );
 

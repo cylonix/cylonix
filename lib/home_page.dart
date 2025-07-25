@@ -20,6 +20,7 @@ import 'providers/theme.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
+import 'split_tunnel_view.dart';
 import 'subnet_routing_view.dart';
 import 'utils/applog.dart';
 import 'utils/logger.dart';
@@ -139,6 +140,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         return SubnetRoutingView(
           onBackToSettings: () => _selectPage(Page.settings.value),
         );
+      case Page.splitTunnel:
+        return SplitTunnelAppPickerView(
+          onBackToSettings: () => _selectPage(Page.settings.value),
+        );
       default:
         return _mainViewWithRail;
     }
@@ -211,8 +216,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
       onNavigateToDNSSettings: () => _selectPage(Page.dnsSettingsView.value),
       onNavigateToSubnetRouting: () => _selectPage(Page.subnetRouting.value),
-      onNavigateToSplitTunneling: () =>
-          Navigator.pushNamed(context, '/split-tunneling'),
+      onNavigateToSplitTunneling: () => _selectPage(Page.splitTunnel.value),
       onNavigateToTailnetLock: () =>
           Navigator.pushNamed(context, '/tailnet-lock'),
       onNavigateToPermissions: () => _selectPage(Page.permissions.value),
@@ -372,7 +376,8 @@ enum Page {
   permissions(9),
   runExitNodeView(10),
   dnsSettingsView(11),
-  subnetRouting(12);
+  subnetRouting(12),
+  splitTunnel(13);
 
   const Page(this.value);
   final int value;

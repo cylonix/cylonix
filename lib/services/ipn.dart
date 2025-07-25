@@ -1621,6 +1621,24 @@ class IpnService {
       ),
     );
   }
+
+  Future<void> excludeAppFromVPN(String packageName, bool isOn) async {
+    if (!Platform.isAndroid) {
+      throw UnsupportedError(
+        "Excluding apps from VPN is only supported on Android.",
+      );
+    }
+    final result = await _channel.invokeMethod(
+      'excludeAppFromVPN',
+      <String, dynamic>{
+        'packageName': packageName,
+        'isOn': isOn,
+      },
+    );
+    if (result != "Success") {
+      throw Exception("Failed to exclude app from VPN: $result");
+    }
+  }
 }
 
 class EventBusSender {

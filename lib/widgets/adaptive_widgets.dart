@@ -957,7 +957,7 @@ class LoadingIndicator extends StatelessWidget {
         child,
         if (isLoading) ...[
           const Opacity(
-            opacity: 0.6,
+            opacity: 0.3,
             child: ModalBarrier(dismissible: false, color: Colors.black),
           ),
           const AdaptiveLoadingWidget(),
