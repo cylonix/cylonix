@@ -25,6 +25,7 @@
 .pub-cache/
 .pub/
 /build/
+macos/build/
 devtools_options.yaml
 
 # Web related

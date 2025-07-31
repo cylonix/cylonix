@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:downloadsfolder/downloadsfolder.dart' as dlf;
@@ -23,7 +24,14 @@ class FilesWaitingView extends ConsumerWidget {
     return Column(
       children: [
         AdaptiveListTile(
-          title: const Text(''),
+          leading: Icon(
+            isApple() ? CupertinoIcons.doc : Icons.insert_drive_file_outlined,
+          ),
+          backgroundColor: Colors.transparent,
+          title: const Text(
+            'Files Waiting',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
           trailing: AdaptiveButton(
             filled: true,
             onPressed: () {
@@ -34,10 +42,9 @@ class FilesWaitingView extends ConsumerWidget {
         ),
         Expanded(
           child: files.isEmpty
-              ? const Center(child: Text('No files waiting'))
+              ? const Center(child: Text('There is no file waiting'))
               : SingleChildScrollView(
                   child: AdaptiveListSection.insetGrouped(
-                    header: const AdaptiveGroupedHeader("Files Waiting"),
                     footer: const AdaptiveGroupedFooter(
                       'Save or delete files as needed',
                     ),
@@ -105,6 +112,19 @@ class FilesWaitingView extends ConsumerWidget {
           fileName,
         );
         showPath = 'the "Download" folder';
+      } else if (Platform.isMacOS) {
+        final srcPath = await ref
+            .read(ipnStateNotifierProvider.notifier)
+            .getFilePath(fileName);
+        final toPath = await FilePicker.platform.saveFile(
+          dialogTitle: "Choose the file to be saved",
+          fileName: fileName,
+        );
+        if (toPath == null) {
+          return null; // User canceled the picker
+        }
+        await File(srcPath).copy(toPath);
+        showPath = toPath;
       } else {
         final toPath = await FilePicker.platform.saveFile(
           dialogTitle: "Choose the file to be saved",

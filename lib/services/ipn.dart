@@ -833,6 +833,7 @@ class IpnService {
     if (result.startsWith("Error")) {
       throw Exception("Failed to get waiting files: $result");
     }
+    print("Received waiting files: $result");
     final list = jsonDecode(result) as List<dynamic>?;
     return list?.map((e) => AwaitingFile.fromJson(e)).toList();
   }
