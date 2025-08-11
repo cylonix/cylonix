@@ -3,10 +3,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'models/platform.dart';
 import 'providers/exit_node.dart';
 import 'providers/ipn.dart';
 import 'utils/utils.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 
@@ -23,6 +23,7 @@ class RunExitNodeView extends ConsumerWidget {
     final state = ref.watch(exitNodePickerProvider);
     final loading = ref.watch(exitNodeLoadingProvider);
     final selfNode = ref.watch(selfNodeProvider);
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
 
     return Scaffold(
       appBar: AppBar(

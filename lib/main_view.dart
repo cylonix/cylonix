@@ -15,7 +15,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'files_waiting_view.dart';
 import 'health_view.dart';
 import 'models/ipn.dart';
-import 'models/platform.dart';
 import 'providers/ipn.dart';
 import 'providers/settings.dart';
 import 'providers/theme.dart';
@@ -198,10 +197,11 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildTitle(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProfileProvider);
     final profiles = ref.watch(loginProfilesProvider);
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     final title = Text(
       user?.tailnetTitle ??
           (profiles.isNotEmpty ? "Select Profile" : "Needs Signin"),
-      style: useNavigationRail(context)
+      style: useNavigationRail(context) && !isAndroidTV
           ? null
           : isApple()
               ? CupertinoTheme.of(context).textTheme.navTitleTextStyle
@@ -216,13 +216,14 @@ class _MainViewState extends ConsumerState<MainView> {
 
   PreferredSizeWidget _buildMaterialHeader(
       BuildContext context, WidgetRef ref, UserProfile? user) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     return AppBar(
       title: _buildTitle(context, ref),
       titleSpacing: 24,
       leading: _buildLeading(context, ref),
       actions: [
         _buildToggleDeviceViewButton(context, ref),
-        if (!useNavigationRail(context))
+        if (!useNavigationRail(context) || isAndroidTV)
           _buildProfileButton(context, ref, user),
         const SizedBox(width: 16),
       ],
@@ -273,6 +274,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final showDevices = ref.watch(showDevicesProvider);
     final vpnState = ref.watch(vpnStateProvider);
     final errMessage = ref.watch(ipnErrMessageProvider);
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     if (errMessage != null) {
       return _buildCenteredWidget(
         _buildErrorWidget(
@@ -458,7 +460,10 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildProfileButton(
       BuildContext context, WidgetRef ref, UserProfile? user) {
-    if (useNavigationRail(context)) return const SizedBox.shrink();
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+    if (useNavigationRail(context) && !isAndroidTV) {
+      return const SizedBox.shrink();
+    }
     final icon = user == null
         ? const Icon(CupertinoIcons.ellipsis_circle)
         : AdaptiveAvatar(radius: 18, user: user);
@@ -795,6 +800,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildVPNPreparedConnectView(BuildContext context, WidgetRef ref) {
     final ipnState = ref.watch(ipnStateNotifierProvider);
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     return ipnState.when(
       loading: () => _buildConnectingView(context, true),
       error: (error, stack) => _buildErrorWidget(
@@ -963,38 +969,41 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildPermissionRequest(BuildContext context, WidgetRef ref) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.vpn_key, size: 50),
-        const SizedBox(height: 16),
-        Text(
-          'VPN Permission Required',
-          style: Theme.of(context).textTheme.titleLarge?.apply(
-                fontWeightDelta: 2,
-                color: isApple()
-                    ? CupertinoColors.label.resolveFrom(context)
-                    : Theme.of(context).colorScheme.primary,
-              ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Cylonix needs VPN permission to secure your connection. '
-          'Please grant permission when prompted.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyLarge?.apply(
-                color: isApple()
-                    ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                    : null,
-              ),
-        ),
-        const SizedBox(height: 48),
-        AdaptiveButton(
-          filled: true,
-          onPressed: () => _requestPermission(context, ref),
-          child: const Text('Continue to Grant Permission'),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.vpn_key, size: 50),
+          const SizedBox(height: 16),
+          Text(
+            'VPN Permission Required',
+            style: Theme.of(context).textTheme.titleLarge?.apply(
+                  fontWeightDelta: 2,
+                  color: isApple()
+                      ? CupertinoColors.label.resolveFrom(context)
+                      : Theme.of(context).colorScheme.primary,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Cylonix needs VPN permission to secure your connection. '
+            'Please grant permission when prompted.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge?.apply(
+                  color: isApple()
+                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                      : null,
+                ),
+          ),
+          const SizedBox(height: 48),
+          AdaptiveButton(
+            filled: true,
+            onPressed: () => _requestPermission(context, ref),
+            child: const Text('Continue to Grant Permission'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1027,64 +1036,70 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildWelcomeView(BuildContext context, WidgetRef ref) {
-    return Column(
-      spacing: 16,
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const Icon(Icons.vpn_key, size: 50),
-        const SizedBox(height: 16),
-        _welcomeTitle,
-        const SizedBox(height: 8),
-        Text(
-          'Approve VPN permissions to get started',
-          style: Theme.of(context).textTheme.titleMedium?.apply(
-                color: isApple()
-                    ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                    : null,
-              ),
-        ),
-        const SizedBox(height: 16),
-        AdaptiveButton(
-          filled: true,
-          width: 200,
-          onPressed: () => _requestPermission(context, ref),
-          child: const Text('Start'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAuthRequiredView(BuildContext context, String? adminURL) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.lock_outline, size: 40),
-        const SizedBox(height: 16),
-        Text(
-          'Device Authentication Required',
-          style: Theme.of(context).textTheme.titleLarge?.apply(
-                fontWeightDelta: 2,
-                color: isApple()
-                    ? CupertinoColors.label.resolveFrom(context)
-                    : Theme.of(context).colorScheme.primary,
-              ),
-        ),
-        const SizedBox(height: 8),
-        Text('This device needs to be authenticated by an admin',
-            textAlign: TextAlign.center,
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        spacing: 16,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Icon(Icons.vpn_key, size: 50),
+          const SizedBox(height: 16),
+          _welcomeTitle,
+          const SizedBox(height: 8),
+          Text(
+            'Approve VPN permissions to get started',
             style: Theme.of(context).textTheme.titleMedium?.apply(
                   color: isApple()
                       ? CupertinoColors.secondaryLabel.resolveFrom(context)
                       : null,
-                )),
-        const SizedBox(height: 16),
-        if (adminURL != null)
-          AdaptiveButton(
-            onPressed: () => _loginToAdminURL(adminURL),
-            child: const Text('Open Admin Console'),
+                ),
           ),
-      ],
+          const SizedBox(height: 16),
+          AdaptiveButton(
+            filled: true,
+            width: 200,
+            onPressed: () => _requestPermission(context, ref),
+            child: const Text('Start'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuthRequiredView(BuildContext context, String? adminURL) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.lock_outline, size: 40),
+          const SizedBox(height: 16),
+          Text(
+            'Device Authentication Required',
+            style: Theme.of(context).textTheme.titleLarge?.apply(
+                  fontWeightDelta: 2,
+                  color: isApple()
+                      ? CupertinoColors.label.resolveFrom(context)
+                      : Theme.of(context).colorScheme.primary,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text('This device needs to be authenticated by an admin',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.apply(
+                    color: isApple()
+                        ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                        : null,
+                  )),
+          const SizedBox(height: 16),
+          if (adminURL != null)
+            AdaptiveButton(
+              onPressed: () => _loginToAdminURL(adminURL),
+              child: const Text('Open Admin Console'),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1115,46 +1130,49 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildNotConnectedView(
       BuildContext context, WidgetRef ref, String username) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      spacing: 16,
-      children: [
-        Icon(
-          Icons.power_settings_new,
-          size: 40,
-          color: isApple()
-              ? CupertinoColors.systemGrey.resolveFrom(context)
-              : Theme.of(context).disabledColor,
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Not Connected',
-          style: isApple()
-              ? TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: CupertinoColors.label.resolveFrom(context),
-                )
-              : Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 32),
-        Text(
-          'Connect to your network as $username',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleMedium?.apply(
-                color: isApple()
-                    ? CupertinoColors.systemGrey.resolveFrom(context)
-                    : null,
-              ),
-        ),
-        const SizedBox(height: 16),
-        AdaptiveButton(
-          filled: true,
-          width: 200,
-          onPressed: () => _onConnect(context, ref),
-          child: const Text('Connect'),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 16,
+        children: [
+          Icon(
+            Icons.power_settings_new,
+            size: 40,
+            color: isApple()
+                ? CupertinoColors.systemGrey.resolveFrom(context)
+                : Theme.of(context).disabledColor,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Not Connected',
+            style: isApple()
+                ? TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: CupertinoColors.label.resolveFrom(context),
+                  )
+                : Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'Connect to your network as $username',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.apply(
+                  color: isApple()
+                      ? CupertinoColors.systemGrey.resolveFrom(context)
+                      : null,
+                ),
+          ),
+          const SizedBox(height: 16),
+          AdaptiveButton(
+            filled: true,
+            width: 200,
+            onPressed: () => _onConnect(context, ref),
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1375,35 +1393,19 @@ class _MainViewState extends ConsumerState<MainView> {
       BuildContext context, WidgetRef ref, String? loginURL) {
     final profiles = ref.watch(loginProfilesProvider);
     final urlLaunched = ref.watch(ipnStateNotifierProvider.notifier).urlBrowsed;
-    return Column(
-      spacing: 16,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const SizedBox(height: 16),
-        _welcomeTitle,
-        const SizedBox(height: 8),
-        if (loginURL == null) ...[
-          Text(
-            'Sign in to join your network',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.apply(
-                  color: isApple()
-                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                      : null,
-                ),
-          ),
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        spacing: 16,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
           const SizedBox(height: 16),
-          if (!_waitingForURL)
-            AdaptiveButton(
-              autofocus: true,
-              filled: true,
-              onPressed: () => _startSignin(context, ref),
-              child: const Text('Start Signin'),
-            ),
-          if (_waitingForURL) ...[
-            const SizedBox(height: 16),
+          _welcomeTitle,
+          const SizedBox(height: 8),
+          if (loginURL == null) ...[
             Text(
-              'Waiting for backend to start the signin process...',
+              'Sign in to join your network',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.apply(
                     color: isApple()
@@ -1412,139 +1414,161 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
             ),
             const SizedBox(height: 16),
-            const CircularProgressIndicator.adaptive(),
+            if (!_waitingForURL)
+              AdaptiveButton(
+                autofocus: true,
+                filled: true,
+                onPressed: () => _startSignin(context, ref),
+                child: const Text('Start Signin'),
+              ),
+            if (_waitingForURL) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Waiting for backend to start the signin process...',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.apply(
+                      color: isApple()
+                          ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                          : null,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              const CircularProgressIndicator.adaptive(),
+            ],
           ],
-        ],
-        if (loginURL != null && _canSignInWithAppleInApp) ...[
-          if (_signingInWithApple || urlLaunched == loginURL) ...[
-            const AdaptiveLoadingWidget(),
-            _signInWithAppSuccess
-                ? const Text(
-                    "Signed in with Apple. Starting cylonix network. "
-                    "Please wait...",
-                    textAlign: TextAlign.center,
-                  )
-                : const Text(
-                    "Signing in with Apple. Please wait...",
-                    textAlign: TextAlign.center,
-                  ),
-          ],
-          if (!_signingInWithApple && urlLaunched != loginURL) ...[
-            SizedBox(
-              width: 300,
-              child: SignInWithAppleButton(
+          if (loginURL != null && _canSignInWithAppleInApp) ...[
+            if (_signingInWithApple || urlLaunched == loginURL) ...[
+              const AdaptiveLoadingWidget(),
+              _signInWithAppSuccess
+                  ? const Text(
+                      "Signed in with Apple. Starting cylonix network. "
+                      "Please wait...",
+                      textAlign: TextAlign.center,
+                    )
+                  : const Text(
+                      "Signing in with Apple. Please wait...",
+                      textAlign: TextAlign.center,
+                    ),
+            ],
+            if (!_signingInWithApple && urlLaunched != loginURL) ...[
+              SizedBox(
+                width: 300,
+                child: SignInWithAppleButton(
+                  height: 40,
+                  style: isDarkMode(context)
+                      ? SignInWithAppleButtonStyle.whiteOutlined
+                      : SignInWithAppleButtonStyle.black,
+                  onPressed: () => _signinWithApple(loginURL),
+                ),
+              ),
+              AdaptiveButton(
+                width: 300,
                 height: 40,
-                style: isDarkMode(context)
-                    ? SignInWithAppleButtonStyle.whiteOutlined
-                    : SignInWithAppleButtonStyle.black,
-                onPressed: () => _signinWithApple(loginURL),
+                onPressed: () => _launchUrl(loginURL, force: true),
+                child: const Text('Sign in with more methods'),
+              ),
+            ],
+          ],
+          if (loginURL != null && isAndroidTV) ...[
+            const SizedBox(height: 16),
+            Text(
+              "Please scan the QR code with your phone to sign in.",
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.apply(
+                    color: isApple()
+                        ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                        : null,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            AdaptiveButton(
+                autofocus: true,
+                filled: true,
+                onPressed: () async {
+                  _showingSigninQRCode = true;
+                  await showDialog(
+                    context: context,
+                    builder: (c) {
+                      return AlertDialog(
+                        title: const Text("Sign in with QR Code"),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          spacing: 16,
+                          children: [
+                            Text(
+                              "Scan this QR code with your phone to sign in "
+                              "at $loginURL.",
+                            ),
+                            QrCodeImage(loginURL),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(c),
+                            child: const Text("Close"),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+                child: const Text("Show Signin QR Code")),
+          ],
+          if (loginURL != null &&
+              !isAndroidTV &&
+              !_canSignInWithAppleInApp) ...[
+            urlLaunched == loginURL
+                ? const AdaptiveLoadingWidget()
+                : Text("$_launchCountDown seconds until auto-launch"),
+            Text(
+              urlLaunched != loginURL
+                  ? "Please press the button below to be redirected to the "
+                      "following web page to signin. Or you will be redirected "
+                      "in a few seconds automatically."
+                  : "Waiting for signin to complete on the following web page. ",
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge?.apply(
+                    color: isApple()
+                        ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                        : null,
+                  ),
+            ),
+            TextButton(
+              onPressed: () => _launchUrl(loginURL, force: true),
+              child: Text(
+                loginURL,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
               ),
             ),
+            const SizedBox(height: 16),
             AdaptiveButton(
-              width: 300,
-              height: 40,
+              filled: true,
               onPressed: () => _launchUrl(loginURL, force: true),
-              child: const Text('Sign in with more methods'),
+              child: const Text('Go to Signin Page'),
+            ),
+          ],
+          if (profiles.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              "Or select a profile to sign in.",
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.apply(
+                    color: isApple()
+                        ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                        : null,
+                  ),
+            ),
+            AdaptiveButton(
+              textButton: true,
+              onPressed: widget.onNavigateToUserSwitcher,
+              child: const Text('Select Profile'),
             ),
           ],
         ],
-        if (loginURL != null && isAndroidTV) ...[
-          const SizedBox(height: 16),
-          Text(
-            "Please scan the QR code with your phone to sign in.",
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.apply(
-                  color: isApple()
-                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                      : null,
-                ),
-          ),
-          const SizedBox(height: 16),
-          AdaptiveButton(
-              autofocus: true,
-              filled: true,
-              onPressed: () async {
-                _showingSigninQRCode = true;
-                await showDialog(
-                  context: context,
-                  builder: (c) {
-                    return AlertDialog(
-                      title: const Text("Sign in with QR Code"),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        spacing: 16,
-                        children: [
-                          Text(
-                            "Scan this QR code with your phone to sign in "
-                            "at $loginURL.",
-                          ),
-                          QrCodeImage(loginURL),
-                        ],
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(c),
-                          child: const Text("Close"),
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
-              child: const Text("Show Signin QR Code")),
-        ],
-        if (loginURL != null && !isAndroidTV && !_canSignInWithAppleInApp) ...[
-          urlLaunched == loginURL
-              ? const AdaptiveLoadingWidget()
-              : Text("$_launchCountDown seconds until auto-launch"),
-          Text(
-            urlLaunched != loginURL
-                ? "Please press the button below to be redirected to the "
-                    "following web page to signin. Or you will be redirected in "
-                    "a few seconds automatically."
-                : "Waiting for signin to complete on the following web page. ",
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge?.apply(
-                  color: isApple()
-                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                      : null,
-                ),
-          ),
-          TextButton(
-            onPressed: () => _launchUrl(loginURL, force: true),
-            child: Text(
-              loginURL,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          AdaptiveButton(
-            filled: true,
-            onPressed: () => _launchUrl(loginURL, force: true),
-            child: const Text('Go to Signin Page'),
-          ),
-        ],
-        if (profiles.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text(
-            "Or select a profile to sign in.",
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.apply(
-                  color: isApple()
-                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                      : null,
-                ),
-          ),
-          AdaptiveButton(
-            textButton: true,
-            onPressed: widget.onNavigateToUserSwitcher,
-            child: const Text('Select Profile'),
-          ),
-        ],
-      ],
+      ),
     );
   }
 

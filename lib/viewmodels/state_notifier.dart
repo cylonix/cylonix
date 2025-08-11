@@ -4,6 +4,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/const.dart';
+import '../models/platform.dart';
 
 //import 'package:sase_app_ui/utils/logger.dart';
 //final _logger = Logger(tag: 'StateNotifier');
@@ -150,4 +151,14 @@ final introViewedProvider =
 final navigationRailIndexProvider =
     StateNotifierProvider<SimpleStateNotifier<int>, int>((ref) {
   return SimpleStateNotifier<int>(0);
+});
+
+final isAndroidTVProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'is_android_tv',
+    defaultValue: isNativeAndroidTV,
+    prefs: prefs,
+  );
 });

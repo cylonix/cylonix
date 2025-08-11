@@ -46,7 +46,7 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
 
   Future<void> _loadTheme() async {
     // For android TV, we default to dark mode
-    if (isAndroidTV) {
+    if (isNativeAndroidTV) {
       state = ThemeMode.dark;
       return;
     }

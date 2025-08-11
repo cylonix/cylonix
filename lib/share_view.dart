@@ -8,11 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'models/ipn.dart';
 import 'models/peer_transfer_state.dart';
-import 'models/platform.dart';
 import 'models/shared_file.dart';
 import 'providers/share_file.dart';
 import 'services/ipn.dart';
 import 'utils/logger.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 
 class ShareView extends ConsumerStatefulWidget {
@@ -143,6 +143,7 @@ class _ShareViewState extends ConsumerState<ShareView> {
   }
 
   Widget _buildSearchFilter() {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(

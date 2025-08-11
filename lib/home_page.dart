@@ -285,7 +285,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget get _mainPage {
-    if (!useNavigationRail(context)) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+    if (!useNavigationRail(context) || isAndroidTV) {
       if (_page.value == Page.settings.value) {
         return _settingsView;
       }

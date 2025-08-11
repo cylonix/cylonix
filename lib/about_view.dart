@@ -7,8 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'models/platform.dart';
 import 'utils/utils.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/tv_widgets.dart';
 
@@ -27,11 +27,11 @@ class AboutView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return isApple()
-        ? _buildCupertinoView(context)
-        : _buildMaterialView(context);
+        ? _buildCupertinoView(context, ref)
+        : _buildMaterialView(context, ref);
   }
 
-  Widget _buildCupertinoView(BuildContext context) {
+  Widget _buildCupertinoView(BuildContext context, WidgetRef ref) {
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
@@ -47,12 +47,12 @@ class AboutView extends ConsumerWidget {
       ),
       child: Container(
         alignment: Alignment.topCenter,
-        child: _buildContent(context, true),
+        child: _buildContent(context, ref, true),
       ),
     );
   }
 
-  Widget _buildMaterialView(BuildContext context) {
+  Widget _buildMaterialView(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
         leading: onNavigateBack != null
@@ -66,12 +66,12 @@ class AboutView extends ConsumerWidget {
       ),
       body: Container(
         alignment: Alignment.topCenter,
-        child: _buildContent(context, false),
+        child: _buildContent(context, ref, false),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, bool isCupertino) {
+  Widget _buildContent(BuildContext context, WidgetRef ref, bool isCupertino) {
     return SafeArea(
       child: SingleChildScrollView(
         child: Container(
@@ -123,7 +123,7 @@ class AboutView extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              _buildLinks(context, isCupertino),
+              _buildLinks(context, ref, isCupertino),
               const SizedBox(height: 20),
               Text(
                 'WireGuard is a registered trademark of Jason A. Donenfeld. '
@@ -169,7 +169,7 @@ class AboutView extends ConsumerWidget {
     );
   }
 
-  Widget _buildLinks(BuildContext context, bool isCupertino) {
+  Widget _buildLinks(BuildContext context, WidgetRef ref, bool isCupertino) {
     final links = [
       //('Acknowledgements', 'https://cylonix.com/licenses'),
       ('Privacy Policy', 'https://manage.cylonix.io/privacy-policy'),
@@ -182,6 +182,7 @@ class AboutView extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: _buildLinkButton(
             context,
+            ref,
             link.$1,
             link.$2,
             isCupertino,
@@ -193,6 +194,7 @@ class AboutView extends ConsumerWidget {
 
   Widget _buildLinkButton(
     BuildContext context,
+    WidgetRef ref,
     String title,
     String url,
     bool isCupertino,
@@ -200,17 +202,19 @@ class AboutView extends ConsumerWidget {
     if (isCupertino) {
       return CupertinoButton(
         padding: EdgeInsets.zero,
-        onPressed: () => _launchURL(context, url),
+        onPressed: () => _launchURL(context, ref, url),
         child: Text(title),
       );
     }
     return TextButton(
-      onPressed: () => _launchURL(context, url),
+      onPressed: () => _launchURL(context, ref, url),
       child: Text(title),
     );
   }
 
-  Future<void> _launchURL(BuildContext context, String url) async {
+  Future<void> _launchURL(
+      BuildContext context, WidgetRef ref, String url) async {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     if (isAndroidTV) {
       await showQrCodeForURL(context, url);
       return;

@@ -6,9 +6,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 import '../models/ipn.dart';
-import '../models/platform.dart';
 import '../providers/ipn.dart';
 import '../utils/utils.dart';
+import '../viewmodels/state_notifier.dart';
 import '../widgets/adaptive_widgets.dart';
 
 class PeerList extends StatefulWidget {
@@ -44,6 +44,7 @@ class _PeerListState extends State<PeerList> {
             peerCategorizer.groupedAndFilteredPeers(_searchTerm);
         final showNoResults = _searchTerm.isNotEmpty &&
             filteredSets.every((set) => set.peers.isEmpty);
+        final isAndroidTV = ref.watch(isAndroidTVProvider);
 
         return GestureDetector(
           onTap: () {
@@ -184,6 +185,7 @@ class _PeerListState extends State<PeerList> {
     final isConnected =
         ref.watch(ipnStateProvider)?.vpnState == VpnState.connected;
     final selfNode = ref.watch(ipnStateProvider)?.netmap?.selfNode;
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
 
     return CustomScrollView(
       slivers: [

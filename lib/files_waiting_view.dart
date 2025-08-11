@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'dart:io';
-import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:downloadsfolder/downloadsfolder.dart' as dlf;

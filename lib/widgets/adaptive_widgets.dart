@@ -4,9 +4,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
-import '../models/platform.dart';
 import '../utils/utils.dart';
+import '../viewmodels/state_notifier.dart';
 import 'tv_widgets.dart';
 
 class AdaptiveSearchBar extends StatelessWidget {
@@ -177,7 +178,7 @@ Color focusedButtonColor(BuildContext context, Color color) {
       .toColor();
 }
 
-class AdaptiveButton extends StatelessWidget {
+class AdaptiveButton extends ConsumerWidget {
   final VoidCallback onPressed;
   final Widget child;
   final bool filled;
@@ -209,7 +210,8 @@ class AdaptiveButton extends StatelessWidget {
           "Cannot use both small and large at the same time",
         );
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     if (isApple()) {
       if (textButton) {
         return CupertinoButton(

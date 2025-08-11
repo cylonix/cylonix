@@ -6,7 +6,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:introduction_screen/introduction_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'models/platform.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'viewmodels/state_notifier.dart';
@@ -115,6 +114,7 @@ class _State extends ConsumerState<IntroPage> {
   }
 
   void _launchURL(String url) async {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     if (isAndroidTV) {
       await showQrCodeForURL(context, url);
       return;

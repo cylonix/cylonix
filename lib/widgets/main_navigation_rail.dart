@@ -38,7 +38,7 @@ class MainNavigationRail extends ConsumerStatefulWidget {
 }
 
 class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
-  bool get _extended => isApple() || isAndroidTV ? true : _isExtended;
+  bool get _extended => isApple() || isNativeAndroidTV ? true : _isExtended;
   bool _isExtended = false;
 
   IconData get _homeIcon => isApple() ? CupertinoIcons.home : Icons.home;
@@ -217,7 +217,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             style: _labelStyle,
           ),
         ),
-        if (!isAndroidTV)
+        if (!isNativeAndroidTV)
           NavigationRailDestination(
             icon:
                 _railIcon(const Icon(Icons.upload_file_outlined), "Send Files"),
@@ -233,7 +233,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             style: _labelStyle,
           ),
         ),
-        if (!isAndroidTV)
+        if (!isNativeAndroidTV)
           NavigationRailDestination(
             icon: _railIcon(
               Icon(isDarkMode ? _lightModeIcon : _darkModeIcon),
@@ -285,7 +285,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
   }
 
   void _handleNavigation(int index) {
-    if (isAndroidTV) {
+    if (isNativeAndroidTV) {
       _handleAndroidTVNavigation(index);
       return;
     }
@@ -387,7 +387,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             ],
           ),
         ),
-        if (!isApple() && !isAndroidTV) _toggleButton,
+        if (!isApple() && !isNativeAndroidTV) _toggleButton,
       ],
     );
   }

@@ -4,7 +4,7 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 
-bool isAndroidTV = false;
+bool isNativeAndroidTV = false;
 
 Future<void> setIsAndroidTV() async {
   if (!Platform.isAndroid) {
@@ -12,7 +12,7 @@ Future<void> setIsAndroidTV() async {
   }
   final deviceInfo = DeviceInfoPlugin();
   final androidInfo = await deviceInfo.androidInfo;
-  isAndroidTV =
+  isNativeAndroidTV =
       androidInfo.systemFeatures.contains('android.software.leanback');
 }
 

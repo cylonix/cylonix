@@ -30,7 +30,7 @@ bool isMediumScreen(BuildContext context) {
 }
 
 bool useNavigationRail(BuildContext context) {
-  if (isAndroidTV) {
+  if (isNativeAndroidTV) {
     return false; // Don't use navigation rail on Android TV
   }
   return MediaQuery.of(context).size.width >= 800.0;

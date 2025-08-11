@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'models/ipn.dart';
+import 'models/platform.dart';
 import 'providers/ipn.dart';
 import 'providers/settings.dart';
 import 'utils/logger.dart';
@@ -245,7 +246,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         constraints: const BoxConstraints(maxWidth: 800),
         child: ListView(
           children: [
-            if (isVPNPrepared) _buildUserSection(context, ref, user),
+            _buildUserSection(context, ref, user),
             if (isAdmin) _buildAdminSection(context),
             AdaptiveListSection.insetGrouped(
               header: const AdaptiveGroupedHeader('NETWORK'),
@@ -340,6 +341,16 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   onNavigateBack: widget.onNavigateBackToSettings,
                   onNavigateToLogConsole: widget.onPushNewPage,
                 ),
+                if (Platform.isAndroid && !isNativeAndroidTV)
+                  AdaptiveListTile.notched(
+                    title: const Text('Enable Android TV Mode'),
+                    subtitle: const Text('Optimize for Android TV'),
+                    trailing: AdaptiveSwitch(
+                      value: ref.watch(isAndroidTVProvider),
+                      onChanged:
+                          ref.read(isAndroidTVProvider.notifier).setValue,
+                    ),
+                  ),
                 AdaptiveListTile.notched(
                   title: const Text('Always Use Relay'),
                   subtitle: const Text('Force traffic through relay servers'),
