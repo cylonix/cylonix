@@ -2,7 +2,7 @@
 
 ![Cylonix](./landing.jpeg)
 
-Cylonix is an open source client application for the Cylonix Secure Access Service Edge (SASE) service. On devices, it runs a modified version of Tailscale™ (WireGuard-based mesh VPN) to provide secure, private connectivity.
+Cylonix is an open source client application for the Cylonix Secure Access Service Edge (SASE) service. On devices, it runs a modified version of Tailscale™ (WireGuard-based mesh VPN) to provide secure, private connectivity. This respository is the client App.
 
 ## System Diagram
 
@@ -31,7 +31,9 @@ The default WireGuard mesh is sufficient for secure peer-to-peer connectivity. E
 
 ## Getting Started
 
-See [docs/INSTALL.md](docs/INSTALL.md) for build and configuration instructions.
+- see [Download Page](https://cylonix.io/web/view/cylonix/download.html) to download prebuit binaries for the client app.
+
+- See [INSTALL.md](./INSTALL.md) for build and configuration instructions to build the client app.
 
 ## License
 
