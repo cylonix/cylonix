@@ -165,6 +165,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
     m["Key expiry"] = node.keyDoesNotExpire
         ? "Key does not expire"
         : GoTimeUtil.keyExpiryFromGoTime(node.keyExpiry);
+    m['Key base64'] = node.keyBase64;
     return m;
   }
 
@@ -196,16 +197,19 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
     );
   }
 
-  bool _showInfoValueAsTrailing(BuildContext context, String label) {
-    return useNavigationRail(context) || label.length < 24;
+  bool _showInfoValueAsTrailing(
+      BuildContext context, String label, String value) {
+    return useNavigationRail(context) ||
+        (label.length < 24 && value.length < 24);
   }
 
   Widget _buildValue(BuildContext context, String label, String value) {
-    final showValueAsTrailing = _showInfoValueAsTrailing(context, label);
+    final showValueAsTrailing = _showInfoValueAsTrailing(context, label, value);
     return AdaptiveListTile(
       leading: switch (label) {
         'os' => const Icon(CupertinoIcons.device_desktop),
         'Key expiry' => const Icon(CupertinoIcons.clock),
+        'Key base64' => const Icon(Icons.key_outlined),
         _ => const Icon(CupertinoIcons.info),
       },
       title: Text(label),

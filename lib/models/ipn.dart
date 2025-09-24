@@ -378,6 +378,7 @@ class Node with _$Node {
     @JsonKey(name: 'Created') Time? created,
     @JsonKey(name: 'LastSeen') Time? lastSeen,
     @JsonKey(name: 'Online') bool? online,
+    @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
     @JsonKey(name: 'Capabilities') List<String>? capabilities,
     @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
     @JsonKey(name: 'ComputedName') String? computedName,
@@ -455,6 +456,24 @@ class Node with _$Node {
 
   @override
   String toString() => jsonEncode(toJson());
+
+  String get keyBase64 {
+    if (key.startsWith('nodekey:')) {
+      final hexString = key.substring(8); // Remove 'nodekey:' prefix
+      try {
+        // Convert hex string to bytes, then to base64
+        final bytes = <int>[];
+        for (int i = 0; i < hexString.length; i += 2) {
+          final hexByte = hexString.substring(i, i + 2);
+          bytes.add(int.parse(hexByte, radix: 16));
+        }
+        return base64Encode(bytes);
+      } catch (e) {
+        return '';
+      }
+    }
+    return '';
+  }
 
   factory Node.fromJson(Map<String, dynamic> json) => _$NodeFromJson(json);
 }

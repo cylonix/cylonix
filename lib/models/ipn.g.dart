@@ -384,6 +384,7 @@ _$NodeImpl _$$NodeImplFromJson(Map<String, dynamic> json) => _$NodeImpl(
       created: json['Created'] as String?,
       lastSeen: json['LastSeen'] as String?,
       online: json['Online'] as bool?,
+      isWireGuardOnly: json['IsWireGuardOnly'] as bool?,
       capabilities: (json['Capabilities'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
@@ -409,6 +410,7 @@ Map<String, dynamic> _$$NodeImplToJson(_$NodeImpl instance) =>
       'Created': instance.created,
       'LastSeen': instance.lastSeen,
       'Online': instance.online,
+      'IsWireGuardOnly': instance.isWireGuardOnly,
       'Capabilities': instance.capabilities,
       'CapMap': instance.capMap,
       'ComputedName': instance.computedName,

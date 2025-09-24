@@ -454,7 +454,16 @@ class _MainViewState extends ConsumerState<MainView> {
                 _buildToggleDeviceViewButton(context, ref),
               ],
             ),
-      trailing: _buildProfileButton(context, ref, user),
+      trailing: showLeading
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 8,
+              children: [
+                _buildToggleDeviceViewButton(context, ref),
+                _buildProfileButton(context, ref, user)
+              ],
+            )
+          : _buildProfileButton(context, ref, user),
     );
   }
 
@@ -1445,8 +1454,10 @@ class _MainViewState extends ConsumerState<MainView> {
                       "Please wait...",
                       textAlign: TextAlign.center,
                     )
-                  : const Text(
-                      "Signing in with Apple. Please wait...",
+                  : Text(
+                      _signingInWithApple
+                          ? "Signing in with Apple. Please wait..."
+                          : "Signing in. Please wait...",
                       textAlign: TextAlign.center,
                     ),
             ],

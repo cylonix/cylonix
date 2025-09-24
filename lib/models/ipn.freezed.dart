@@ -3934,6 +3934,8 @@ mixin _$Node {
   String? get lastSeen => throw _privateConstructorUsedError;
   @JsonKey(name: 'Online')
   bool? get online => throw _privateConstructorUsedError;
+  @JsonKey(name: "IsWireGuardOnly")
+  bool? get isWireGuardOnly => throw _privateConstructorUsedError;
   @JsonKey(name: 'Capabilities')
   List<String>? get capabilities => throw _privateConstructorUsedError;
   @JsonKey(name: 'CapMap')
@@ -3973,6 +3975,7 @@ abstract class $NodeCopyWith<$Res> {
       @JsonKey(name: 'Created') String? created,
       @JsonKey(name: 'LastSeen') String? lastSeen,
       @JsonKey(name: 'Online') bool? online,
+      @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') List<String>? capabilities,
       @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
       @JsonKey(name: 'ComputedName') String? computedName,
@@ -4011,6 +4014,7 @@ class _$NodeCopyWithImpl<$Res, $Val extends Node>
     Object? created = freezed,
     Object? lastSeen = freezed,
     Object? online = freezed,
+    Object? isWireGuardOnly = freezed,
     Object? capabilities = freezed,
     Object? capMap = freezed,
     Object? computedName = freezed,
@@ -4077,6 +4081,10 @@ class _$NodeCopyWithImpl<$Res, $Val extends Node>
           ? _value.online
           : online // ignore: cast_nullable_to_non_nullable
               as bool?,
+      isWireGuardOnly: freezed == isWireGuardOnly
+          ? _value.isWireGuardOnly
+          : isWireGuardOnly // ignore: cast_nullable_to_non_nullable
+              as bool?,
       capabilities: freezed == capabilities
           ? _value.capabilities
           : capabilities // ignore: cast_nullable_to_non_nullable
@@ -4134,6 +4142,7 @@ abstract class _$$NodeImplCopyWith<$Res> implements $NodeCopyWith<$Res> {
       @JsonKey(name: 'Created') String? created,
       @JsonKey(name: 'LastSeen') String? lastSeen,
       @JsonKey(name: 'Online') bool? online,
+      @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') List<String>? capabilities,
       @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
       @JsonKey(name: 'ComputedName') String? computedName,
@@ -4170,6 +4179,7 @@ class __$$NodeImplCopyWithImpl<$Res>
     Object? created = freezed,
     Object? lastSeen = freezed,
     Object? online = freezed,
+    Object? isWireGuardOnly = freezed,
     Object? capabilities = freezed,
     Object? capMap = freezed,
     Object? computedName = freezed,
@@ -4236,6 +4246,10 @@ class __$$NodeImplCopyWithImpl<$Res>
           ? _value.online
           : online // ignore: cast_nullable_to_non_nullable
               as bool?,
+      isWireGuardOnly: freezed == isWireGuardOnly
+          ? _value.isWireGuardOnly
+          : isWireGuardOnly // ignore: cast_nullable_to_non_nullable
+              as bool?,
       capabilities: freezed == capabilities
           ? _value._capabilities
           : capabilities // ignore: cast_nullable_to_non_nullable
@@ -4275,6 +4289,7 @@ class _$NodeImpl extends _Node {
       @JsonKey(name: 'Created') this.created,
       @JsonKey(name: 'LastSeen') this.lastSeen,
       @JsonKey(name: 'Online') this.online,
+      @JsonKey(name: "IsWireGuardOnly") this.isWireGuardOnly,
       @JsonKey(name: 'Capabilities') final List<String>? capabilities,
       @JsonKey(name: 'CapMap') final Map<String, dynamic>? capMap,
       @JsonKey(name: 'ComputedName') this.computedName,
@@ -4354,6 +4369,9 @@ class _$NodeImpl extends _Node {
   @override
   @JsonKey(name: 'Online')
   final bool? online;
+  @override
+  @JsonKey(name: "IsWireGuardOnly")
+  final bool? isWireGuardOnly;
   final List<String>? _capabilities;
   @override
   @JsonKey(name: 'Capabilities')
@@ -4410,6 +4428,8 @@ class _$NodeImpl extends _Node {
             (identical(other.lastSeen, lastSeen) ||
                 other.lastSeen == lastSeen) &&
             (identical(other.online, online) || other.online == online) &&
+            (identical(other.isWireGuardOnly, isWireGuardOnly) ||
+                other.isWireGuardOnly == isWireGuardOnly) &&
             const DeepCollectionEquality()
                 .equals(other._capabilities, _capabilities) &&
             const DeepCollectionEquality().equals(other._capMap, _capMap) &&
@@ -4438,6 +4458,7 @@ class _$NodeImpl extends _Node {
         created,
         lastSeen,
         online,
+        isWireGuardOnly,
         const DeepCollectionEquality().hash(_capabilities),
         const DeepCollectionEquality().hash(_capMap),
         computedName,
@@ -4477,6 +4498,7 @@ abstract class _Node extends Node {
       @JsonKey(name: 'Created') final String? created,
       @JsonKey(name: 'LastSeen') final String? lastSeen,
       @JsonKey(name: 'Online') final bool? online,
+      @JsonKey(name: "IsWireGuardOnly") final bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') final List<String>? capabilities,
       @JsonKey(name: 'CapMap') final Map<String, dynamic>? capMap,
       @JsonKey(name: 'ComputedName') final String? computedName,
@@ -4531,6 +4553,9 @@ abstract class _Node extends Node {
   @override
   @JsonKey(name: 'Online')
   bool? get online;
+  @override
+  @JsonKey(name: "IsWireGuardOnly")
+  bool? get isWireGuardOnly;
   @override
   @JsonKey(name: 'Capabilities')
   List<String>? get capabilities;
