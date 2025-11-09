@@ -823,13 +823,20 @@ class IpnService {
     }
   }
 
-  Future<List<AwaitingFile>?> getWaitingFiles() async {
+  Future<List<AwaitingFile>?> getWaitingFiles({
+    int timeoutMilliseconds = 5000,
+  }) async {
     final result = _useHttpLocalApi
         ? await _sendCommandOverHttp(
             Uri.parse('$_localBaseURL/files/'),
             'GET',
+            timeoutMilliseconds: timeoutMilliseconds,
           )
-        : await _sendCommand('get_waiting_files', '');
+        : await _sendCommand(
+            'get_waiting_files',
+            '',
+            timeoutMilliseconds: timeoutMilliseconds,
+          );
     if (result.startsWith("Error")) {
       throw Exception("Failed to get waiting files: $result");
     }

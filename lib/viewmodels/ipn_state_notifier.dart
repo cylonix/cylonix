@@ -25,6 +25,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   bool _initializingAlwaysUseDerp = false;
   bool _isTailchatInitialized = false;
   bool _isAlwaysUseDerpInitialized = false;
+  bool _checkedFilesWaiting = false;
   String? urlBrowsed;
 
   var peerCategorizer = PeerCategorizer();
@@ -188,6 +189,20 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     List<AwaitingFile>? awaitingFiles;
     if (notification.filesWaiting != null) {
       awaitingFiles = await getWaitingFiles();
+      _checkedFilesWaiting = true;
+    } else if (!_checkedFilesWaiting && backendState == BackendState.running) {
+      // Quick check for awaiting files once when backend is running.
+      awaitingFiles = await getWaitingFiles(
+        timeoutMilliseconds: 500,
+        ignoreErrors: true,
+      );
+      // If there is no file waiting, we don't need to check again.
+      // Otherwise keep checking until we received a notification with
+      // filesWaiting. This is to handle the case when the app starts
+      // and backend does not send filesWaiting notification soon enough.
+      if (awaitingFiles == null || awaitingFiles.isEmpty) {
+        _checkedFilesWaiting = true;
+      }
     }
 
     // Create new state or update existing one
@@ -620,10 +635,18 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
-  Future<List<AwaitingFile>?> getWaitingFiles() async {
+  Future<List<AwaitingFile>?> getWaitingFiles({
+    int timeoutMilliseconds = 5000,
+    bool ignoreErrors = false,
+  }) async {
     try {
-      return await _ipnService.getWaitingFiles();
+      return await _ipnService.getWaitingFiles(
+        timeoutMilliseconds: timeoutMilliseconds,
+      );
     } catch (error, stack) {
+      if (ignoreErrors) {
+        return null;
+      }
       _logger.e("Failed to get awaiting files: $error, stackTrace: $stack");
       state = AsyncValue.error(error, stack);
       return null;
