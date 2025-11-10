@@ -25,6 +25,7 @@ class PeerList extends StatefulWidget {
 
 class _PeerListState extends State<PeerList> {
   String _searchTerm = '';
+  bool _onlineOnly = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
@@ -59,7 +60,7 @@ class _PeerListState extends State<PeerList> {
                   : Expanded(
                       child: Padding(
                         padding: const EdgeInsetsGeometry.symmetric(
-                          horizontal: 16,
+                          horizontal: 20,
                         ),
                         child: _buildPeersList(context, filteredSets, ref),
                       ),
@@ -77,23 +78,34 @@ class _PeerListState extends State<PeerList> {
         horizontal: 20.0 /* Match cupertino list section margin */,
         vertical: useNavigationRail(context) ? 8.0 : 16.0,
       ),
-      child: AdaptiveSearchBar(
-        focusNode: _searchFocusNode,
-        controller: _searchController,
-        placeholder: isApple() ? 'Search devices...' : 'Search devices',
-        value: _searchTerm,
-        onChanged: (value) {
-          setState(() {
-            _searchTerm = value;
-          });
-        },
-        onCancel: () {
-          setState(() {
-            _searchController.clear();
-            _searchTerm = '';
-          });
-          _searchFocusNode.unfocus();
-        },
+      child: Row(
+        children: [
+          Flexible(
+            child: AdaptiveSearchBar(
+              focusNode: _searchFocusNode,
+              controller: _searchController,
+              placeholder: isApple() ? 'Search devices...' : 'Search devices',
+              value: _searchTerm,
+              onChanged: (value) {
+                setState(() {
+                  _searchTerm = value;
+                });
+              },
+              onCancel: () {
+                setState(() {
+                  _searchController.clear();
+                  _searchTerm = '';
+                });
+                _searchFocusNode.unfocus();
+              },
+            ),
+          ),
+          Checkbox.adaptive(
+            value: _onlineOnly,
+            onChanged: (v) => {setState(() => _onlineOnly = v ?? false)},
+          ),
+          const Text("Online")
+        ],
       ),
     );
   }
@@ -186,15 +198,28 @@ class _PeerListState extends State<PeerList> {
         ref.watch(ipnStateProvider)?.vpnState == VpnState.connected;
     final selfNode = ref.watch(ipnStateProvider)?.netmap?.selfNode;
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    bool isOnline(Node peer) {
+      return (peer.online == true) ||
+          (peer.stableID == selfNode?.stableID && isConnected);
+    }
 
     return CustomScrollView(
       slivers: [
         for (final peerSet in peerSets)
-          if (peerSet.peers.isNotEmpty)
-            MultiSliver(
+          () {
+            final filteredPeers = _onlineOnly
+                ? peerSet.peers.where((peer) => isOnline(peer)).toList()
+                : peerSet.peers;
+            if (filteredPeers.isEmpty) {
+              return const SliverToBoxAdapter(child: SizedBox.shrink());
+            }
+            return MultiSliver(
               pushPinnedChildren: true,
               children: [
                 SliverAppBar(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
                   automaticallyImplyLeading: false,
                   expandedHeight: 120.0,
                   backgroundColor: isApple()
@@ -213,9 +238,9 @@ class _PeerListState extends State<PeerList> {
                         ? TextButton(
                             onPressed: () => {},
                             child: Text(
-                              peerSet.peers.length == 1
+                              filteredPeers.length == 1
                                   ? '1 device'
-                                  : '${peerSet.peers.length} devices',
+                                  : '${filteredPeers.length} devices',
                             ),
                           )
                         : const SizedBox.shrink()
@@ -225,21 +250,46 @@ class _PeerListState extends State<PeerList> {
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final peer = peerSet.peers[index];
-                      final online = (peer.online == true) ||
-                          (peer.stableID == selfNode?.stableID && isConnected);
-                      return _buildPeer(peer, online);
+                      final peer = filteredPeers[index];
+                      return _buildPeer(peer, isOnline(peer));
                     },
-                    childCount: peerSet.peers.length,
+                    childCount: filteredPeers.length,
                   ),
                 ),
               ],
-            ),
+            );
+          }()
       ],
     );
   }
 
   Widget _buildPeer(Node peer, bool online) {
+    final leading = [
+      if (peer.isExitNode)
+        Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: Icon(
+            isApple()
+                ? CupertinoIcons.arrow_up_right_circle
+                : Icons.exit_to_app,
+            color: online ? _onlineColor : _offlineColor,
+            size: 12,
+          ),
+        ),
+      AdaptiveOnlineIcon(
+        online: online,
+        disabledColor: Theme.of(context).disabledColor,
+      ),
+      if (peer.isJailed ?? false)
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Icon(
+            isApple() ? CupertinoIcons.lock_shield : Icons.lock_outline,
+            color: CupertinoColors.systemRed,
+            size: 12,
+          ),
+        ),
+    ];
     return AdaptiveListTile(
       backgroundColor: Colors.transparent,
       title: Text(peer.name,
@@ -260,23 +310,11 @@ class _PeerListState extends State<PeerList> {
       ),
       leading: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          if (peer.isExitNode)
-            Icon(
-              isApple()
-                  ? CupertinoIcons.arrow_up_right_circle
-                  : Icons.exit_to_app,
-              color: online ? _onlineColor : _offlineColor,
-              size: 12,
-            ),
-          const SizedBox(width: 4),
-          AdaptiveOnlineIcon(
-            online: online,
-            disabledColor: Theme.of(context).disabledColor,
-          ),
-        ],
+        children: leading,
       ),
+      leadingSize: leading.length > 2 ? 50 : 30,
       dense: true,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       onTap: () => widget.onPeerTap(peer),
     );
   }

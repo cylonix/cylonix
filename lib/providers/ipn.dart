@@ -211,6 +211,11 @@ final peerCategorizerProvider = Provider<PeerCategorizer>((ref) {
   return ref.read(ipnStateNotifierProvider.notifier).peerCategorizer;
 });
 
+final userDialUseRoutesProvider = Provider<bool>((ref) {
+  final netmap = ref.watch(ipnStateProvider)?.netmap;
+  return netmap?.selfNode.capMap?.containsKey('user-dial-routes') ?? false;
+});
+
 // Enum for node states
 enum NodeState {
   none,

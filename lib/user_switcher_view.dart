@@ -9,6 +9,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
 import 'utils/logger.dart';
@@ -228,7 +229,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                 const AdaptiveGroupedHeader(
                   'Cylonix',
                 ),
-                if (users.length > 1) _buildDontShowButtob(context, 'cylonix'),
+                if (users.length > 1) _buildDontShowButton(context, 'cylonix'),
               ],
             ),
             footer: Text(
@@ -250,7 +251,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                 const AdaptiveGroupedHeader(
                   'Tailscale',
                 ),
-                _buildDontShowButtob(context, 'tailscale'),
+                _buildDontShowButton(context, 'tailscale'),
               ],
             ),
             footer: Text(
@@ -269,7 +270,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Other', style: adaptiveGroupedHeaderStyle(context)),
-                _buildDontShowButtob(context, 'other'),
+                _buildDontShowButton(context, 'other'),
               ],
             ),
             footer: Text(
@@ -406,7 +407,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     );
   }
 
-  Widget _buildDontShowButtob(BuildContext context, String section) {
+  Widget _buildDontShowButton(BuildContext context, String section) {
     return AdaptiveButton(
       textButton: !isApple(),
       child: const Text("Don't Show"),
@@ -665,10 +666,32 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                   ),
                   text(
                     'If you still want to proceed to delete '
-                    '"${profile.userProfile.displayName}". Please send a '
-                    'request to contact@cylonix.io. After the request is '
-                    'processed, you will receive an email with a link to '
-                    'delete your account.',
+                    '"${profile.userProfile.displayName}". Please click the '
+                    'button below that will open a web page to sign in your '
+                    'account and delete it from there.',
+                  ),
+                  AdaptiveButton(
+                    onPressed: () async {
+                      final url =
+                          '${profile.controlURL}/delete-account-with-login';
+                      try {
+                        if (await launchUrl(Uri.parse(url))) {
+                          Navigator.pop(context);
+                          widget.onNavigateToHome();
+                        } else {
+                          _showError('Could not launch $url');
+                        }
+                      } catch (e) {
+                        _showError('Could not launch $url: $e');
+                      }
+                    },
+                    child: Text('Delete Account',
+                        style: TextStyle(
+                          color: isApple()
+                              ? CupertinoColors.destructiveRed
+                                  .resolveFrom(context)
+                              : Colors.red,
+                        )),
                   ),
                 ],
               ),

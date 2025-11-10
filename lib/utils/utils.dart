@@ -165,7 +165,7 @@ extension StringPlus on String {
   }
 
   String capitalize() {
-    return "${this[0].toUpperCase()}${substring(1).toLowerCase()}";
+    return "${this[0].toUpperCase()}${substring(1)}";
   }
 
   /// Returns a substring with protocol prefix like 'https://' removed.

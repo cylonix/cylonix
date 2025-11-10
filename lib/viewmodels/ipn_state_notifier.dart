@@ -468,6 +468,69 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
+  Future<void> setUserDialUseRoutes(bool on) async {
+    try {
+      _logger.d("Setting user dial use routes to: $on");
+      await _ipnService.setUserDialUseRoutes(on);
+      final savedState = state.valueOrNull;
+      if (savedState == null) {
+        throw "invalid ipn state";
+      }
+      final netmap = savedState.netmap;
+      final selfNode = netmap?.selfNode;
+      if (netmap == null || selfNode == null) {
+        return;
+      }
+      Map<String, dynamic>? capMap;
+      final originalCapMap = netmap.selfNode.capMap;
+
+      if (on) {
+        capMap = {
+          ...?(originalCapMap),
+          'user-dial-routes': "",
+        };
+      } else {
+        if (originalCapMap != null) {
+          capMap = Map<String, dynamic>.from(originalCapMap);
+          capMap.remove('user-dial-routes');
+        }
+      }
+      state = AsyncValue.data(
+        savedState.copyWith(
+          netmap: netmap.copyWith(
+            selfNode: selfNode.copyWith(
+              capMap: capMap,
+            ),
+          ),
+        ),
+      );
+    } catch (error, stack) {
+      _logger
+          .e("Failed to set user dial use routes: $error, stackTrace: $stack");
+      rethrow;
+    }
+  }
+
+  Future<void> setSendDNSToExitNodeInTunnel(bool on) async {
+    try {
+      _logger.d("Setting 'send dns to exit node in tunnel' to: $on");
+      await _ipnService.setSendDNSToExitNodeInTunnel(on);
+    } catch (error) {
+      _logger.e("Failed to set 'send dns to exit node in tunnel': $error");
+      rethrow;
+    }
+  }
+
+  Future<DNSQueryResponse> queryDNS(String name, {String? type}) async {
+    try {
+      _logger.d("Querying DNS for name: $name, type: $type");
+      return await _ipnService.queryDNS(name, type: type);
+    } catch (error) {
+      _logger.e("Failed to query DNS': $error");
+      rethrow;
+    }
+  }
+
   Future<void> sendPeerFiles({
     required String peerID,
     required List<OutgoingFile> files,

@@ -69,9 +69,8 @@ class App extends ConsumerWidget {
         (themeMode == ThemeMode.system &&
             View.of(context).platformDispatcher.platformBrightness ==
                 Brightness.dark);
-
     return CupertinoApp(
-      theme: isDark ? darkCupertinoTheme : null,
+      theme: isDark ? darkCupertinoTheme : lightCupertinoTheme,
       onGenerateRoute: _onGenerateRoutes,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,

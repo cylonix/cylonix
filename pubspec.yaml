@@ -33,7 +33,7 @@ dependencies:
   freezed_annotation: ^2.4.1
   installed_apps: ^1.6.0
   introduction_screen: ^3.1.17
-  json_annotation: ^4.8.1
+  json_annotation: ^4.9.0
   logger: ^2.5.0
   package_info_plus: ^8.0.2
   path: ^1.8.3

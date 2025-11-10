@@ -118,10 +118,9 @@ class SubnetRoutingView extends ConsumerWidget {
   void _editRoute(BuildContext context, WidgetRef ref, String route) async {
     try {
       ref.read(subnetRoutingProvider.notifier).startEditingRoute(route);
-      await showDialog(
-        context: context,
-        builder: (context) => const EditSubnetRouteDialog(),
-      );
+      await const AdaptiveModalPopup(
+        child: EditSubnetRoutePopup(),
+      ).show(context, adaptive: false);
     } finally {
       ref.read(subnetRoutingProvider.notifier).stopEditingRoute();
     }
@@ -192,45 +191,58 @@ class SubnetRouteRow extends StatelessWidget {
   }
 }
 
-class EditSubnetRouteDialog extends ConsumerWidget {
-  const EditSubnetRouteDialog({super.key});
+class EditSubnetRoutePopup extends ConsumerWidget {
+  const EditSubnetRoutePopup({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(subnetRoutingProvider);
     final isLoading = ref.watch(subnetRoutingLoadingProvider);
 
-    return AlertDialog.adaptive(
-      title: Text(state.editingRoute.isEmpty ? 'Add Route' : 'Edit Route'),
-      content: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16.0),
-        constraints: const BoxConstraints(minWidth: 320),
-        child: TextFormField(
-          autofocus: true,
-          initialValue: state.dialogTextFieldValue,
-          onChanged: (value) =>
-              ref.read(subnetRoutingProvider.notifier).updateDialogValue(value),
-          decoration: InputDecoration(
-            label: const Text("Route"),
-            border: const OutlineInputBorder(),
-            errorText:
-                !state.isTextFieldValueValid ? 'Invalid CIDR format' : null,
-          ),
+    return LoadingIndicator(
+      isLoading: isLoading,
+      child: Container(
+        alignment: Alignment.topCenter,
+        constraints: const BoxConstraints(maxWidth: 600),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 32,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                AdaptiveTitle(
+                  state.editingRoute.isEmpty ? 'Add Route' : 'Edit Route',
+                ),
+                AdaptiveButton(
+                  small: true,
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+            TextFormField(
+              autofocus: true,
+              initialValue: state.dialogTextFieldValue,
+              onChanged: (value) => ref
+                  .read(subnetRoutingProvider.notifier)
+                  .updateDialogValue(value),
+              decoration: InputDecoration(
+                label: const Text("Route"),
+                border: const OutlineInputBorder(),
+                errorText:
+                    !state.isTextFieldValueValid ? 'Invalid CIDR format' : null,
+              ),
+            ),
+            AdaptiveButton(
+              filled: true,
+              onPressed: () => _save(context, ref),
+              child: const Text('Save'),
+            ),
+          ],
         ),
       ),
-      actions: [
-        DialogAction(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        isLoading
-            ? const AdaptiveLoadingWidget()
-            : AdaptiveButton(
-                filled: true,
-                onPressed: () => _save(context, ref),
-                child: const Text('Save'),
-              ),
-      ],
     );
   }
 

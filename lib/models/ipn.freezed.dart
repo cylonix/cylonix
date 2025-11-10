@@ -3934,6 +3934,8 @@ mixin _$Node {
   String? get lastSeen => throw _privateConstructorUsedError;
   @JsonKey(name: 'Online')
   bool? get online => throw _privateConstructorUsedError;
+  @JsonKey(name: "IsJailed")
+  bool? get isJailed => throw _privateConstructorUsedError;
   @JsonKey(name: "IsWireGuardOnly")
   bool? get isWireGuardOnly => throw _privateConstructorUsedError;
   @JsonKey(name: 'Capabilities')
@@ -3975,6 +3977,7 @@ abstract class $NodeCopyWith<$Res> {
       @JsonKey(name: 'Created') String? created,
       @JsonKey(name: 'LastSeen') String? lastSeen,
       @JsonKey(name: 'Online') bool? online,
+      @JsonKey(name: "IsJailed") bool? isJailed,
       @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') List<String>? capabilities,
       @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
@@ -4014,6 +4017,7 @@ class _$NodeCopyWithImpl<$Res, $Val extends Node>
     Object? created = freezed,
     Object? lastSeen = freezed,
     Object? online = freezed,
+    Object? isJailed = freezed,
     Object? isWireGuardOnly = freezed,
     Object? capabilities = freezed,
     Object? capMap = freezed,
@@ -4081,6 +4085,10 @@ class _$NodeCopyWithImpl<$Res, $Val extends Node>
           ? _value.online
           : online // ignore: cast_nullable_to_non_nullable
               as bool?,
+      isJailed: freezed == isJailed
+          ? _value.isJailed
+          : isJailed // ignore: cast_nullable_to_non_nullable
+              as bool?,
       isWireGuardOnly: freezed == isWireGuardOnly
           ? _value.isWireGuardOnly
           : isWireGuardOnly // ignore: cast_nullable_to_non_nullable
@@ -4142,6 +4150,7 @@ abstract class _$$NodeImplCopyWith<$Res> implements $NodeCopyWith<$Res> {
       @JsonKey(name: 'Created') String? created,
       @JsonKey(name: 'LastSeen') String? lastSeen,
       @JsonKey(name: 'Online') bool? online,
+      @JsonKey(name: "IsJailed") bool? isJailed,
       @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') List<String>? capabilities,
       @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
@@ -4179,6 +4188,7 @@ class __$$NodeImplCopyWithImpl<$Res>
     Object? created = freezed,
     Object? lastSeen = freezed,
     Object? online = freezed,
+    Object? isJailed = freezed,
     Object? isWireGuardOnly = freezed,
     Object? capabilities = freezed,
     Object? capMap = freezed,
@@ -4246,6 +4256,10 @@ class __$$NodeImplCopyWithImpl<$Res>
           ? _value.online
           : online // ignore: cast_nullable_to_non_nullable
               as bool?,
+      isJailed: freezed == isJailed
+          ? _value.isJailed
+          : isJailed // ignore: cast_nullable_to_non_nullable
+              as bool?,
       isWireGuardOnly: freezed == isWireGuardOnly
           ? _value.isWireGuardOnly
           : isWireGuardOnly // ignore: cast_nullable_to_non_nullable
@@ -4289,6 +4303,7 @@ class _$NodeImpl extends _Node {
       @JsonKey(name: 'Created') this.created,
       @JsonKey(name: 'LastSeen') this.lastSeen,
       @JsonKey(name: 'Online') this.online,
+      @JsonKey(name: "IsJailed") this.isJailed,
       @JsonKey(name: "IsWireGuardOnly") this.isWireGuardOnly,
       @JsonKey(name: 'Capabilities') final List<String>? capabilities,
       @JsonKey(name: 'CapMap') final Map<String, dynamic>? capMap,
@@ -4370,6 +4385,9 @@ class _$NodeImpl extends _Node {
   @JsonKey(name: 'Online')
   final bool? online;
   @override
+  @JsonKey(name: "IsJailed")
+  final bool? isJailed;
+  @override
   @JsonKey(name: "IsWireGuardOnly")
   final bool? isWireGuardOnly;
   final List<String>? _capabilities;
@@ -4428,6 +4446,8 @@ class _$NodeImpl extends _Node {
             (identical(other.lastSeen, lastSeen) ||
                 other.lastSeen == lastSeen) &&
             (identical(other.online, online) || other.online == online) &&
+            (identical(other.isJailed, isJailed) ||
+                other.isJailed == isJailed) &&
             (identical(other.isWireGuardOnly, isWireGuardOnly) ||
                 other.isWireGuardOnly == isWireGuardOnly) &&
             const DeepCollectionEquality()
@@ -4458,6 +4478,7 @@ class _$NodeImpl extends _Node {
         created,
         lastSeen,
         online,
+        isJailed,
         isWireGuardOnly,
         const DeepCollectionEquality().hash(_capabilities),
         const DeepCollectionEquality().hash(_capMap),
@@ -4498,6 +4519,7 @@ abstract class _Node extends Node {
       @JsonKey(name: 'Created') final String? created,
       @JsonKey(name: 'LastSeen') final String? lastSeen,
       @JsonKey(name: 'Online') final bool? online,
+      @JsonKey(name: "IsJailed") final bool? isJailed,
       @JsonKey(name: "IsWireGuardOnly") final bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') final List<String>? capabilities,
       @JsonKey(name: 'CapMap') final Map<String, dynamic>? capMap,
@@ -4553,6 +4575,9 @@ abstract class _Node extends Node {
   @override
   @JsonKey(name: 'Online')
   bool? get online;
+  @override
+  @JsonKey(name: "IsJailed")
+  bool? get isJailed;
   @override
   @JsonKey(name: "IsWireGuardOnly")
   bool? get isWireGuardOnly;
@@ -11624,5 +11649,203 @@ abstract class _Status implements Status {
   @override
   @JsonKey(includeFromJson: false, includeToJson: false)
   _$$StatusImplCopyWith<_$StatusImpl> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+DNSQueryResponse _$DNSQueryResponseFromJson(Map<String, dynamic> json) {
+  return _DNSQueryResponse.fromJson(json);
+}
+
+/// @nodoc
+mixin _$DNSQueryResponse {
+  @JsonKey(name: 'Bytes')
+  @Uint8ListConverter()
+  Uint8List get bytes => throw _privateConstructorUsedError;
+  @JsonKey(name: 'Resolvers')
+  List<Resolver>? get resolvers => throw _privateConstructorUsedError;
+
+  /// Serializes this DNSQueryResponse to a JSON map.
+  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
+
+  /// Create a copy of DNSQueryResponse
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  $DNSQueryResponseCopyWith<DNSQueryResponse> get copyWith =>
+      throw _privateConstructorUsedError;
+}
+
+/// @nodoc
+abstract class $DNSQueryResponseCopyWith<$Res> {
+  factory $DNSQueryResponseCopyWith(
+          DNSQueryResponse value, $Res Function(DNSQueryResponse) then) =
+      _$DNSQueryResponseCopyWithImpl<$Res, DNSQueryResponse>;
+  @useResult
+  $Res call(
+      {@JsonKey(name: 'Bytes') @Uint8ListConverter() Uint8List bytes,
+      @JsonKey(name: 'Resolvers') List<Resolver>? resolvers});
+}
+
+/// @nodoc
+class _$DNSQueryResponseCopyWithImpl<$Res, $Val extends DNSQueryResponse>
+    implements $DNSQueryResponseCopyWith<$Res> {
+  _$DNSQueryResponseCopyWithImpl(this._value, this._then);
+
+  // ignore: unused_field
+  final $Val _value;
+  // ignore: unused_field
+  final $Res Function($Val) _then;
+
+  /// Create a copy of DNSQueryResponse
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? bytes = null,
+    Object? resolvers = freezed,
+  }) {
+    return _then(_value.copyWith(
+      bytes: null == bytes
+          ? _value.bytes
+          : bytes // ignore: cast_nullable_to_non_nullable
+              as Uint8List,
+      resolvers: freezed == resolvers
+          ? _value.resolvers
+          : resolvers // ignore: cast_nullable_to_non_nullable
+              as List<Resolver>?,
+    ) as $Val);
+  }
+}
+
+/// @nodoc
+abstract class _$$DNSQueryResponseImplCopyWith<$Res>
+    implements $DNSQueryResponseCopyWith<$Res> {
+  factory _$$DNSQueryResponseImplCopyWith(_$DNSQueryResponseImpl value,
+          $Res Function(_$DNSQueryResponseImpl) then) =
+      __$$DNSQueryResponseImplCopyWithImpl<$Res>;
+  @override
+  @useResult
+  $Res call(
+      {@JsonKey(name: 'Bytes') @Uint8ListConverter() Uint8List bytes,
+      @JsonKey(name: 'Resolvers') List<Resolver>? resolvers});
+}
+
+/// @nodoc
+class __$$DNSQueryResponseImplCopyWithImpl<$Res>
+    extends _$DNSQueryResponseCopyWithImpl<$Res, _$DNSQueryResponseImpl>
+    implements _$$DNSQueryResponseImplCopyWith<$Res> {
+  __$$DNSQueryResponseImplCopyWithImpl(_$DNSQueryResponseImpl _value,
+      $Res Function(_$DNSQueryResponseImpl) _then)
+      : super(_value, _then);
+
+  /// Create a copy of DNSQueryResponse
+  /// with the given fields replaced by the non-null parameter values.
+  @pragma('vm:prefer-inline')
+  @override
+  $Res call({
+    Object? bytes = null,
+    Object? resolvers = freezed,
+  }) {
+    return _then(_$DNSQueryResponseImpl(
+      bytes: null == bytes
+          ? _value.bytes
+          : bytes // ignore: cast_nullable_to_non_nullable
+              as Uint8List,
+      resolvers: freezed == resolvers
+          ? _value._resolvers
+          : resolvers // ignore: cast_nullable_to_non_nullable
+              as List<Resolver>?,
+    ));
+  }
+}
+
+/// @nodoc
+@JsonSerializable()
+class _$DNSQueryResponseImpl implements _DNSQueryResponse {
+  const _$DNSQueryResponseImpl(
+      {@JsonKey(name: 'Bytes') @Uint8ListConverter() required this.bytes,
+      @JsonKey(name: 'Resolvers') final List<Resolver>? resolvers})
+      : _resolvers = resolvers;
+
+  factory _$DNSQueryResponseImpl.fromJson(Map<String, dynamic> json) =>
+      _$$DNSQueryResponseImplFromJson(json);
+
+  @override
+  @JsonKey(name: 'Bytes')
+  @Uint8ListConverter()
+  final Uint8List bytes;
+  final List<Resolver>? _resolvers;
+  @override
+  @JsonKey(name: 'Resolvers')
+  List<Resolver>? get resolvers {
+    final value = _resolvers;
+    if (value == null) return null;
+    if (_resolvers is EqualUnmodifiableListView) return _resolvers;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(value);
+  }
+
+  @override
+  String toString() {
+    return 'DNSQueryResponse(bytes: $bytes, resolvers: $resolvers)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType &&
+            other is _$DNSQueryResponseImpl &&
+            const DeepCollectionEquality().equals(other.bytes, bytes) &&
+            const DeepCollectionEquality()
+                .equals(other._resolvers, _resolvers));
+  }
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  int get hashCode => Object.hash(
+      runtimeType,
+      const DeepCollectionEquality().hash(bytes),
+      const DeepCollectionEquality().hash(_resolvers));
+
+  /// Create a copy of DNSQueryResponse
+  /// with the given fields replaced by the non-null parameter values.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  @override
+  @pragma('vm:prefer-inline')
+  _$$DNSQueryResponseImplCopyWith<_$DNSQueryResponseImpl> get copyWith =>
+      __$$DNSQueryResponseImplCopyWithImpl<_$DNSQueryResponseImpl>(
+          this, _$identity);
+
+  @override
+  Map<String, dynamic> toJson() {
+    return _$$DNSQueryResponseImplToJson(
+      this,
+    );
+  }
+}
+
+abstract class _DNSQueryResponse implements DNSQueryResponse {
+  const factory _DNSQueryResponse(
+          {@JsonKey(name: 'Bytes')
+          @Uint8ListConverter()
+          required final Uint8List bytes,
+          @JsonKey(name: 'Resolvers') final List<Resolver>? resolvers}) =
+      _$DNSQueryResponseImpl;
+
+  factory _DNSQueryResponse.fromJson(Map<String, dynamic> json) =
+      _$DNSQueryResponseImpl.fromJson;
+
+  @override
+  @JsonKey(name: 'Bytes')
+  @Uint8ListConverter()
+  Uint8List get bytes;
+  @override
+  @JsonKey(name: 'Resolvers')
+  List<Resolver>? get resolvers;
+
+  /// Create a copy of DNSQueryResponse
+  /// with the given fields replaced by the non-null parameter values.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  _$$DNSQueryResponseImplCopyWith<_$DNSQueryResponseImpl> get copyWith =>
       throw _privateConstructorUsedError;
 }

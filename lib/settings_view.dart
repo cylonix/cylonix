@@ -16,6 +16,7 @@ import 'utils/utils.dart';
 import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
+import 'widgets/dns_query.dart';
 import 'widgets/ipn_logs_widget.dart';
 import 'widgets/ui_logs_widget.dart';
 
@@ -341,6 +342,12 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   onNavigateBack: widget.onNavigateBackToSettings,
                   onNavigateToLogConsole: widget.onPushNewPage,
                 ),
+                AdaptiveListTile.notched(
+                  title: const Text('Test DNS Query'),
+                  subtitle: const Text('Test DNS resolution via Cylonix'),
+                  trailing: const AdaptiveListTileChevron(),
+                  onTap: _showDNSQueryBottomSheet,
+                ),
                 if (Platform.isAndroid && !isNativeAndroidTV)
                   AdaptiveListTile.notched(
                     title: const Text('Enable Android TV Mode'),
@@ -402,6 +409,18 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         ),
       ),
     );
+  }
+
+  void _showDNSQueryBottomSheet() async {
+    await AdaptiveModalPopup(
+      child: DNSQuery(
+        onQuery: (String name) async {
+          return await ref
+              .read(ipnStateNotifierProvider.notifier)
+              .queryDNS(name);
+        },
+      ),
+    ).show(context, adaptive: false);
   }
 
   Widget _buildUserSection(

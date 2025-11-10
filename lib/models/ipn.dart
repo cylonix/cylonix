@@ -3,6 +3,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -378,6 +379,7 @@ class Node with _$Node {
     @JsonKey(name: 'Created') Time? created,
     @JsonKey(name: 'LastSeen') Time? lastSeen,
     @JsonKey(name: 'Online') bool? online,
+    @JsonKey(name: "IsJailed") bool? isJailed,
     @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
     @JsonKey(name: 'Capabilities') List<String>? capabilities,
     @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
@@ -1199,6 +1201,34 @@ class Status with _$Status {
   }) = _Status;
 
   factory Status.fromJson(Map<String, dynamic> json) => _$StatusFromJson(json);
+}
+
+class Uint8ListConverter implements JsonConverter<Uint8List, dynamic> {
+  const Uint8ListConverter();
+
+  @override
+  Uint8List fromJson(dynamic json) {
+    if (json is String) {
+      return base64Decode(json);
+    } else if (json is List) {
+      return Uint8List.fromList(json.cast<int>());
+    }
+    throw ArgumentError('Cannot convert $json to Uint8List');
+  }
+
+  @override
+  dynamic toJson(Uint8List object) => base64Encode(object);
+}
+
+@freezed
+class DNSQueryResponse with _$DNSQueryResponse {
+  const factory DNSQueryResponse({
+    @JsonKey(name: 'Bytes') @Uint8ListConverter() required Uint8List bytes,
+    @JsonKey(name: 'Resolvers') List<Resolver>? resolvers,
+  }) = _DNSQueryResponse;
+
+  factory DNSQueryResponse.fromJson(Map<String, dynamic> json) =>
+      _$DNSQueryResponseFromJson(json);
 }
 
 extension PeerStatusExtension on PeerStatus {

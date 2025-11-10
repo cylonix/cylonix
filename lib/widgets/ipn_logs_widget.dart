@@ -33,6 +33,7 @@ class IpnLogsWidget extends ConsumerWidget {
             ? "View Network Extension Logs"
             : "View Network Service Logs"),
         trailing: const AdaptiveListTileChevron(),
+        subtitle: const Text("View and share local backend logs"),
         onTap: () => _showLogConsole(context, ref),
       ),
       loading: () => AdaptiveListTile.notched(

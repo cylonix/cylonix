@@ -7,7 +7,7 @@ import 'utils/utils.dart';
 
 final _lightTheme = ThemeData.light(useMaterial3: enableMaterial3());
 final _darkTheme = ThemeData.dark(useMaterial3: enableMaterial3());
-const lighCupertinoTheme = CupertinoThemeData(
+const lightCupertinoTheme = CupertinoThemeData(
   brightness: Brightness.light,
   scaffoldBackgroundColor: CupertinoColors.systemBackground,
 );
@@ -37,7 +37,7 @@ final darkCupertinoTheme = CupertinoThemeData(
 
 final List<ThemeData> themeList = [
   _lightTheme.copyWith(
-    cupertinoOverrideTheme: lighCupertinoTheme,
+    cupertinoOverrideTheme: lightCupertinoTheme,
     /*listTileTheme: _lightTheme.listTileTheme.copyWith(
       titleTextStyle: (_lightTheme.listTileTheme.titleTextStyle ??
               _lightTheme.textTheme.titleMedium)

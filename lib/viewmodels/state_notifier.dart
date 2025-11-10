@@ -128,6 +128,16 @@ final alwaysUseDerpProvider =
   );
 });
 
+final sendDNSToExitNodeInTunnelProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'send_dns_to_exit_node_in_tunnel',
+    defaultValue: false,
+    prefs: prefs,
+  );
+});
+
 final showDevicesProvider =
     StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider).value;

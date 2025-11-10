@@ -705,6 +705,7 @@ class IpnService {
     if (addr.isEmpty) {
       throw Exception("Peer has no address");
     }
+    final pingType = (peer.isWireGuardOnly ?? false) ? 'ICMP' : 'disco';
     final result = await (_useHttpLocalApi
         ? _sendCommandOverHttp(
             Uri(
@@ -713,12 +714,12 @@ class IpnService {
               path: '$_localApiPrefix/ping',
               queryParameters: {
                 'ip': addr,
-                'type': 'disco',
+                'type': pingType,
               },
             ),
             'POST',
           )
-        : _sendCommand('ping', addr));
+        : _sendCommand('ping', '$addr $pingType'));
     return PingResult.fromJson(jsonDecode(result));
   }
 
@@ -944,6 +945,89 @@ class IpnService {
       throw Exception("Failed to set always use relay: $result");
     }
     _logger.d("Set always use relay to $on DONE.");
+  }
+
+  Future<void> setUserDialUseRoutes(bool on) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp(
+        Uri(
+          scheme: 'http',
+          host: _localApiHost,
+          path: '$_localApiPrefix/cap',
+          queryParameters: {
+            'cap': 'user-dial-routes',
+            'op': on ? 'add' : 'del'
+          },
+        ),
+        'POST',
+      );
+      return;
+    }
+    final result = await _sendCommand(
+      'add_del_cap',
+      'user-dial-routes ' + (on ? 'add' : 'del'),
+    );
+    if (result != "Success") {
+      throw Exception("Failed to set user dial use routes: $result");
+    }
+    _logger.d("Set user dial use routes to $on DONE.");
+  }
+
+  Future<void> setSendDNSToExitNodeInTunnel(bool on) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp(
+        Uri(
+          scheme: 'http',
+          host: _localApiHost,
+          path: '$_localApiPrefix/envknob',
+          queryParameters: {
+            'env': jsonEncode({
+              'TS_DEBUG_SEND_DNS_TO_EXIT_NODE_IN_TUNNEL': on ? "1" : "0",
+            }),
+          },
+        ),
+        'POST',
+      );
+      return;
+    }
+    final result = await _sendCommand(
+      'set_env_knobs',
+      'TS_DEBUG_SEND_DNS_TO_EXIT_NODE_IN_TUNNEL=${on ? 1 : 0}',
+    );
+    if (result != "Success") {
+      throw Exception(
+        "Failed to set 'send dns to exit node in tunnel': $result",
+      );
+    }
+    _logger.d("Set 'send dns to exit node in tunnel' to $on DONE.");
+  }
+
+  Future<DNSQueryResponse> queryDNS(String name, {String? type}) async {
+    late final String result;
+    if (_useHttpLocalApi) {
+      result = await _sendCommandOverHttp(
+        Uri(
+          scheme: 'http',
+          host: _localApiHost,
+          path: '$_localApiPrefix/dns-query',
+          queryParameters: {
+            'name': name,
+            'type': type ?? '',
+          },
+        ),
+        'GET',
+      );
+    } else {
+      result = await _sendCommand(
+        'dns_query',
+        '$name ${type ?? ''}',
+      );
+    }
+    if (result.startsWith("Error")) {
+      throw Exception(result);
+    }
+    _logger.d("DNS query for $name($type) SUCCESS.");
+    return DNSQueryResponse.fromJson(jsonDecode(result));
   }
 
   // Parses a string into a boolean value.

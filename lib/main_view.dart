@@ -368,6 +368,7 @@ class _MainViewState extends ConsumerState<MainView> {
                   onPeerTap: widget.onNavigateToPeerDetails,
                 ),
               ),
+              const SizedBox(height: 16)
             ],
           );
 
@@ -1460,6 +1461,11 @@ class _MainViewState extends ConsumerState<MainView> {
                           : "Signing in. Please wait...",
                       textAlign: TextAlign.center,
                     ),
+              AdaptiveButton(
+                width: 250,
+                onPressed: () => _resetIpnStateNotifier(),
+                child: const Text('Cancel and Retry'),
+              ),
             ],
             if (!_signingInWithApple && urlLaunched != loginURL) ...[
               SizedBox(

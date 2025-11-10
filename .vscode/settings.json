@@ -13,6 +13,7 @@
         "Donenfeld",
         "envknob",
         "exclamationmark",
+        "EZBLOCK",
         "Hostinfo",
         "iface",
         "ifaces",
@@ -35,7 +36,8 @@
         "tailnet",
         "utun",
         "Verbosef",
-        "viewmodels"
+        "viewmodels",
+        "warnable"
     ],
     "makefile.configureOnOpen": false,
     "files.associations": {

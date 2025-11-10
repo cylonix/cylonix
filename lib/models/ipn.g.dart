@@ -384,6 +384,7 @@ _$NodeImpl _$$NodeImplFromJson(Map<String, dynamic> json) => _$NodeImpl(
       created: json['Created'] as String?,
       lastSeen: json['LastSeen'] as String?,
       online: json['Online'] as bool?,
+      isJailed: json['IsJailed'] as bool?,
       isWireGuardOnly: json['IsWireGuardOnly'] as bool?,
       capabilities: (json['Capabilities'] as List<dynamic>?)
           ?.map((e) => e as String)
@@ -410,6 +411,7 @@ Map<String, dynamic> _$$NodeImplToJson(_$NodeImpl instance) =>
       'Created': instance.created,
       'LastSeen': instance.lastSeen,
       'Online': instance.online,
+      'IsJailed': instance.isJailed,
       'IsWireGuardOnly': instance.isWireGuardOnly,
       'Capabilities': instance.capabilities,
       'CapMap': instance.capMap,
@@ -958,4 +960,20 @@ Map<String, dynamic> _$$StatusImplToJson(_$StatusImpl instance) =>
       'Peer': instance.peer,
       'User': instance.user,
       'ClientVersion': instance.clientVersion,
+    };
+
+_$DNSQueryResponseImpl _$$DNSQueryResponseImplFromJson(
+        Map<String, dynamic> json) =>
+    _$DNSQueryResponseImpl(
+      bytes: const Uint8ListConverter().fromJson(json['Bytes']),
+      resolvers: (json['Resolvers'] as List<dynamic>?)
+          ?.map((e) => Resolver.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+
+Map<String, dynamic> _$$DNSQueryResponseImplToJson(
+        _$DNSQueryResponseImpl instance) =>
+    <String, dynamic>{
+      'Bytes': const Uint8ListConverter().toJson(instance.bytes),
+      'Resolvers': instance.resolvers,
     };

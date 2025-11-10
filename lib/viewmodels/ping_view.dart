@@ -98,7 +98,9 @@ class PingStateNotifier extends StateNotifier<AsyncValue<PingState>> {
         errorMessage: null,
         lastLatencyValue: '${latency.toStringAsFixed(1)} ms',
         latencyValues: [...state.value!.latencyValues, latency],
-        connectionMode: result.connectionType,
+        connectionMode: (peer.isWireGuardOnly ?? false)
+            ? "Wireguard-only"
+            : result.connectionType,
       ));
     } catch (e, stack) {
       _logger.e("Ping error: $e, stack: $stack");

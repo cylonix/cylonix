@@ -166,6 +166,12 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
         ? "Key does not expire"
         : GoTimeUtil.keyExpiryFromGoTime(node.keyExpiry);
     m['Key base64'] = node.keyBase64;
+    if (node.isJailed ?? false) {
+      m['Jailed'] = 'Cannot initiate outbound connections';
+    }
+    if (node.isExitNode) {
+      m['Exit Node'] = 'Capable of being an exit node';
+    }
     return m;
   }
 
@@ -186,35 +192,40 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
       ),
       subtitle: Text(address.address),
-      trailing: CupertinoButton(
-        padding: EdgeInsets.zero,
-        child: const Icon(
-          CupertinoIcons.doc_on_doc,
-          size: 20,
-        ),
-        onPressed: () => _copy(address.address),
-      ),
+      trailing: _copyButton(address.address),
     );
   }
 
-  bool _showInfoValueAsTrailing(
-      BuildContext context, String label, String value) {
-    return useNavigationRail(context) ||
-        (label.length < 24 && value.length < 24);
+  Widget _copyButton(String text) {
+    return AdaptiveButton(
+      padding: EdgeInsets.zero,
+      child: Icon(
+        isApple() ? CupertinoIcons.doc_on_doc : Icons.copy,
+        size: 20,
+      ),
+      onPressed: () => _copy(text),
+    );
   }
 
   Widget _buildValue(BuildContext context, String label, String value) {
-    final showValueAsTrailing = _showInfoValueAsTrailing(context, label, value);
     return AdaptiveListTile(
       leading: switch (label) {
         'os' => const Icon(CupertinoIcons.device_desktop),
         'Key expiry' => const Icon(CupertinoIcons.clock),
         'Key base64' => const Icon(Icons.key_outlined),
+        'Jailed' => const Icon(
+            CupertinoIcons.lock_shield,
+            color: CupertinoColors.systemRed,
+          ),
+        'Exit Node' => const Icon(CupertinoIcons.arrow_up_right_circle),
         _ => const Icon(CupertinoIcons.info),
       },
       title: Text(label),
-      subtitle: showValueAsTrailing ? null : Text(value),
-      trailing: showValueAsTrailing ? Text(value) : null,
+      subtitle: Text(value, overflow: TextOverflow.ellipsis),
+      trailing: switch (label) {
+        'Key base64' => _copyButton(value),
+        _ => null,
+      },
     );
   }
 
@@ -273,15 +284,11 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
     const encoder = JsonEncoder.withIndent('  ');
     final prettyJson = encoder.convert(node.toJson());
 
-    return SingleChildScrollView(
-      controller: ScrollController(),
-      padding: const EdgeInsets.all(16.0),
-      child: SelectableText(
-        prettyJson,
-        style: const TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 14,
-        ),
+    return SelectableText(
+      prettyJson,
+      style: const TextStyle(
+        fontFamily: 'monospace',
+        fontSize: 14,
       ),
     );
   }

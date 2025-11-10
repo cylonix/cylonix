@@ -529,7 +529,9 @@ void showCupertinoSnackBar({
 class AdaptiveListTile extends StatelessWidget {
   final Widget title;
   final Widget? leading;
+  final double leadingSize;
   final Widget? trailing;
+  final Widget? additionalInfo;
   final Widget? subtitle;
   final Color? backgroundColor;
   final bool notched;
@@ -541,6 +543,8 @@ class AdaptiveListTile extends StatelessWidget {
     super.key,
     required this.title,
     this.leading,
+    this.leadingSize = 28,
+    this.additionalInfo,
     this.trailing,
     this.subtitle,
     this.backgroundColor,
@@ -554,6 +558,8 @@ class AdaptiveListTile extends StatelessWidget {
     super.key,
     required this.title,
     this.leading,
+    this.leadingSize = 28,
+    this.additionalInfo,
     this.trailing,
     this.subtitle,
     this.backgroundColor,
@@ -571,7 +577,7 @@ class AdaptiveListTile extends StatelessWidget {
       tileColor: backgroundColor,
       title: title,
       leading: leading,
-      trailing: trailing,
+      trailing: trailing ?? additionalInfo,
       subtitle: subtitle,
       onTap: onTap,
     );
@@ -579,8 +585,10 @@ class AdaptiveListTile extends StatelessWidget {
         ? notched
             ? CupertinoListTile.notched(
                 leading: leading,
+                leadingSize: leadingSize,
                 padding: padding,
                 title: title,
+                additionalInfo: additionalInfo,
                 subtitle: subtitle,
                 trailing: trailing,
                 backgroundColor: backgroundColor ??
@@ -591,6 +599,8 @@ class AdaptiveListTile extends StatelessWidget {
             : CupertinoListTile(
                 padding: padding,
                 leading: leading,
+                leadingSize: leadingSize,
+                additionalInfo: additionalInfo,
                 trailing: trailing,
                 subtitle: subtitle,
                 title: title,
@@ -699,6 +709,79 @@ class AdaptiveListSection extends StatelessWidget {
   }
 }
 
+class AdaptiveTextFormField extends StatelessWidget {
+  final TextEditingController? controller;
+  final String? placeholder;
+  final String? labelText;
+  final String? initialValue;
+  final bool obscureText;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onFieldSubmitted;
+  final FormFieldValidator<String>? validator;
+  final TextInputType? keyboardType;
+
+  const AdaptiveTextFormField({
+    super.key,
+    this.controller,
+    this.placeholder,
+    this.labelText,
+    this.initialValue,
+    this.obscureText = false,
+    this.onChanged,
+    this.onFieldSubmitted,
+    this.validator,
+    this.keyboardType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return isApple()
+        ? CupertinoTextFormFieldRow(
+            controller: controller,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: CupertinoColors.systemGrey3.resolveFrom(context),
+                width: 0.5,
+              ),
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            prefix: labelText != null
+                ? Padding(
+                    child: Text(labelText!),
+                    padding: const EdgeInsets.only(right: 8.0),
+                  )
+                : null,
+            placeholder: placeholder,
+            initialValue: initialValue,
+            obscureText: obscureText,
+            onChanged: onChanged,
+            onFieldSubmitted: onFieldSubmitted,
+            validator: validator,
+            keyboardType: keyboardType,
+            padding: const EdgeInsets.symmetric(
+              vertical: 12,
+              horizontal: 16,
+            ),
+          )
+        : TextFormField(
+            controller: controller,
+            decoration: InputDecoration(
+              labelText: labelText,
+              hintText: placeholder,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+            ),
+            initialValue: initialValue,
+            obscureText: obscureText,
+            onChanged: onChanged,
+            onFieldSubmitted: onFieldSubmitted,
+            validator: validator,
+            keyboardType: keyboardType,
+          );
+  }
+}
+
 class AdaptiveModalPopup extends StatelessWidget {
   final Widget child;
   final double? height;
@@ -725,13 +808,21 @@ class AdaptiveModalPopup extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       width: double.infinity,
-      height: height ?? MediaQuery.of(context).size.height * 0.7,
-      padding: padding,
-      margin: EdgeInsets.only(
+      height: height ??
+          (isApple() ? null : MediaQuery.of(context).size.height * 0.7),
+      constraints: height == null
+          ? BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            )
+          : null,
+      padding: EdgeInsets.only(
+        left: 8,
+        right: 8,
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: SafeArea(
         child: Column(
+          mainAxisSize: MainAxisSize.min, // Important for iOS
           children: [
             Container(
               height: 6,
@@ -754,25 +845,28 @@ class AdaptiveModalPopup extends StatelessWidget {
     );
   }
 
-  Future<void> show(BuildContext context, {double? minHeight}) async {
-    if (isApple()) {
-      await showCupertinoModalPopup(
-        context: context,
-        builder: (context) => this,
-      );
-    } else {
-      await showModalBottomSheet(
-        constraints: BoxConstraints(
-          minWidth: double.infinity,
-          maxWidth: double.infinity,
-          minHeight: minHeight ?? 0,
-        ),
-        isScrollControlled: true,
-        useSafeArea: true,
+  Future<void> show(
+    BuildContext context, {
+    bool adaptive = true,
+    double? minHeight,
+  }) async {
+    if (isApple() && adaptive) {
+      return await showCupertinoModalPopup(
         context: context,
         builder: (context) => this,
       );
     }
+    await showModalBottomSheet(
+      constraints: BoxConstraints(
+        minWidth: double.infinity,
+        maxWidth: double.infinity,
+        minHeight: minHeight ?? 0,
+      ),
+      isScrollControlled: true,
+      useSafeArea: true,
+      context: context,
+      builder: (context) => this,
+    );
   }
 }
 
@@ -884,6 +978,32 @@ TextStyle? adaptiveGroupedFooterStyle(BuildContext context) {
       .textTheme
       .bodySmall
       ?.copyWith(fontWeight: FontWeight.w300);
+}
+
+class AdaptiveTitle extends StatelessWidget {
+  final String title;
+
+  const AdaptiveTitle(
+    this.title, {
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: isApple()
+          ? TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: CupertinoColors.label.resolveFrom(context),
+            )
+          : Theme.of(context)
+              .textTheme
+              .titleLarge
+              ?.copyWith(fontWeight: FontWeight.w600),
+    );
+  }
 }
 
 class AdaptiveGroupedHeader extends StatelessWidget {
