@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'dart:convert';
+import 'package:cylonix/models/platform.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,7 @@ import 'providers/ipn.dart';
 import 'utils/utils.dart';
 import 'viewmodels/peer_details.dart';
 import 'widgets/adaptive_widgets.dart';
+import 'widgets/tv_widgets.dart';
 
 class PeerDetailsView extends ConsumerStatefulWidget {
   final int node;
@@ -198,6 +200,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
 
   Widget _copyButton(String text) {
     return AdaptiveButton(
+      textButton: true,
       padding: EdgeInsets.zero,
       child: Icon(
         isApple() ? CupertinoIcons.doc_on_doc : Icons.copy,
@@ -236,6 +239,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
     );
 
     return ListView(
+      controller: ScrollController(),
       children: [
         const SizedBox(height: 32),
         AdaptiveListSection.insetGrouped(
@@ -250,31 +254,49 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
         ),
         AdaptiveListSection.insetGrouped(
           header: _buildSectionHeader(context, 'Node Data'),
-          footer: Text(
-            "View Node Data in JSON format for troubleshooting.",
-            style: adaptiveGroupedFooterStyle(context),
-          ),
           children: [
             AdaptiveListTile(
-              leading: const Icon(CupertinoIcons.info_circle),
-              title: Text(
-                _showNodeJson ? "Close" : "Open",
-              ),
-              trailing: Icon(
-                _showNodeJson
-                    ? CupertinoIcons.chevron_up
-                    : CupertinoIcons.chevron_down,
-              ),
-              onTap: () => setState(
-                () {
-                  _showNodeJson = !_showNodeJson;
-                },
-              ),
-            ),
-            if (_showNodeJson) ...[
+                leading: const Icon(CupertinoIcons.info_circle),
+                title: Text(
+                  _showNodeJson ? "Close" : "Open",
+                ),
+                trailing: Icon(
+                  _showNodeJson
+                      ? CupertinoIcons.chevron_up
+                      : isNativeAndroidTV
+                          ? CupertinoIcons.chevron_right
+                          : CupertinoIcons.chevron_down,
+                ),
+                onTap: () {
+                  setState(
+                    () {
+                      _showNodeJson = !_showNodeJson;
+                    },
+                  );
+                  if (_showNodeJson && isNativeAndroidTV) {
+                    const encoder = JsonEncoder.withIndent('  ');
+                    final prettyJson = encoder.convert(node.toJson());
+
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => Scaffold(
+                          appBar: AppBar(
+                            title: const Text('Node Data'),
+                          ),
+                          body: ScrollableTextTV(longText: prettyJson),
+                        ),
+                      ),
+                    );
+                    _showNodeJson = false;
+                  }
+                }),
+            if (_showNodeJson && !isNativeAndroidTV) ...[
               _buildNodeJson(context, node),
             ],
           ],
+          footer: const AdaptiveGroupedFooter(
+            'Node data in JSON format for troubleshooting purposes.',
+          ),
         ),
       ],
     );
@@ -283,6 +305,18 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
   Widget _buildNodeJson(BuildContext context, Node node) {
     const encoder = JsonEncoder.withIndent('  ');
     final prettyJson = encoder.convert(node.toJson());
+    if (isNativeAndroidTV) {
+      return Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Text(
+          prettyJson,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
 
     return SelectableText(
       prettyJson,

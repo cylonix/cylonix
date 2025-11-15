@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import '../models/ipn.dart';
+import '../models/platform.dart';
 import '../utils/dns.dart';
 import 'adaptive_widgets.dart';
 import 'alert_dialog_widget.dart';
@@ -53,76 +54,90 @@ class _DNSQueryState extends State<DNSQuery> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const AdaptiveTitle('Test DNS Query'),
-                AdaptiveButton(
+                if (!isNativeAndroidTV)
+                  AdaptiveButton(
                   small: true,
                   onPressed: Navigator.of(context).pop,
                   child: const Text('Close'),
                 ),
               ],
             ),
-            TextFormField(
-              controller: _queryController,
-              onChanged: (value) {
-                setState(() {
-                  _dnsQueryName = value;
-                });
-              },
-              onFieldSubmitted: (_) => _performDNSQuery(),
-              decoration: InputDecoration(
-                labelText: 'Domain Name',
-                hintText: 'e.g., example.com',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                suffixIcon: _dnsQueryName.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          setState(() {
-                            _queryController.clear();
-                            _dnsQueryName = '';
-                          });
-                        },
-                      )
-                    : null,
-              ),
-            ),
-            AdaptiveButton(
-              filled: true,
-              onPressed: _performDNSQuery,
-              child: const Text('Query'),
-            ),
-            TextFormField(
-              controller: _decodeController,
-              onChanged: (value) {
-                setState(() {
-                  _dnsResponseBytes = value;
-                });
-              },
-              onFieldSubmitted: (_) => _performDNSDecode(),
-              decoration: InputDecoration(
-                labelText: 'Decode DNS Response',
-                hintText: 'Input response in base64 format',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                suffixIcon: _dnsResponseBytes.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          setState(() {
-                            _decodeController.clear();
-                            _dnsResponseBytes = '';
-                          });
-                        },
-                      )
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 32.0),
+            if (!isNativeAndroidTV) ...[
+              _queryInput,
+              _queryButton,
+              _decodeInput,
+              const SizedBox(height: 32.0),
+            ],
+            if (isNativeAndroidTV) ...[_queryInput, _queryButton],
           ],
         ),
       ),
+    );
+  }
+
+  Widget get _queryInput {
+    return AdaptiveTextFormField(
+      controller: _queryController,
+      onChanged: (value) {
+        setState(() {
+          _dnsQueryName = value;
+        });
+      },
+      keyboardType: TextInputType.url,
+      textInputAction: TextInputAction.send,
+      autofocus: isNativeAndroidTV,
+      onFieldSubmitted: (_) => _performDNSQuery(),
+      labelText: 'Domain Name',
+      placeholder: 'e.g., example.com',
+      suffixIcon: _dnsQueryName.isNotEmpty && !isNativeAndroidTV
+          ? IconButton(
+              icon: const Icon(Icons.clear),
+              onPressed: () {
+                setState(() {
+                  _queryController.clear();
+                  _dnsQueryName = '';
+                });
+              },
+            )
+          : null,
+    );
+  }
+
+  Widget get _decodeInput {
+    return TextFormField(
+      controller: _decodeController,
+      onChanged: (value) {
+        setState(() {
+          _dnsResponseBytes = value;
+        });
+      },
+      onFieldSubmitted: (_) => _performDNSDecode(),
+      decoration: InputDecoration(
+        labelText: 'Decode DNS Response',
+        hintText: 'Input response in base64 format',
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        suffixIcon: _dnsResponseBytes.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  setState(() {
+                    _decodeController.clear();
+                    _dnsResponseBytes = '';
+                  });
+                },
+              )
+            : null,
+      ),
+    );
+  }
+
+  Widget get _queryButton {
+    return AdaptiveButton(
+      filled: true,
+      onPressed: _performDNSQuery,
+      child: const Text('Query'),
     );
   }
 

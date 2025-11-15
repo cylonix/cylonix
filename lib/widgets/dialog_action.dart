@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'adaptive_widgets.dart';
 import '../utils/utils.dart';
 
 class DialogAction extends StatelessWidget {
@@ -27,7 +27,8 @@ class DialogAction extends StatelessWidget {
             isDestructiveAction: isDestructive,
             child: child,
           )
-        : TextButton(
+        : AdaptiveButton(
+            autofocus: isDefault,
             onPressed: onPressed,
             child: Container(
               constraints: const BoxConstraints(minWidth: 60),

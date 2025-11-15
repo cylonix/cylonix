@@ -9,7 +9,10 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'date_time_extension.dart';
+import '../share_view.dart';
 import '../utils/logger.dart';
+import '../widgets/adaptive_widgets.dart';
+import 'platform.dart';
 
 class LogFile {
   late final Logger _logger;
@@ -101,6 +104,16 @@ class LogFile {
       final dir = await getTemporaryDirectory();
       final path = p.join(dir.path, _fileName);
       await _saveToPath(path);
+      if (isNativeAndroidTV) {
+        await AdaptiveModalPopup(
+          height: MediaQuery.of(context).size.height * 0.9,
+          child: ShareView(
+            paths: [path],
+            onCancel: Navigator.of(context).pop,
+          ),
+        ).show(context);
+        return;
+      }
       await Share.shareXFiles(
         [XFile(path)],
         subject: 'Log File: $_fileName',

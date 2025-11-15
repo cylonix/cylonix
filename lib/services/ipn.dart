@@ -434,7 +434,8 @@ class IpnService {
         return true;
       }
       if (Platform.isAndroid) {
-        for (var i = 0; i < 10; i++) {
+        for (var i = 0; i < 3; i++) {
+          _logger.d("Checking VPN permission (attempt ${i + 1})");
           final result = await _channel.invokeMethod("checkVPNPermission");
           if (result is bool) {
             if (result) {
@@ -1729,6 +1730,24 @@ class IpnService {
     );
     if (result != "Success") {
       throw Exception("Failed to exclude app from VPN: $result");
+    }
+  }
+
+  Future<bool> getAutoStartEnabled() async {
+    final result = await _channel.invokeMethod('getAutoStartEnabled');
+    if (result is! bool) {
+      throw Exception("Failed to get auto start enabled: $result");
+    }
+    return result;
+  }
+
+  Future<void> setAutoStartEnabled(bool isEnabled) async {
+    final result = await _channel.invokeMethod(
+      'setAutoStartEnabled',
+      {'enabled': isEnabled},
+    );
+    if (result != "Success") {
+      throw Exception("Failed to set auto start enabled: $result");
     }
   }
 }

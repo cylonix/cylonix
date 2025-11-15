@@ -108,6 +108,9 @@ class _LogConsoleState extends State<LogConsole> {
   final List<RenderedEvent> _renderedBuffer = [];
   List<int> _filteredEvents = [];
   final _logContentFocusNode = FocusNode();
+  final _appBarFocusNode = FocusNode();
+  final _filterFocusNode = FocusNode();
+  final _filterLevelFocusNode = FocusNode();
   static const _savedPosition = Offset(100, 100);
   static const int _pageSize = 300;
   List<OutputEvent> _allEvents = [];
@@ -155,6 +158,9 @@ class _LogConsoleState extends State<LogConsole> {
     _scrollController.dispose();
     _filterController.dispose();
     _logContentFocusNode.dispose();
+    _appBarFocusNode.dispose();
+    _filterFocusNode.dispose();
+    _filterLevelFocusNode.dispose();
     super.dispose();
   }
 
@@ -394,41 +400,64 @@ class _LogConsoleState extends State<LogConsole> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _isCupertino
-          ? CupertinoColors.systemBackground.resolveFrom(context)
-          : null,
-      appBar: _buildTopBar(),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Expanded(child: _logContentWithKeyShortcuts),
-            _buildBottomBar(),
-          ],
+    return PopScope(
+      canPop: !_logContentFocusNode.hasFocus &&
+          !_filterFocusNode
+              .hasFocus, // Allow pop only if not focused on content or filter
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop &&
+            (_logContentFocusNode.hasFocus || _filterFocusNode.hasFocus)) {
+          // Back button pressed while focused on log content or filter
+          // Move focus away instead of popping
+          if (_filterFocusNode.hasFocus) {
+            _filterFocusNode.unfocus();
+            _filterLevelFocusNode.requestFocus();
+          } else {
+            _logContentFocusNode.unfocus();
+            _appBarFocusNode.requestFocus();
+          }
+          setState(() {
+            // update UI
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: _isCupertino
+            ? CupertinoColors.systemBackground.resolveFrom(context)
+            : null,
+        appBar: _buildTopBar(),
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(child: _logContentWithKeyShortcuts),
+              _buildBottomBar(),
+            ],
+          ),
         ),
-      ),
-      floatingActionButton: AnimatedOpacity(
-        opacity: _followBottom ? 1 : 0,
-        duration: const Duration(milliseconds: 150),
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 100),
-          child: FloatingActionButton(
-            backgroundColor: _isCupertino
-                ? CupertinoColors.secondarySystemBackground.resolveFrom(context)
-                : null,
-            mini: true,
-            clipBehavior: Clip.antiAlias,
-            onPressed: _scrollToBottom,
-            child: Icon(
-              _isCupertino
-                  ? CupertinoIcons.arrow_down_circle
-                  : Icons.arrow_downward,
-              color: _isCupertino
-                  ? CupertinoColors.systemBlue.resolveFrom(context)
-                  : widget.dark
-                      ? Colors.white
-                      : Colors.lightBlue[900],
+        floatingActionButton: AnimatedOpacity(
+          opacity: _followBottom ? 1 : 0,
+          duration: const Duration(milliseconds: 150),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 100),
+            child: FloatingActionButton(
+              backgroundColor: _isCupertino
+                  ? CupertinoColors.secondarySystemBackground
+                      .resolveFrom(context)
+                  : null,
+              mini: true,
+              clipBehavior: Clip.antiAlias,
+              onPressed: _scrollToBottom,
+              child: Icon(
+                _isCupertino
+                    ? CupertinoIcons.arrow_down_circle
+                    : Icons.arrow_downward,
+                color: _isCupertino
+                    ? CupertinoColors.systemBlue.resolveFrom(context)
+                    : widget.dark
+                        ? Colors.white
+                        : Colors.lightBlue[900],
+              ),
             ),
           ),
         ),
@@ -442,18 +471,30 @@ class _LogConsoleState extends State<LogConsole> {
 
   void _scrollUp() {
     var offset = _scrollController.offset - _scrollRange;
+    var unfocusLog = false;
     if (offset < 0) {
+      unfocusLog = true;
       offset = 0;
     }
     _scrollController.jumpTo(offset);
+    if (unfocusLog) {
+      _logContentFocusNode.unfocus();
+      _appBarFocusNode.requestFocus();
+    }
   }
 
   void _scrollDown() {
     var offset = _scrollController.offset + _scrollRange;
+    var unfocusLog = false;
     if (offset > _scrollController.position.maxScrollExtent) {
       offset = _scrollController.position.maxScrollExtent;
+      unfocusLog = true;
     }
     _scrollController.jumpTo(offset);
+    if (unfocusLog) {
+      _logContentFocusNode.unfocus();
+      _filterFocusNode.requestFocus();
+    }
   }
 
   Widget get _logContentWithKeyShortcuts {
@@ -904,6 +945,7 @@ class _LogConsoleState extends State<LogConsole> {
       centerTitle: true,
       actions: <Widget>[
         IconButton(
+          focusNode: _appBarFocusNode,
           icon: const Icon(Icons.add),
           tooltip: "Increase font size",
           onPressed: () {
@@ -956,6 +998,7 @@ class _LogConsoleState extends State<LogConsole> {
 
   Widget _buildBottomBar() {
     final filter = TextField(
+      focusNode: _filterFocusNode,
       controller: _filterController,
       onChanged: (s) => _resetContent(),
       style: TextStyle(
@@ -996,22 +1039,25 @@ class _LogConsoleState extends State<LogConsole> {
               padding: const EdgeInsets.only(bottom: 8),
               child: filter,
             ),
-            CupertinoSlidingSegmentedControl<Level>(
-              backgroundColor:
-                  CupertinoColors.tertiarySystemFill.resolveFrom(context),
-              children: {
-                Level.trace: levelText(_verboseText),
-                Level.debug: levelText(_debugText),
-                Level.info: levelText(_infoText),
-                Level.warning: levelText(_warningText),
-                Level.error: levelText(_errorText),
-                Level.fatal: levelText(_wtfText),
-              },
-              groupValue: _filterLevel,
-              onValueChanged: (value) {
-                _filterLevel = value ?? Level.trace;
-                _resetContent();
-              },
+            Focus(
+              focusNode: _filterLevelFocusNode,
+              child: CupertinoSlidingSegmentedControl<Level>(
+                backgroundColor:
+                    CupertinoColors.tertiarySystemFill.resolveFrom(context),
+                children: {
+                  Level.trace: levelText(_verboseText),
+                  Level.debug: levelText(_debugText),
+                  Level.info: levelText(_infoText),
+                  Level.warning: levelText(_warningText),
+                  Level.error: levelText(_errorText),
+                  Level.fatal: levelText(_wtfText),
+                },
+                groupValue: _filterLevel,
+                onValueChanged: (value) {
+                  _filterLevel = value ?? Level.trace;
+                  _resetContent();
+                },
+              ),
             ),
           ],
         ),
@@ -1027,6 +1073,7 @@ class _LogConsoleState extends State<LogConsole> {
           ),
           const SizedBox(width: 20),
           DropdownButton(
+            focusNode: _filterLevelFocusNode,
             underline: Container(),
             elevation: 0,
             padding: const EdgeInsets.all(8),

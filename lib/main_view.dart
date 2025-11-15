@@ -217,10 +217,18 @@ class _MainViewState extends ConsumerState<MainView> {
   PreferredSizeWidget _buildMaterialHeader(
       BuildContext context, WidgetRef ref, UserProfile? user) {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final leading = _buildLeading(context, ref);
+    final title = _buildTitle(context, ref);
     return AppBar(
-      title: _buildTitle(context, ref),
+      title: isAndroidTV && leading != null
+          ? Row(
+              spacing: 24,
+              mainAxisSize: MainAxisSize.min,
+              children: [leading, title],
+            )
+          : title,
       titleSpacing: 24,
-      leading: _buildLeading(context, ref),
+      leading: isAndroidTV ? null : leading,
       actions: [
         _buildToggleDeviceViewButton(context, ref),
         if (!useNavigationRail(context) || isAndroidTV)

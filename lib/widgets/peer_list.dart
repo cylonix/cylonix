@@ -45,7 +45,6 @@ class _PeerListState extends State<PeerList> {
             peerCategorizer.groupedAndFilteredPeers(_searchTerm);
         final showNoResults = _searchTerm.isNotEmpty &&
             filteredSets.every((set) => set.peers.isEmpty);
-        final isAndroidTV = ref.watch(isAndroidTVProvider);
 
         return GestureDetector(
           onTap: () {
@@ -54,7 +53,7 @@ class _PeerListState extends State<PeerList> {
           },
           child: Column(
             children: [
-              if (!isAndroidTV) _buildSearchBar(context),
+              _buildSearchBar(context, ref),
               showNoResults
                   ? _buildNoResults(context)
                   : Expanded(
@@ -72,7 +71,29 @@ class _PeerListState extends State<PeerList> {
     );
   }
 
-  Widget _buildSearchBar(BuildContext context) {
+  Widget _buildSearchField(BuildContext context) {
+    return AdaptiveSearchBar(
+      focusNode: _searchFocusNode,
+      controller: _searchController,
+      placeholder: isApple() ? 'Search devices...' : 'Search devices',
+      value: _searchTerm,
+      onChanged: (value) {
+        setState(() {
+          _searchTerm = value;
+        });
+      },
+      onCancel: () {
+        setState(() {
+          _searchController.clear();
+          _searchTerm = '';
+        });
+        _searchFocusNode.unfocus();
+      },
+    );
+  }
+
+  Widget _buildSearchBar(BuildContext context, WidgetRef ref) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: 20.0 /* Match cupertino list section margin */,
@@ -81,30 +102,13 @@ class _PeerListState extends State<PeerList> {
       child: Row(
         children: [
           Flexible(
-            child: AdaptiveSearchBar(
-              focusNode: _searchFocusNode,
-              controller: _searchController,
-              placeholder: isApple() ? 'Search devices...' : 'Search devices',
-              value: _searchTerm,
-              onChanged: (value) {
-                setState(() {
-                  _searchTerm = value;
-                });
-              },
-              onCancel: () {
-                setState(() {
-                  _searchController.clear();
-                  _searchTerm = '';
-                });
-                _searchFocusNode.unfocus();
-              },
-            ),
+            child: isAndroidTV ? Container() : _buildSearchField(context),
           ),
           Checkbox.adaptive(
             value: _onlineOnly,
             onChanged: (v) => {setState(() => _onlineOnly = v ?? false)},
           ),
-          const Text("Online")
+          const Text("Online"),
         ],
       ),
     );
@@ -161,7 +165,8 @@ class _PeerListState extends State<PeerList> {
   Color get _offlineColor =>
       isApple() ? CupertinoColors.systemGrey : Theme.of(context).disabledColor;
 
-  Widget _userTitle(UserProfile? user) {
+  Widget _userTitle(UserProfile? user, WidgetRef ref) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     final style = isApple()
         ? TextStyle(color: CupertinoColors.label.resolveFrom(context))
         : null;
@@ -186,10 +191,21 @@ class _PeerListState extends State<PeerList> {
         ],
       );
     }
-    return Text(
+    final child = Text(
       user.displayName.isNotEmpty ? user.displayName : 'Unknown User',
       style: style,
     );
+    if (isAndroidTV) {
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8.0),
+          onTap: () {},
+          child: Padding(padding: const EdgeInsets.all(8.0), child: child),
+        ),
+      );
+    }
+    return child;
   }
 
   Widget _buildPeersList(
@@ -225,25 +241,23 @@ class _PeerListState extends State<PeerList> {
                   backgroundColor: isApple()
                       ? appleScaffoldBackgroundColor(context)
                       : Theme.of(context).colorScheme.surface,
-                  flexibleSpace: FlexibleSpaceBar(
+                  title: isAndroidTV ? _userTitle(peerSet.user, ref) : null,
+                  flexibleSpace: isAndroidTV
+                      ? null
+                      : FlexibleSpaceBar(
                     titlePadding: const EdgeInsets.symmetric(
                       horizontal: 16.0,
                       vertical: 8.0,
                     ),
                     centerTitle: !useNavigationRail(context) && !isAndroidTV,
-                    title: _userTitle(peerSet.user),
+                          title: _userTitle(peerSet.user, ref),
                   ),
                   actions: [
-                    isAndroidTV
-                        ? TextButton(
-                            onPressed: () => {},
-                            child: Text(
-                              filteredPeers.length == 1
-                                  ? '1 device'
-                                  : '${filteredPeers.length} devices',
-                            ),
-                          )
-                        : const SizedBox.shrink()
+                    Text(
+                      filteredPeers.length == 1
+                          ? '1 device'
+                          : '${filteredPeers.length} devices',
+                    )
                   ],
                   pinned: !isAndroidTV,
                 ),
