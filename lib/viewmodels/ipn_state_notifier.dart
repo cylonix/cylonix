@@ -187,8 +187,18 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
 
     List<AwaitingFile>? awaitingFiles;
+    var errMessage = notification.errMessage ?? currentState?.errMessage;
     if (notification.filesWaiting != null) {
-      awaitingFiles = await getWaitingFiles();
+      try {
+        awaitingFiles = await getWaitingFiles(throwOnError: true);
+      } catch (e) {
+        _logger.e("Failed to get waiting files: $e");
+        if (errMessage != null) {
+          errMessage += "\nFailed to get waiting files: $e";
+        } else {
+          errMessage = "Failed to get waiting files: $e";
+        }
+      }
       _checkedFilesWaiting = true;
     } else if (!_checkedFilesWaiting && backendState == BackendState.running) {
       // Quick check for awaiting files once when backend is running.
@@ -216,7 +226,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           currentProfile: currentProfile,
           selfNode: peerCategorizer.selfNode ?? currentState.selfNode,
           browseToURL: browseToURL,
-          errMessage: notification.errMessage ?? currentState.errMessage,
+          errMessage: errMessage,
           outgoingFiles: notification.outgoingFiles,
           filesWaiting: awaitingFiles,
           loginProfiles: ((loginProfiles ?? []).isNotEmpty
@@ -234,7 +244,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           currentProfile: currentProfile,
           selfNode: peerCategorizer.selfNode,
           browseToURL: browseToURL,
-          errMessage: notification.errMessage,
+          errMessage: errMessage,
           loginProfiles: loginProfiles ?? [],
           outgoingFiles: notification.outgoingFiles,
           filesWaiting: awaitingFiles,
@@ -701,6 +711,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   Future<List<AwaitingFile>?> getWaitingFiles({
     int timeoutMilliseconds = 5000,
     bool ignoreErrors = false,
+    bool throwOnError = false,
   }) async {
     try {
       return await _ipnService.getWaitingFiles(
@@ -710,8 +721,16 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       if (ignoreErrors) {
         return null;
       }
+      if (throwOnError) {
+        rethrow;
+      }
       _logger.e("Failed to get awaiting files: $error, stackTrace: $stack");
-      state = AsyncValue.error(error, stack);
+      state = AsyncData(
+        state.valueOrNull?.copyWith(
+              errMessage: "Failed to get awaiting files: $error",
+            ) ??
+            IpnState(errMessage: "Failed to get awaiting files: $error"),
+      );
       return null;
     }
   }
