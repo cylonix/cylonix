@@ -16,6 +16,7 @@ class AlertDialogWidget extends StatelessWidget {
   final String? successMsg;
   final String? failureSubtitle;
   final String? failureMsg;
+  final Widget? child;
   final Widget? otherActions;
   final String? okText;
   final String? cancelText;
@@ -24,6 +25,8 @@ class AlertDialogWidget extends StatelessWidget {
   final void Function()? onOK;
   final List<DialogAction>? actions;
   final bool showOK;
+  final String? destructiveButton;
+  final String? defaultButton;
   final bool showSuccessIcon;
 
   const AlertDialogWidget({
@@ -32,6 +35,7 @@ class AlertDialogWidget extends StatelessWidget {
     Key? key,
     this.additionalAskTitle,
     this.otherActions,
+    this.child,
     this.successSubtitle,
     this.successMsg,
     this.failureSubtitle,
@@ -43,6 +47,8 @@ class AlertDialogWidget extends StatelessWidget {
     this.onOK,
     this.showOK = true,
     this.showSuccessIcon = false,
+    this.destructiveButton,
+    this.defaultButton,
     this.actions,
   }) : super(key: key);
 
@@ -54,8 +60,24 @@ class AlertDialogWidget extends StatelessWidget {
     );
   }
 
-  Widget _action({required Widget child, required void Function() onPressed}) {
-    return DialogAction(child: child, onPressed: onPressed);
+  Widget _action(
+    String label,
+    void Function() onPressed,
+    bool isDestructive,
+    bool isDefault,
+  ) {
+    return DialogAction(
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: !isApple() && isDestructive
+            ? const TextStyle(color: Colors.red)
+            : null,
+      ),
+      onPressed: onPressed,
+      isDestructive: isDestructive,
+      isDefault: isDefault,
+    );
   }
 
   @override
@@ -78,6 +100,9 @@ class AlertDialogWidget extends StatelessWidget {
             fontWeight: FontWeight.bold,
             color: CupertinoColors.label.resolveFrom(context))
         : Theme.of(context).textTheme.titleSmall;
+
+    final cancelString = cancelText ?? 'Cancel';
+    final okString = okText ?? 'OK';
 
     return AlertDialog.adaptive(
       key: key,
@@ -128,6 +153,10 @@ class AlertDialogWidget extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
               ],
+              if (child != null) ...[
+                const SizedBox(height: 8),
+                child!,
+              ],
               if (otherActions != null) ...[
                 const SizedBox(height: 8),
                 otherActions!,
@@ -139,28 +168,31 @@ class AlertDialogWidget extends StatelessWidget {
       actions: <Widget>[
         if (additionalAskTitle != null)
           _action(
-            child: Text(additionalAskTitle!, textAlign: TextAlign.center),
-            onPressed: () {
+            additionalAskTitle!,
+            () {
               onAdditionalAskPressed?.call();
               Navigator.of(context).pop(true);
             },
+            destructiveButton == additionalAskTitle,
+            defaultButton == additionalAskTitle,
           ),
         if (showOK)
           _action(
-            //autofocus: true,
-            child: Text(okText ?? 'OK', textAlign: TextAlign.center),
-            onPressed: () {
+            okString,
+            () {
               Navigator.of(context).pop(true);
               onOK?.call();
             },
+            destructiveButton == okString,
+            defaultButton == okString ||
+                (onCancel == null && defaultButton == null),
           ),
         if (onCancel != null)
           _action(
-            child: Text(
-              cancelText ?? 'Cancel',
-              textAlign: TextAlign.center,
-            ),
-            onPressed: () => Navigator.of(context).pop(false),
+            cancelString,
+            () => Navigator.of(context).pop(false),
+            destructiveButton == cancelString,
+            defaultButton == cancelString,
           ),
         ...actions ?? []
       ],
@@ -180,7 +212,10 @@ Future<bool?> showAlertDialog(
   String? failureMsg,
   String? okText,
   String? cancelText,
+  String? defaultButton,
+  String? destructiveButton,
   Widget? otherActions,
+  Widget? child,
   bool showOK = true,
   bool showCancel = false,
   bool showSuccessIcon = false,
@@ -205,5 +240,8 @@ Future<bool?> showAlertDialog(
     showOK: showOK,
     showSuccessIcon: showSuccessIcon,
     actions: actions,
+    defaultButton: defaultButton,
+    destructiveButton: destructiveButton,
+    child: child,
   ).show(context);
 }

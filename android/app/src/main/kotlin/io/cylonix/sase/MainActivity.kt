@@ -13,6 +13,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -50,12 +51,30 @@ import com.tailscale.ipn.ui.viewModel.MainViewModelFactory
 
 class MainActivity: FlutterFragmentActivity() {
     companion object {
-	    private const val CHANNEL = "io.cylonix.sase/wg"
-	    private const val LOG_TAG = "cylonix: MainActivity"
+        private const val CHANNEL = "io.cylonix.sase/wg"
+        private const val LOG_TAG = "cylonix: MainActivity"
         private const val START_AT_ROOT = "startAtRoot"
+        private const val PREFS_NAME = "CylonixPrefs"
+        private const val KEY_AUTO_START = "auto_start_enabled"
+        private const val DOWNLOADS_PREFS_NAME = "DownloadsFolderPrefs"  // Rename this
+        private const val KEY_DOWNLOADS_URI = "downloads_uri"
     }
-	private val callbackByString: MutableMap<String, String> = HashMap()
+    private val callbackByString: MutableMap<String, String> = HashMap()
     private var methodChannel: MethodChannel? = null
+
+    private fun isAutoStartEnabled(): Boolean {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(KEY_AUTO_START, true) // Default to true
+    }
+
+    private fun setAutoStartEnabled(enabled: Boolean) {
+        try {
+            val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_AUTO_START, enabled).apply()
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Error saving auto-start preference", e)
+        }
+    }
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		if (intent.getIntExtra("org.chromium.chrome.extra.TASK_ID", -1) == this.taskId) {
@@ -74,8 +93,6 @@ class MainActivity: FlutterFragmentActivity() {
 	}
 
     private var downloadsUri: Uri? = null
-    private val PREFS_NAME = "DownloadsFolderPrefs"
-    private val KEY_DOWNLOADS_URI = "downloads_uri"
 
     private val openDocumentTreeLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -85,8 +102,8 @@ class MainActivity: FlutterFragmentActivity() {
                 contentResolver.takePersistableUriPermission(
                     uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 )
-                // Save URI to SharedPreferences for later use
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                // Save URI to SharedPreferences for later use - use DOWNLOADS_PREFS_NAME
+                getSharedPreferences(DOWNLOADS_PREFS_NAME, MODE_PRIVATE)
                     .edit()
                     .putString(KEY_DOWNLOADS_URI, uri.toString())
                     .apply()
@@ -98,7 +115,7 @@ class MainActivity: FlutterFragmentActivity() {
     }
 
     private fun checkDownloadsFolderPermission() {
-        val savedUriString = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val savedUriString = getSharedPreferences(DOWNLOADS_PREFS_NAME, MODE_PRIVATE)
             .getString(KEY_DOWNLOADS_URI, null)
         if (savedUriString != null && contentResolver.persistedUriPermissions.any { it.uri == Uri.parse(savedUriString) && it.isWritePermission }) {
             downloadsUri = Uri.parse(savedUriString)
@@ -182,6 +199,7 @@ class MainActivity: FlutterFragmentActivity() {
         val isPrepared = vpnViewModel.vpnPrepared.value
         Log.d(LOG_TAG, "$ipnState -> $state vpn isPrepared=$isPrepared")
         if (ipnState != state && state == Ipn.State.Running) {
+            Log.d(LOG_TAG, "VPN is running, ensuring VPN permission")
             when {
                 !isPrepared -> viewModel.showVPNPermissionLauncherIfUnauthorized()
                 isPrepared -> App.get().startVPN()
@@ -217,7 +235,7 @@ class MainActivity: FlutterFragmentActivity() {
 	fun getBluetoothName(): String? {
 		val adapter = BluetoothAdapter.getDefaultAdapter()
 		if (adapter == null) {
-			Log.e(LOG_TAG, "Failed to get bluetooth adapator.")
+			Log.e(LOG_TAG, "Failed to get bluetooth adaptor.")
 			return null;
 		}
 		return adapter.getName();
@@ -350,6 +368,45 @@ class MainActivity: FlutterFragmentActivity() {
                         return@setMethodCallHandler
                     }
                     result.success("Success")
+                }
+                "getAutoStartEnabled" -> {
+                    try {
+                        Log.d(LOG_TAG, "getAutoStartEnabled called")
+                        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        val enabled = prefs.getBoolean(KEY_AUTO_START, true)
+                        Log.d(LOG_TAG, "Auto-start enabled: $enabled")
+                        result.success(enabled)
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Error in getAutoStartEnabled: ${e.message}", e)
+                        result.error("ERROR", e.message, null)
+                    }
+                }
+                "setAutoStartEnabled" -> {
+                    try {
+                        val enabled = call.argument<Boolean>("enabled") ?: true
+                        Log.d(LOG_TAG, "=== setAutoStartEnabled called with: $enabled ===")
+
+                        // Save to regular (credential-encrypted) storage
+                        val regularPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        regularPrefs.edit().putBoolean(KEY_AUTO_START, enabled).commit() // Use commit() for immediate write
+                        Log.d(LOG_TAG, "Saved to regular storage, verifying...")
+                        val regularVerify = regularPrefs.getBoolean(KEY_AUTO_START, true)
+                        Log.d(LOG_TAG, "Regular storage verification: $KEY_AUTO_START=$regularVerify")
+
+                        // Also save to device-protected storage (accessible during boot)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            val deviceContext = createDeviceProtectedStorageContext()
+                            val devicePrefs = deviceContext.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            devicePrefs.edit().putBoolean(KEY_AUTO_START, enabled).commit()
+                            Log.d(LOG_TAG, "Saved to device-protected storage, verifying...")
+                            val deviceVerify = devicePrefs.getBoolean(KEY_AUTO_START, true)
+                            Log.d(LOG_TAG, "Device-protected storage verification: $KEY_AUTO_START=$deviceVerify")
+                        }
+                        result.success("Success")
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Error in setAutoStartEnabled: ${e.message}", e)
+                        result.error("ERROR", e.message, null)
+                    }
                 }
 				else -> {
 					Log.e(LOG_TAG, call.method + " is not implemented.")

@@ -48,6 +48,8 @@ build=flutter build -v $1 ${DART_DEFINES} $2
 # android build
 apk: copy_ipn_aar
 	$(call build,apk,--split-per-abi --target-platform android-arm64)
+apk_debug: copy_ipn_aar
+	$(call build,apk --debug --split-per-abi --target-platform android-arm64)
 appbundle: copy_ipn_aar
 	$(call build,appbundle)
 ipn_aar:

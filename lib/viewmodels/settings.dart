@@ -222,3 +222,8 @@ final subnetRoutingLoadingProvider =
     StateNotifierProvider<SimpleStateNotifier<bool>, bool>((ref) {
   return SimpleStateNotifier(false);
 });
+
+final autoStartOnBootProvider =
+    StateNotifierProvider<SimpleStateNotifier<bool>, bool>((ref) {
+  return SimpleStateNotifier<bool>(false);
+});

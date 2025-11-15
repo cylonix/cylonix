@@ -37,8 +37,9 @@ class DNSSettingsView extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('DNS Settings'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+        leading: AdaptiveButton(
+          iconButton: true,
+          child: const Icon(Icons.arrow_back),
           onPressed: onBackToSettings,
         ),
       ),
@@ -168,8 +169,9 @@ class ClipboardValueTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return AdaptiveListTile(
       title: Text(value),
-      trailing: IconButton(
-        icon: const Icon(Icons.copy),
+      trailing: AdaptiveButton(
+        iconButton: true,
+        child: const Icon(Icons.copy),
         onPressed: () {
           Clipboard.setData(ClipboardData(text: value));
           ScaffoldMessenger.of(context).showSnackBar(

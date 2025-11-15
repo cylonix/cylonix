@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/alert.dart';
+import 'models/platform.dart';
 import 'utils/utils.dart';
 import 'viewmodels/settings.dart';
 import 'widgets/adaptive_widgets.dart';
@@ -118,8 +119,10 @@ class SubnetRoutingView extends ConsumerWidget {
   void _editRoute(BuildContext context, WidgetRef ref, String route) async {
     try {
       ref.read(subnetRoutingProvider.notifier).startEditingRoute(route);
-      await const AdaptiveModalPopup(
-        child: EditSubnetRoutePopup(),
+      await AdaptiveModalPopup(
+        height:
+            isNativeAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
+        child: const EditSubnetRoutePopup(),
       ).show(context, adaptive: false);
     } finally {
       ref.read(subnetRoutingProvider.notifier).stopEditingRoute();
@@ -176,14 +179,18 @@ class SubnetRouteRow extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: Icon(isApple() ? CupertinoIcons.pencil : Icons.edit),
+          AdaptiveButton(
+            iconButton: true,
+            child: Icon(isApple() ? CupertinoIcons.pencil : Icons.edit),
             onPressed: onEdit,
           ),
-          IconButton(
-            icon: Icon(isApple() ? CupertinoIcons.delete : Icons.delete),
+          AdaptiveButton(
+            iconButton: true,
+            child: Icon(isApple() ? CupertinoIcons.delete : Icons.delete,
+                color: isApple()
+                    ? CupertinoColors.systemRed.resolveFrom(context)
+                    : Theme.of(context).colorScheme.error),
             onPressed: onDelete,
-            color: Theme.of(context).colorScheme.error,
           ),
         ],
       ),
@@ -222,18 +229,16 @@ class EditSubnetRoutePopup extends ConsumerWidget {
                 ),
               ],
             ),
-            TextFormField(
+            AdaptiveTextFormField(
               autofocus: true,
               initialValue: state.dialogTextFieldValue,
               onChanged: (value) => ref
                   .read(subnetRoutingProvider.notifier)
                   .updateDialogValue(value),
-              decoration: InputDecoration(
-                label: const Text("Route"),
-                border: const OutlineInputBorder(),
-                errorText:
-                    !state.isTextFieldValueValid ? 'Invalid CIDR format' : null,
-              ),
+              labelText: "Route",
+              placeholder: "e.g., 192.168.1.0/24",
+              errorText:
+                  !state.isTextFieldValueValid ? 'Invalid CIDR format' : null,
             ),
             AdaptiveButton(
               filled: true,

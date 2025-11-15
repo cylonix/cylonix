@@ -4,7 +4,7 @@ description: Cross platform client app for cylonix services
 # Make sure the version code (the number behind the '+') is higher than the
 # previous version. Android requires the version code to be always higher
 # when updating the app.
-version: 1.0.9+73
+version: 1.0.9+75
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `pub publish`. This is preferred for private packages.

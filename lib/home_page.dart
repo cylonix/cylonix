@@ -1,8 +1,10 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'about_view.dart';
@@ -43,6 +45,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Page _page = Page.mainView;
   int _previousPage = Page.mainView.value;
   int? _nodeID;
+  bool _canPop = false;
   Widget? _rightSide;
 
   @override
@@ -284,11 +287,51 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  Future<bool?> _tvShowExitConfirmationDialog() async {
+    return await showAlertDialog(
+      context,
+      "Exit Confirmation",
+      "Do you want to exit the application or just go back to the launcher? ",
+      showCancel: true,
+      additionalAskTitle: "Exit App",
+      okText: "Go Back to Launcher",
+      destructiveButton: "Exit App",
+      cancelText: "Stay Here",
+      defaultButton: "Stay Here",
+      child: const Text(
+        "If you choose to exit, the application will terminate.",
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.red),
+      ),
+      onAdditionalAskedPressed: () {
+        // Exit the app
+        _logger.i("Exiting the application as per user request");
+        exit(0);
+      },
+    );
+  }
+
   Widget get _mainPage {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     if (!useNavigationRail(context) || isAndroidTV) {
       if (_page.value == Page.settings.value) {
         return _settingsView;
+      }
+      if (isAndroidTV) {
+        return PopScope(
+          canPop: _canPop,
+          child: _mainView,
+          onPopInvokedWithResult: (didPop, _) async {
+            if (!didPop) {
+              final canPop = await _tvShowExitConfirmationDialog();
+              if (canPop == true) {
+                _logger.i("Going back to launcher");
+                await SystemNavigator.pop();
+              }
+              return;
+            }
+          },
+        );
       }
       return _mainView;
     }

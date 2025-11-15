@@ -13,12 +13,15 @@ import 'providers/ipn.dart';
 import 'providers/settings.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
+import 'viewmodels/settings.dart';
 import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/dns_query.dart';
 import 'widgets/ipn_logs_widget.dart';
 import 'widgets/ui_logs_widget.dart';
+
+const forceDebug = true;
 
 class SettingsView extends ConsumerStatefulWidget {
   final VoidCallback? onNavigateBackHome;
@@ -64,6 +67,24 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   static final _logger = Logger(tag: "SettingsView");
   bool _isTogglingTailchat = false;
   bool _isTogglingAlwaysUseDerp = false;
+  bool _isTogglingAutoStart = false;
+  final _dnsQueryFocusNode = FocusNode();
+  final _dnsQueryButtonFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isAndroid) {
+      _loadAutoStartSetting();
+    }
+  }
+
+  @override
+  void dispose() {
+    _dnsQueryFocusNode.dispose();
+    _dnsQueryButtonFocusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -334,20 +355,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 'Advanced Options',
               ),
               children: [
-                UILogsWidget(
-                  onNavigateBack: widget.onNavigateBackToSettings,
-                  onNavigateToLogConsole: widget.onPushNewPage,
-                ),
-                IpnLogsWidget(
-                  onNavigateBack: widget.onNavigateBackToSettings,
-                  onNavigateToLogConsole: widget.onPushNewPage,
-                ),
-                AdaptiveListTile.notched(
-                  title: const Text('Test DNS Query'),
-                  subtitle: const Text('Test DNS resolution via Cylonix'),
-                  trailing: const AdaptiveListTileChevron(),
-                  onTap: _showDNSQueryBottomSheet,
-                ),
                 if (Platform.isAndroid && !isNativeAndroidTV)
                   AdaptiveListTile.notched(
                     title: const Text('Enable Android TV Mode'),
@@ -357,6 +364,18 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       onChanged:
                           ref.read(isAndroidTVProvider.notifier).setValue,
                     ),
+                  ),
+                if (Platform.isAndroid)
+                  AdaptiveListTile.notched(
+                    title: const Text('Auto-Start on Boot'),
+                    subtitle: const Text(
+                        'Start Cylonix automatically after device reboot'),
+                    trailing: _isTogglingAutoStart
+                        ? const CircularProgressIndicator()
+                        : AdaptiveSwitch(
+                            value: ref.watch(autoStartOnBootProvider),
+                            onChanged: _toggleAutoStartOnBoot,
+                          ),
                   ),
                 AdaptiveListTile.notched(
                   title: const Text('Always Use Relay'),
@@ -393,17 +412,39 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   ),
                 ],
               ],
+              footer: const AdaptiveGroupedFooter(
+                'Advanced options are intended for experienced users. '
+                'Changing these settings may affect the performance and '
+                'stability of the application.',
+              ),
             ),
-            if (const bool.fromEnvironment('DEBUG'))
+            if (const bool.fromEnvironment('DEBUG') || forceDebug)
               AdaptiveListSection.insetGrouped(
-                header: const Text('INTERNAL DEBUG OPTIONS'),
+                header: const Text('DEBUG OPTIONS'),
                 children: [
+                  UILogsWidget(
+                    onNavigateBack: widget.onNavigateBackToSettings,
+                    onNavigateToLogConsole: widget.onPushNewPage,
+                  ),
+                  IpnLogsWidget(
+                    onNavigateBack: widget.onNavigateBackToSettings,
+                    onNavigateToLogConsole: widget.onPushNewPage,
+                  ),
+                  AdaptiveListTile.notched(
+                    title: const Text('Test DNS Query'),
+                    subtitle: const Text('Test DNS resolution via Cylonix'),
+                    trailing: const AdaptiveListTileChevron(),
+                    onTap: _showDNSQueryBottomSheet,
+                  ),
                   AdaptiveListTile.notched(
                     title: const Text('MDM Settings'),
                     trailing: _trailingIcon,
                     onTap: widget.onNavigateToMDMSettings,
                   ),
                 ],
+                footer: const AdaptiveGroupedFooter(
+                  'Internal debug options for development purposes only.',
+                ),
               ),
           ],
         ),
@@ -413,6 +454,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   void _showDNSQueryBottomSheet() async {
     await AdaptiveModalPopup(
+      height:
+          isNativeAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
       child: DNSQuery(
         onQuery: (String name) async {
           return await ref
@@ -497,5 +540,57 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   Widget? get _trailingIcon {
     return const AdaptiveListTileChevron();
+  }
+
+  Future<void> _loadAutoStartSetting() async {
+    if (!Platform.isAndroid) return;
+
+    try {
+      final enabled = await ref
+          .read(ipnStateNotifierProvider.notifier)
+          .getAutoStartEnabled();
+      if (enabled && mounted) {
+        ref.read(autoStartOnBootProvider.notifier).setState(enabled);
+      }
+    } catch (e) {
+      _logger.e("Failed to load auto-start setting: $e");
+    }
+  }
+
+  Future<void> _toggleAutoStartOnBoot(bool value) async {
+    setState(() {
+      _isTogglingAutoStart = true;
+    });
+
+    try {
+      await ref
+          .read(ipnStateNotifierProvider.notifier)
+          .setAutoStartEnabled(value);
+      ref.read(autoStartOnBootProvider.notifier).setState(value);
+
+      if (mounted) {
+        await showAlertDialog(
+          context,
+          'Auto-Start ${value ? 'Enabled' : 'Disabled'}',
+          value
+              ? 'Cylonix will automatically start after device reboot.'
+              : 'Cylonix will not start automatically after device reboot.',
+        );
+      }
+    } catch (e) {
+      _logger.e("Failed to set auto-start: $e");
+      if (mounted) {
+        await showAlertDialog(
+          context,
+          "Error",
+          "Failed to set auto-start setting: $e",
+        );
+      }
+    } finally {
+      _isTogglingAutoStart = false;
+      if (mounted) {
+        setState(() {});
+      }
+    }
   }
 }

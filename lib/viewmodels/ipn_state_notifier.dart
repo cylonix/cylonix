@@ -788,4 +788,12 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   Future<void> excludeAppFromVPN(String packageName, bool isOn) async {
     await _ipnService.excludeAppFromVPN(packageName, isOn);
   }
+
+  Future<bool> getAutoStartEnabled() async {
+    return await _ipnService.getAutoStartEnabled();
+  }
+
+  Future<void> setAutoStartEnabled(bool isOn) async {
+    await _ipnService.setAutoStartEnabled(isOn);
+  }
 }

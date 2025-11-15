@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'dart:io';
+import 'package:cylonix/models/platform.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -183,22 +184,26 @@ class AdaptiveButton extends ConsumerWidget {
   final Widget child;
   final bool filled;
   final bool textButton;
+  final bool iconButton;
   final bool small;
   final bool large;
   final bool autofocus;
   final double? width;
   final double? height;
+  final FocusNode? focusNode;
   final EdgeInsetsGeometry? padding;
   const AdaptiveButton({
     super.key,
     this.filled = false,
     this.textButton = false,
+    this.iconButton = false,
     this.small = false,
     this.large = false,
     this.autofocus = false,
     this.width,
     this.height,
     this.padding,
+    this.focusNode,
     required this.onPressed,
     required this.child,
   })  : assert(
@@ -213,9 +218,11 @@ class AdaptiveButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     if (isApple()) {
-      if (textButton) {
+      if (textButton || iconButton) {
         return CupertinoButton(
           padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
+          focusNode: focusNode,
+          autofocus: autofocus,
           onPressed: onPressed,
           child: child,
         );
@@ -230,6 +237,8 @@ class AdaptiveButton extends ConsumerWidget {
           width: width,
           height: height,
           child: CupertinoButton.filled(
+            autofocus: autofocus,
+            focusNode: focusNode,
             padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
             onPressed: onPressed,
             child: child,
@@ -249,6 +258,8 @@ class AdaptiveButton extends ConsumerWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: CupertinoButton(
+          autofocus: autofocus,
+          focusNode: focusNode,
           padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
           sizeStyle: style,
           onPressed: onPressed,
@@ -256,16 +267,13 @@ class AdaptiveButton extends ConsumerWidget {
         ),
       );
     }
-    if (textButton) {
-      return TextButton(
-        onPressed: onPressed,
-        child: child,
-      );
-    }
     if (isAndroidTV) {
       return TVButton(
+        textButton: textButton,
+        iconButton: iconButton,
         autofocus: autofocus,
         onPressed: onPressed,
+        focusNode: focusNode,
         child: child,
         width: width,
         height: height,
@@ -273,15 +281,35 @@ class AdaptiveButton extends ConsumerWidget {
         padding: padding,
       );
     }
+    if (textButton) {
+      return TextButton(
+        onPressed: onPressed,
+        autofocus: autofocus,
+        focusNode: focusNode,
+        child: child,
+      );
+    }
+    if (iconButton) {
+      return IconButton(
+        onPressed: onPressed,
+        autofocus: autofocus,
+        focusNode: focusNode,
+        icon: child,
+      );
+    }
     return SizedBox(
       width: width,
       height: height,
       child: filled
           ? FilledButton(
+              focusNode: focusNode,
+              autofocus: autofocus,
               onPressed: onPressed,
               child: child,
             )
           : OutlinedButton(
+              focusNode: focusNode,
+              autofocus: autofocus,
               onPressed: onPressed,
               child: child,
             ),
@@ -290,7 +318,7 @@ class AdaptiveButton extends ConsumerWidget {
 }
 
 /// Cannot use Switch.adaptive because it requires a Material parent
-class AdaptiveSwitch extends StatelessWidget {
+class AdaptiveSwitch extends ConsumerWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
   final Color? activeColor;
@@ -307,20 +335,29 @@ class AdaptiveSwitch extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     return isApple()
         ? CupertinoSwitch(
             value: value,
             onChanged: onChanged,
             activeTrackColor: activeColor ?? CupertinoColors.activeGreen,
           )
-        : Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: activeColor,
-            inactiveThumbColor: inactiveThumbColor,
-            inactiveTrackColor: inactiveTrackColor,
-          );
+        : isAndroidTV
+            ? TVSwitch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: activeColor,
+                inactiveThumbColor: inactiveThumbColor,
+                inactiveTrackColor: inactiveTrackColor,
+              )
+            : Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: activeColor,
+                inactiveThumbColor: inactiveThumbColor,
+                inactiveTrackColor: inactiveTrackColor,
+              );
   }
 }
 
@@ -675,6 +712,7 @@ class AdaptiveListSection extends StatelessWidget {
         : Container(
             margin: margin,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
@@ -714,11 +752,16 @@ class AdaptiveTextFormField extends StatelessWidget {
   final String? placeholder;
   final String? labelText;
   final String? initialValue;
+  final String? errorText;
   final bool obscureText;
+  final bool autofocus;
+  final bool alwaysNonAppleStyle;
+  final Widget? suffixIcon;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onFieldSubmitted;
   final FormFieldValidator<String>? validator;
   final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
 
   const AdaptiveTextFormField({
     super.key,
@@ -726,16 +769,21 @@ class AdaptiveTextFormField extends StatelessWidget {
     this.placeholder,
     this.labelText,
     this.initialValue,
+    this.errorText,
     this.obscureText = false,
+    this.autofocus = false,
+    this.alwaysNonAppleStyle = false,
     this.onChanged,
     this.onFieldSubmitted,
     this.validator,
     this.keyboardType,
+    this.textInputAction,
+    this.suffixIcon,
   });
 
   @override
   Widget build(BuildContext context) {
-    return isApple()
+    return isApple() && !alwaysNonAppleStyle
         ? CupertinoTextFormFieldRow(
             controller: controller,
             decoration: BoxDecoration(
@@ -754,31 +802,58 @@ class AdaptiveTextFormField extends StatelessWidget {
             placeholder: placeholder,
             initialValue: initialValue,
             obscureText: obscureText,
+            autofocus: autofocus,
             onChanged: onChanged,
             onFieldSubmitted: onFieldSubmitted,
             validator: validator,
             keyboardType: keyboardType,
+            textInputAction: textInputAction,
             padding: const EdgeInsets.symmetric(
               vertical: 12,
               horizontal: 16,
             ),
           )
-        : TextFormField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: labelText,
-              hintText: placeholder,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-            ),
-            initialValue: initialValue,
-            obscureText: obscureText,
-            onChanged: onChanged,
-            onFieldSubmitted: onFieldSubmitted,
-            validator: validator,
-            keyboardType: keyboardType,
-          );
+        : isNativeAndroidTV
+            ? TVTextFormField(
+                autofocus: autofocus,
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: labelText,
+                  hintText: placeholder,
+                  errorText: errorText,
+                  suffixIcon: suffixIcon,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                  ),
+                ),
+                initialValue: initialValue,
+                obscureText: obscureText,
+                onChanged: onChanged,
+                onFieldSubmitted: onFieldSubmitted,
+                validator: validator,
+                keyboardType: keyboardType,
+                textInputAction: textInputAction,
+              )
+            : TextFormField(
+                autofocus: autofocus,
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: labelText,
+                  hintText: placeholder,
+                  errorText: errorText,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                  ),
+                  suffixIcon: suffixIcon,
+                ),
+                initialValue: initialValue,
+                obscureText: obscureText,
+                onChanged: onChanged,
+                onFieldSubmitted: onFieldSubmitted,
+                validator: validator,
+                keyboardType: keyboardType,
+                textInputAction: textInputAction,
+              );
   }
 }
 
@@ -822,7 +897,7 @@ class AdaptiveModalPopup extends StatelessWidget {
       ),
       child: SafeArea(
         child: Column(
-          mainAxisSize: MainAxisSize.min, // Important for iOS
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               height: 6,
@@ -1016,10 +1091,24 @@ class AdaptiveGroupedHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
+    final child = Text(
       title.toUpperCase(),
       style: adaptiveGroupedHeaderStyle(context),
     );
+    if (isNativeAndroidTV) {
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {},
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: child,
+          ),
+        ),
+      );
+    }
+    return child;
   }
 }
 
@@ -1033,10 +1122,24 @@ class AdaptiveGroupedFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
+    final child = Text(
       title,
       style: adaptiveGroupedFooterStyle(context),
     );
+    if (isNativeAndroidTV) {
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {},
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: child,
+          ),
+        ),
+      );
+    }
+    return child;
   }
 }
 
@@ -1121,11 +1224,13 @@ class AdaptiveSwitchListTile extends StatelessWidget {
       );
     }
 
-    return SwitchListTile(
+    return ListTile(
       title: title,
       subtitle: subtitle,
-      value: value,
-      onChanged: onChanged,
+      trailing: AdaptiveSwitch(
+        value: value,
+        onChanged: onChanged,
+      ),
     );
   }
 }

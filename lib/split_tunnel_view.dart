@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'viewmodels/split_tunnel_view.dart';
 import 'widgets/adaptive_widgets.dart';
+import 'utils/utils.dart';
 
 class SplitTunnelAppPickerView extends ConsumerWidget {
   final VoidCallback onBackToSettings;
@@ -16,8 +18,9 @@ class SplitTunnelAppPickerView extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Split Tunneling'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+        leading: AdaptiveButton(
+          iconButton: true,
+          child: Icon(isApple() ? CupertinoIcons.back : Icons.arrow_back),
           onPressed: onBackToSettings,
         ),
       ),
@@ -120,21 +123,25 @@ class SplitTunnelAppPickerView extends ConsumerWidget {
           fontSize: 12,
         ),
       ),
-      trailing: Checkbox(
-        value: isExcluded,
-        onChanged: isDisabled
-            ? null
-            : (checked) {
-                if (checked ?? false) {
-                  ref
-                      .read(splitTunnelProvider.notifier)
-                      .exclude(app.packageName);
-                } else {
-                  ref
-                      .read(splitTunnelProvider.notifier)
-                      .unexclude(app.packageName);
-                }
-              },
+      trailing: AdaptiveButton(
+        iconButton: true,
+        onPressed: () => {},
+        child: Checkbox(
+          value: isExcluded,
+          onChanged: isDisabled
+              ? null
+              : (checked) {
+                  if (checked ?? false) {
+                    ref
+                        .read(splitTunnelProvider.notifier)
+                        .exclude(app.packageName);
+                  } else {
+                    ref
+                        .read(splitTunnelProvider.notifier)
+                        .unexclude(app.packageName);
+                  }
+                },
+        ),
       ),
     );
   }

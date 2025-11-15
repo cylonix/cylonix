@@ -64,6 +64,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   final List<String> _hiddenSections = [];
   String? _switchingUserId;
   bool _isAddingProfile = false;
+  bool _isReauthenticating = false;
   bool _loaded = false;
 
   @override
@@ -300,12 +301,14 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               context,
               leading: const Icon(CupertinoIcons.add),
               title: 'Add Account',
+              isLoading: _isAddingProfile,
               onTap: _handleAddProfile,
             ),
             _buildActionTile(
               context,
               leading: const Icon(CupertinoIcons.arrow_right_circle),
               title: 'Reauthenticate',
+              isLoading: _isReauthenticating,
               onTap: _handleReauthenticate,
             ),
             if (loginProfile != null) ...[
@@ -387,6 +390,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     required String title,
     required VoidCallback onTap,
     bool isDestructive = false,
+    bool isLoading = false,
   }) {
     return AdaptiveListTile(
       leading: leading,
@@ -400,10 +404,10 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               : null,
         ),
       ),
-      trailing: title == 'Add Account' && _isAddingProfile
+      trailing: isLoading
           ? const AdaptiveLoadingWidget(maxWidth: 24)
           : const AdaptiveListTileChevron(),
-      onTap: _isAddingProfile ? null : onTap,
+      onTap: isLoading ? null : onTap,
     );
   }
 
@@ -554,9 +558,59 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   }
 
   Future<void> _handleReauthenticate() async {
-    await ref
-        .read(ipnStateNotifierProvider.notifier)
-        .login(controlURL: ref.read(controlURLProvider));
+    if (_isReauthenticating) return;
+    setState(() => _isReauthenticating = true);
+
+    try {
+      // Start re-authentication process. Basically login and generate a new
+      // node key for the current profile.
+      await ref
+          .read(ipnStateNotifierProvider.notifier)
+          .login(controlURL: ref.read(controlURLProvider));
+
+      await ref.read(ipnStateNotifierProvider.notifier).startVpn();
+      final completer = Completer<void>();
+      final sub = ref.listenManual(
+        ipnStateNotifierProvider,
+        (previous, next) {
+          final p = previous?.valueOrNull?.backendState;
+          final n = next.valueOrNull?.backendState;
+          _logger.d("Backend state changed from $p to $n");
+          if (n == BackendState.running && !completer.isCompleted) {
+            _logger.d("Backend reached running state");
+            completer.complete();
+          }
+        },
+      );
+
+      try {
+        await completer.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            _logger.w("Timeout waiting for backend to be running");
+            throw TimeoutException(
+              'Backend did not reach running state within 5 seconds',
+            );
+          },
+        );
+      } finally {
+        sub.close();
+      }
+      if (!mounted) return;
+      await showAlertDialog(
+        context,
+        'Re-authentication Successful',
+        'Your account has been re-authenticated successfully.',
+      );
+      // Navigate to home after re-authentication
+      widget.onNavigateToHome();
+    } catch (e) {
+      _logger.e("Failed to re-authenticate: $e");
+      _showError('Failed to re-authenticate: $e');
+    } finally {
+      _isReauthenticating = false;
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _handleLogout() async {
