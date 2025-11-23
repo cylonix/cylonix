@@ -127,16 +127,17 @@ class AppleBackButton extends StatelessWidget {
 }
 
 class AdaptiveBackButton extends StatelessWidget {
-  final VoidCallback? onPressed;
+  final VoidCallback onPressed;
 
-  const AdaptiveBackButton({super.key, this.onPressed});
+  const AdaptiveBackButton({super.key, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
     return isApple()
         ? AppleBackButton(onPressed: onPressed)
-        : IconButton(
-            icon: const Icon(Icons.arrow_back),
+        : AdaptiveButton(
+            iconButton: true,
+            child: const Icon(Icons.arrow_back),
             onPressed: onPressed,
           );
   }
@@ -1231,6 +1232,49 @@ class AdaptiveSwitchListTile extends StatelessWidget {
         value: value,
         onChanged: onChanged,
       ),
+    );
+  }
+}
+
+class AdaptiveScaffold extends StatelessWidget {
+  final Widget title;
+  final Widget body;
+  final VoidCallback? onGoBack;
+
+  const AdaptiveScaffold({
+    super.key,
+    required this.title,
+    required this.body,
+    this.onGoBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isApple()) {
+      return CupertinoPageScaffold(
+        navigationBar: CupertinoNavigationBar(
+          middle: title,
+          leading: onGoBack != null
+              ? AppleBackButton(
+                  onPressed: onGoBack,
+                )
+              : null,
+        ),
+        child: body,
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: title,
+        leading: onGoBack != null
+            ? AdaptiveButton(
+                iconButton: true,
+                child: const Icon(Icons.arrow_back),
+                onPressed: onGoBack!,
+              )
+            : null,
+      ),
+      body: body,
     );
   }
 }

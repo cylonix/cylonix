@@ -1407,6 +1407,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.09;
 				PRODUCT_BUNDLE_IDENTIFIER = io.cylonix.sase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitC $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitGo";
@@ -1549,6 +1550,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.09;
 				PRODUCT_BUNDLE_IDENTIFIER = io.cylonix.sase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitC $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitGo";
@@ -1585,6 +1587,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.09;
 				PRODUCT_BUNDLE_IDENTIFIER = io.cylonix.sase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitC $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitGo";

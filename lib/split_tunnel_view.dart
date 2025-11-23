@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'viewmodels/split_tunnel_view.dart';
 import 'widgets/adaptive_widgets.dart';
-import 'utils/utils.dart';
 
 class SplitTunnelAppPickerView extends ConsumerWidget {
   final VoidCallback onBackToSettings;
@@ -15,21 +13,19 @@ class SplitTunnelAppPickerView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Split Tunneling'),
-        leading: AdaptiveButton(
-          iconButton: true,
-          child: Icon(isApple() ? CupertinoIcons.back : Icons.arrow_back),
-          onPressed: onBackToSettings,
-        ),
-      ),
-      body: Container(
-        alignment: Alignment.topCenter,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: _buildContext(context, ref),
-        ),
+    return AdaptiveScaffold(
+      title: const Text('Split Tunneling'),
+      onGoBack: onBackToSettings,
+      body: _buildBody(context, ref),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, WidgetRef ref) {
+    return Container(
+      alignment: Alignment.topCenter,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: _buildContext(context, ref),
       ),
     );
   }

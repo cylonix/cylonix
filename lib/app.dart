@@ -158,9 +158,12 @@ class App extends ConsumerWidget {
 
       case '/settings':
         return MaterialPageRoute(
+          settings: settings,
           builder: (context) => SettingsView(
             onNavigateBackHome: () =>
                 Navigator.popUntil(context, (r) => r.isFirst),
+            onNavigateBackToSettings: () => Navigator.popUntil(
+                context, (r) => r.settings.name == '/settings'),
             onNavigateToCustomLogin: () =>
                 Navigator.pushNamed(context, '/custom-login'),
             onNavigateToCustomControlURL: () =>

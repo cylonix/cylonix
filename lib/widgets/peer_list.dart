@@ -245,20 +245,53 @@ class _PeerListState extends State<PeerList> {
                   flexibleSpace: isAndroidTV
                       ? null
                       : FlexibleSpaceBar(
-                    titlePadding: const EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                      vertical: 8.0,
-                    ),
-                    centerTitle: !useNavigationRail(context) && !isAndroidTV,
+                          titlePadding: const EdgeInsets.symmetric(
+                            horizontal: 16.0,
+                            vertical: 8.0,
+                          ),
+                          centerTitle: false,
                           title: _userTitle(peerSet.user, ref),
-                  ),
+                        ),
                   actions: [
-                    Text(
-                      filteredPeers.length == 1
-                          ? '1 device'
-                          : '${filteredPeers.length} devices',
-                    )
+                    if (isAndroidTV)
+                      Text(
+                        filteredPeers.length == 1
+                            ? '1 device'
+                            : '${filteredPeers.length} devices',
+                      )
                   ],
+                  bottom: isAndroidTV
+                      ? null
+                      : PreferredSize(
+                          preferredSize: const Size.fromHeight(30.0),
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              right: 8.0,
+                              bottom: 8.0,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(child: Container()),
+                                Text(
+                                  filteredPeers.length == 1
+                                      ? '1 device'
+                                      : '${filteredPeers.length} devices',
+                                  textAlign: TextAlign.end,
+                                  style: TextStyle(
+                                    color: isApple()
+                                        ? CupertinoColors.secondaryLabel
+                                            .resolveFrom(context)
+                                        : Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.color,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                   pinned: !isAndroidTV,
                 ),
                 SliverList(

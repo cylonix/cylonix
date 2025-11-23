@@ -60,7 +60,7 @@ class UILogsWidget extends StatelessWidget {
     return LogConsole(
       backButton: onNavigateBack != null
           ? AdaptiveBackButton(
-              onPressed: onNavigateBack,
+              onPressed: onNavigateBack!,
             )
           : null,
       showRefreshButton: true,

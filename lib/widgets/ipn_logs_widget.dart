@@ -90,7 +90,7 @@ class IpnLogsWidget extends ConsumerWidget {
     return LogConsole(
       backButton: onNavigateBack != null
           ? AdaptiveBackButton(
-              onPressed: onNavigateBack,
+              onPressed: onNavigateBack!,
             )
           : null,
       events: events,

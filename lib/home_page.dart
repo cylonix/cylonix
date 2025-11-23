@@ -45,7 +45,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   Page _page = Page.mainView;
   int _previousPage = Page.mainView.value;
   int? _nodeID;
-  bool _canPop = false;
   Widget? _rightSide;
 
   @override
@@ -319,7 +318,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
       if (isAndroidTV) {
         return PopScope(
-          canPop: _canPop,
+          canPop: false,
           child: _mainView,
           onPopInvokedWithResult: (didPop, _) async {
             if (!didPop) {

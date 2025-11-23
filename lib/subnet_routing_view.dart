@@ -23,27 +23,9 @@ class SubnetRoutingView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (isApple()) {
-      return CupertinoPageScaffold(
-        navigationBar: CupertinoNavigationBar(
-          middle: const Text('Subnet Routes'),
-          leading: CupertinoButton(
-            padding: EdgeInsets.zero,
-            child: const Icon(CupertinoIcons.back),
-            onPressed: onBackToSettings,
-          ),
-        ),
-        child: _buildBody(context, ref),
-      );
-    }
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Subnet Routes'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: onBackToSettings,
-        ),
-      ),
+    return AdaptiveScaffold(
+      title: const Text('Subnet Routes'),
+      onGoBack: onBackToSettings,
       body: _buildBody(context, ref),
     );
   }
