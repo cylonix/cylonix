@@ -188,30 +188,39 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
     List<AwaitingFile>? awaitingFiles;
     var errMessage = notification.errMessage ?? currentState?.errMessage;
-    if (notification.filesWaiting != null) {
-      try {
-        awaitingFiles = await getWaitingFiles(throwOnError: true);
-      } catch (e) {
-        _logger.e("Failed to get waiting files: $e");
-        if (errMessage != null) {
-          errMessage += "\nFailed to get waiting files: $e";
-        } else {
-          errMessage = "Failed to get waiting files: $e";
+    // For Apple platforms, we rely on the notification from native side
+    // to update the files waiting and move them, so we don't fetch it here.
+    // We may receive such notification while the notification
+    // from native side is still being processed. Just ignore the race
+    // condition here.
+    if (!isApple()) {
+      if (notification.filesWaiting != null) {
+        if (isApple()) {}
+        try {
+          awaitingFiles = await getWaitingFiles(throwOnError: true);
+        } catch (e) {
+          _logger.e("Failed to get waiting files: $e");
+          if (errMessage != null) {
+            errMessage += "\nFailed to get waiting files: $e";
+          } else {
+            errMessage = "Failed to get waiting files: $e";
+          }
         }
-      }
-      _checkedFilesWaiting = true;
-    } else if (!_checkedFilesWaiting && backendState == BackendState.running) {
-      // Quick check for awaiting files once when backend is running.
-      awaitingFiles = await getWaitingFiles(
-        timeoutMilliseconds: 500,
-        ignoreErrors: true,
-      );
-      // If there is no file waiting, we don't need to check again.
-      // Otherwise keep checking until we received a notification with
-      // filesWaiting. This is to handle the case when the app starts
-      // and backend does not send filesWaiting notification soon enough.
-      if (awaitingFiles == null || awaitingFiles.isEmpty) {
         _checkedFilesWaiting = true;
+      } else if (!_checkedFilesWaiting &&
+          backendState == BackendState.running) {
+        // Quick check for awaiting files once when backend is running.
+        awaitingFiles = await getWaitingFiles(
+          timeoutMilliseconds: 1000,
+          ignoreErrors: true,
+        );
+        // If there is no file waiting, we don't need to check again.
+        // Otherwise keep checking until we received a notification with
+        // filesWaiting. This is to handle the case when the app starts
+        // and backend does not send filesWaiting notification soon enough.
+        if (awaitingFiles == null || awaitingFiles.isEmpty) {
+          _checkedFilesWaiting = true;
+        }
       }
     }
 

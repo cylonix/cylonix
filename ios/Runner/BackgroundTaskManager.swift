@@ -105,10 +105,10 @@ class BackgroundTaskManager {
         let content = UNMutableNotificationContent()
 
         if files.count == 1 {
-            content.title = "File Received"
+            content.title = "File received and saved"
             content.body = files[0]
         } else {
-            content.title = "\(files.count) Files Received"
+            content.title = "\(files.count) Files received and saved"
             content.body = files.joined(separator: ", ")
         }
 
