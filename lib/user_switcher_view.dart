@@ -64,6 +64,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   final List<String> _hiddenSections = [];
   String? _switchingUserId;
   bool _isAddingProfile = false;
+  String? _deletingProfileID;
   bool _isReauthenticating = false;
   bool _loaded = false;
 
@@ -136,8 +137,6 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: Colors.transparent,
-        automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "UserSwitcherView",
         middle: const Text('Accounts'),
@@ -370,7 +369,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               )
             : null,
       ),
-      trailing: isSwitching
+      trailing: isSwitching || _deletingProfileID == user.id
           ? const AdaptiveLoadingWidget(maxWidth: 18)
           : isCurrentUser
               ? Icon(
@@ -380,7 +379,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
                       : Theme.of(context).colorScheme.primary,
                 )
               : const CupertinoListTileChevron(),
-      onTap: isCurrentUser ? null : () => _handleSwitchProfile(user),
+      onTap: isCurrentUser ? null : () => _showSwitchOrDeleteProfileModal(user),
     );
   }
 
@@ -425,8 +424,6 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     if (isApple()) {
       return CupertinoPageScaffold(
         navigationBar: CupertinoNavigationBar.large(
-          backgroundColor:
-              CupertinoColors.systemBackground.resolveFrom(context),
           largeTitle: const Text('Accounts'),
           leading: widget.onNavigateBackToSettings == null
               ? null
@@ -467,6 +464,57 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         ),
       ),
     );
+  }
+
+  void _showSwitchOrDeleteProfileModal(LoginProfile profile) async {
+    await AdaptiveModalPopup(
+      child: Column(mainAxisSize: MainAxisSize.min, spacing: 16, children: [
+        AdaptiveListTile(
+          backgroundColor: Colors.transparent,
+          title: Text('Profile: ${profile.name}'),
+          trailing: AdaptiveButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        AdaptiveButton(
+            filled: true,
+            child: Row(mainAxisSize: MainAxisSize.min, spacing: 8, children: [
+              Icon(
+                isApple()
+                    ? CupertinoIcons.person_crop_circle_badge_checkmark
+                    : Icons.person,
+              ),
+              const Text('Switch to this Profile')
+            ]),
+            onPressed: () {
+              Navigator.pop(context);
+              _handleSwitchProfile(profile);
+            }),
+        const SizedBox(height: 32),
+        AdaptiveListSection.insetGrouped(
+          header: const AdaptiveGroupedHeader("Delete Profile"),
+          footer: const AdaptiveGroupedFooter(
+            'Deleting a profile removes it from this device.'
+            'This is not permanently deleting the account.'
+            'You can re-add the profile later if needed.',
+          ),
+          children: [
+            _buildActionTile(
+              context,
+              leading: AdaptiveDeleteIcon(),
+              title: 'Delete this Profile',
+              isDestructive: true,
+              onTap: () {
+                Navigator.pop(context);
+                _handleDeleteProfile(profile);
+              },
+            ),
+          ],
+        ),
+      ]),
+    ).show(context);
   }
 
   Future<void> _handleSwitchProfile(LoginProfile profile) async {
@@ -553,6 +601,35 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
       _showError('Failed to add profile: $e');
     } finally {
       _isAddingProfile = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _handleDeleteProfile(LoginProfile profile) async {
+    if (_deletingProfileID != null) return;
+    setState(() => _deletingProfileID = profile.id);
+
+    try {
+      final ok = await showAlertDialog(
+        context,
+        "Delete Profile",
+        "Are you sure you want to delete this profile for ${profile.name}?",
+        showCancel: true,
+      );
+      if (ok != true) return;
+      await ref.read(ipnStateNotifierProvider.notifier).deleteProfile(
+            profile.id,
+          );
+      await showAlertDialog(
+        context,
+        "Profile Deleted",
+        "Profile for ${profile.name} has been deleted.",
+      );
+    } catch (e) {
+      _logger.e("Failed to delete profile: $e");
+      _showError('Failed to delete profile: $e');
+    } finally {
+      _deletingProfileID = null;
       if (mounted) setState(() {});
     }
   }

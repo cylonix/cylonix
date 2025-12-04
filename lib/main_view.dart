@@ -186,7 +186,11 @@ class _MainViewState extends ConsumerState<MainView> {
     if (child != null) {
       return Padding(
         padding: EdgeInsets.only(
-          left: Platform.isMacOS && !useNavigationRail(context) ? 60 : 24,
+          left: Platform.isMacOS && !useNavigationRail(context)
+              ? 60
+              : isApple()
+                  ? 8
+                  : 32,
         ),
         child: child,
       );
@@ -217,10 +221,14 @@ class _MainViewState extends ConsumerState<MainView> {
   PreferredSizeWidget _buildMaterialHeader(
       BuildContext context, WidgetRef ref, UserProfile? user) {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final backendState = ref.watch(backendStateProvider);
+    final showLeading =
+        (backendState?.value ?? 0) > BackendState.needsLogin.index;
+
     final leading = _buildLeading(context, ref);
     final title = _buildTitle(context, ref);
     return AppBar(
-      title: isAndroidTV && leading != null
+      title: isAndroidTV && showLeading && leading != null
           ? Row(
               spacing: 24,
               mainAxisSize: MainAxisSize.min,
@@ -228,9 +236,13 @@ class _MainViewState extends ConsumerState<MainView> {
             )
           : title,
       titleSpacing: 24,
-      leading: isAndroidTV ? null : leading,
+      leading: (isAndroidTV || !showLeading) ? null : leading,
       actions: [
-        _buildToggleDeviceViewButton(context, ref),
+        if (showLeading)
+          Padding(
+            padding: EdgeInsets.only(top: !useNavigationRail(context) ? 16 : 0),
+            child: _buildToggleDeviceViewButton(context, ref),
+          ),
         if (!useNavigationRail(context) || isAndroidTV)
           _buildProfileButton(context, ref, user),
         const SizedBox(width: 16),
@@ -424,7 +436,7 @@ class _MainViewState extends ConsumerState<MainView> {
     if (useNavigationRail(context)) {
       if (!showLeading) return null;
       return CupertinoLargeNavigationBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: appleScaffoldBackgroundColor(context),
         automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "MainView",
@@ -440,7 +452,6 @@ class _MainViewState extends ConsumerState<MainView> {
       );
     }
     return CupertinoNavigationBar(
-      automaticBackgroundVisibility: false,
       transitionBetweenRoutes: false,
       heroTag: "MainView",
       leading: showLeading
@@ -468,7 +479,10 @@ class _MainViewState extends ConsumerState<MainView> {
               mainAxisSize: MainAxisSize.min,
               spacing: 8,
               children: [
-                _buildToggleDeviceViewButton(context, ref),
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: _buildToggleDeviceViewButton(context, ref),
+                ),
                 _buildProfileButton(context, ref, user)
               ],
             )

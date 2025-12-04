@@ -13,7 +13,6 @@ import 'tv_widgets.dart';
 
 class AdaptiveSearchBar extends StatelessWidget {
   final String placeholder;
-  final String value;
   final FocusNode? focusNode;
   final TextEditingController? controller;
   final ValueChanged<String> onChanged;
@@ -22,7 +21,6 @@ class AdaptiveSearchBar extends StatelessWidget {
   const AdaptiveSearchBar({
     Key? key,
     required this.placeholder,
-    required this.value,
     this.focusNode,
     required this.controller,
     required this.onChanged,
@@ -39,7 +37,6 @@ class AdaptiveSearchBar extends StatelessWidget {
             placeholderStyle: TextStyle(
               color: CupertinoColors.systemGrey.resolveFrom(context),
             ),
-            //value: value,
             onChanged: onChanged,
             onSubmitted: onChanged,
             onSuffixTap: () {
@@ -83,6 +80,20 @@ class AdaptiveWarningIcon extends Icon {
   AdaptiveWarningIcon({super.key, super.color = Colors.amber, super.size})
       : super(
           isApple() ? CupertinoIcons.exclamationmark_triangle : Icons.warning,
+        );
+}
+
+class AdaptiveDeleteIcon extends Icon {
+  AdaptiveDeleteIcon({super.key, super.color = Colors.red, super.size})
+      : super(
+          isApple() ? CupertinoIcons.delete : Icons.delete,
+        );
+}
+
+class AdaptiveClearIcon extends Icon {
+  AdaptiveClearIcon({super.key, super.color, super.size})
+      : super(
+          isApple() ? CupertinoIcons.clear_circled : Icons.clear,
         );
 }
 
@@ -482,6 +493,7 @@ class CupertinoLargeNavigationBar extends StatelessWidget
       return CupertinoNavigationBar.large(
         backgroundColor: backgroundColor,
         automaticBackgroundVisibility: automaticBackgroundVisibility,
+        border: null,
         leading: leading,
         largeTitle: largeTitle,
         trailing: trailing,
@@ -492,6 +504,7 @@ class CupertinoLargeNavigationBar extends StatelessWidget
     return CupertinoNavigationBar.large(
       backgroundColor: backgroundColor,
       automaticBackgroundVisibility: automaticBackgroundVisibility,
+      border: null,
       leading: leading,
       largeTitle: largeTitle,
       trailing: trailing,
@@ -876,27 +889,28 @@ class AdaptiveModalPopup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isApple()
-            ? CupertinoColors.systemBackground.resolveFrom(context)
-            : Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      width: double.infinity,
-      height: height ??
-          (isApple() ? null : MediaQuery.of(context).size.height * 0.7),
-      constraints: height == null
-          ? BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.9,
-            )
-          : null,
-      padding: EdgeInsets.only(
-        left: 8,
-        right: 8,
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: SafeArea(
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        decoration: BoxDecoration(
+          color: isApple()
+              ? CupertinoColors.systemBackground.resolveFrom(context)
+              : Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        width: double.infinity,
+        height: height ??
+            (isApple() ? null : MediaQuery.of(context).size.height * 0.7),
+        constraints: height == null
+            ? BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.9,
+              )
+            : null,
+        padding: EdgeInsets.only(
+          left: 8,
+          right: 8,
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

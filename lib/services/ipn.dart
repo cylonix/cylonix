@@ -782,6 +782,20 @@ class IpnService {
     }
   }
 
+  Future<void> deleteProfile(String profileID) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/profiles/$profileID'),
+        'DELETE',
+      );
+      return;
+    }
+    final result = await _sendCommand('delete_profile', profileID);
+    if (result != "Success") {
+      throw Exception("Failed to delete profile: $result");
+    }
+  }
+
   Future<void> startTailchat() async {
     final cacheDir = await _channel.invokeMethod('getSharedFolderPath');
     final result = await _sendCommand(

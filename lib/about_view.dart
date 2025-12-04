@@ -35,8 +35,6 @@ class AboutView extends ConsumerWidget {
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: Colors.transparent,
-        automaticBackgroundVisibility: false,
         automaticallyImplyLeading: false,
         leading: onNavigateBack != null
             ? AppleBackButton(

@@ -78,7 +78,6 @@ class PermissionsView extends ConsumerWidget {
           context,
         ),
         navigationBar: CupertinoNavigationBar(
-          backgroundColor: Colors.transparent,
           middle: const Text('Permissions'),
           leading: onNavigateBack == null
               ? null

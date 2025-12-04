@@ -143,8 +143,6 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: Colors.transparent,
-        automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "PeerDetails/${node.id}",
         middle: title,

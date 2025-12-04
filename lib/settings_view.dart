@@ -226,8 +226,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: Colors.transparent,
-        automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "Settings",
         middle: const Text('Settings'),

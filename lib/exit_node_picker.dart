@@ -9,10 +9,11 @@ import 'providers/exit_node.dart';
 import 'providers/ipn.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 
-class ExitNodePicker extends ConsumerWidget {
+class ExitNodePicker extends ConsumerStatefulWidget {
   const ExitNodePicker({
     super.key,
     this.onNavigateBackHome,
@@ -23,10 +24,34 @@ class ExitNodePicker extends ConsumerWidget {
   final VoidCallback? onNavigateBackHome;
   final VoidCallback? onNavigateToMullvad;
   final VoidCallback onNavigateToRunAsExitNode;
-  static final _logger = Logger(tag: "ExitNodePicker");
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExitNodePicker> createState() => _ExitNodePickerState();
+}
+
+class _ExitNodePickerState extends ConsumerState<ExitNodePicker> {
+  static final _logger = Logger(tag: "ExitNodePicker");
+  final TextEditingController _filterController = TextEditingController();
+  String _filterText = '';
+
+  @override
+  void dispose() {
+    _filterController.dispose();
+    super.dispose();
+  }
+
+  List<ExitNode> _filterNodes(List<ExitNode> nodes) {
+    if (_filterText.isEmpty) return nodes;
+
+    final lowerFilter = _filterText.toLowerCase();
+    return nodes.where((node) {
+      return node.label.toLowerCase().contains(lowerFilter) ||
+          node.city.toLowerCase().contains(lowerFilter);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final model = ref.watch(exitNodePickerProvider);
 
     return isApple()
@@ -40,13 +65,11 @@ class ExitNodePicker extends ConsumerWidget {
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
-        automaticBackgroundVisibility: false,
-        backgroundColor: Colors.transparent,
         middle: const Text('Choose Exit Node'),
-        leading: onNavigateBackHome == null
+        leading: widget.onNavigateBackHome == null
             ? null
             : AppleBackButton(
-                onPressed: onNavigateBackHome,
+                onPressed: widget.onNavigateBackHome,
               ),
       ),
       child: LoadingIndicator(
@@ -62,11 +85,11 @@ class ExitNodePicker extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Choose Exit Node'),
-        leading: onNavigateBackHome == null
+        leading: widget.onNavigateBackHome == null
             ? null
             : IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: onNavigateBackHome,
+                onPressed: widget.onNavigateBackHome,
               ),
       ),
       body: LoadingIndicator(
@@ -76,13 +99,39 @@ class ExitNodePicker extends ConsumerWidget {
     );
   }
 
+  Widget _buildFilterInput(BuildContext context) {
+    return AdaptiveSearchBar(
+      controller: _filterController,
+      onChanged: (value) {
+        setState(() {
+          _filterText = value;
+        });
+      },
+      placeholder: 'Search by name or city',
+      onCancel: () {
+        setState(() {
+          _filterController.clear();
+          _filterText = '';
+        });
+      },
+    );
+  }
+
   Widget _buildContent(BuildContext context, WidgetRef ref, ExitNodeState model,
       bool isCupertino) {
     final exitNodeID = ref.watch(exitNodeIDProvider);
     final netmap = ref.watch(netmapProvider);
     final exitNodeInNetmap = exitNodeID != null &&
         netmap?.peers?.any((peer) => peer.stableID == exitNodeID) == true;
+    final filteredNodes = _filterNodes(model.tailnetExitNodes);
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+
     final children = [
+      if (model.tailnetExitNodes.isNotEmpty && !isAndroidTV)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+          child: _buildFilterInput(context),
+        ),
       AdaptiveListSection.insetGrouped(
         header: const Text("Exit Node Settings"),
         footer: const Text(
@@ -113,7 +162,7 @@ class ExitNodePicker extends ConsumerWidget {
                 selected: true,
               ),
             ),
-          ...model.tailnetExitNodes.map(
+          ...filteredNodes.map(
             (node) => ExitNodeItem(
               node: node,
               onTap: () => _setExitNode(context, ref, node),
@@ -182,7 +231,7 @@ class ExitNodePicker extends ConsumerWidget {
 
   Widget _buildRunAsExitNodeItem(BuildContext context, WidgetRef ref,
       ExitNodeState model, bool isCupertino) {
-    final widget = AdaptiveListTile(
+    final child = AdaptiveListTile(
       leading: model.isRunningExitNodePendingApproval
           ? Icon(
               isApple()
@@ -207,13 +256,13 @@ class ExitNodePicker extends ConsumerWidget {
           : const CupertinoListTileChevron(),
       onTap: model.isRunningExitNodePendingApproval
           ? null
-          : onNavigateToRunAsExitNode,
+          : widget.onNavigateToRunAsExitNode,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        widget,
+        child,
         if (model.isRunningExitNode)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -260,7 +309,7 @@ class ExitNodePicker extends ConsumerWidget {
             const CupertinoListTileChevron(),
           ],
         ),
-        onTap: onNavigateToMullvad,
+        onTap: widget.onNavigateToMullvad,
       );
     }
 
@@ -268,7 +317,7 @@ class ExitNodePicker extends ConsumerWidget {
       title: const Text('Mullvad Exit Nodes'),
       subtitle: Text('${model.mullvadExitNodeCount} nodes'),
       trailing: const Icon(Icons.chevron_right),
-      onTap: onNavigateToMullvad,
+      onTap: widget.onNavigateToMullvad,
     );
   }
 

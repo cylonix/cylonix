@@ -448,6 +448,21 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
+  Future<void> deleteProfile(String profileID) async {
+    try {
+      await _ipnService.deleteProfile(profileID);
+    } catch (error, stack) {
+      _logger.e("Failed to delete profile: $error, stackTrace: $stack");
+      rethrow;
+    }
+    final profiles = await getProfiles();
+    state = AsyncValue.data(
+      const IpnState().copyWith(
+        loginProfiles: profiles ?? [],
+      ),
+    );
+  }
+
   Future<void> switchProfile(String id) async {
     try {
       _logger.d("Switching profile with id: $id. Set ipn state to connecting");

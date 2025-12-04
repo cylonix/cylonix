@@ -901,7 +901,6 @@ class _LogConsoleState extends State<LogConsole> {
 
     if (_isCupertino) {
       return CupertinoNavigationBar(
-        backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
         leading: widget.backButton,
         middle: Text(title),
         trailing: Row(
@@ -1037,7 +1036,12 @@ class _LogConsoleState extends State<LogConsole> {
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: filter,
+              child: CupertinoSearchTextField(
+                focusNode: _filterFocusNode,
+                controller: _filterController,
+                onChanged: (s) => _resetContent(),
+                placeholder: _filterText,
+              ),
             ),
             Focus(
               focusNode: _filterLevelFocusNode,

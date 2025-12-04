@@ -81,7 +81,6 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
     return CupertinoPageScaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: Colors.transparent,
         middle: Text(strings.title),
         leading: widget.onNavigateBackToSettings == null
             ? null

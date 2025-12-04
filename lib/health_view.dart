@@ -31,8 +31,6 @@ class HealthView extends ConsumerWidget {
       backgroundColor:
           CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context),
       navigationBar: CupertinoNavigationBar(
-        backgroundColor: Colors.transparent,
-        automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         leading: onNavigateBack != null
             ? AppleBackButton(

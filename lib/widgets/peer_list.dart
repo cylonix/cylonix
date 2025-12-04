@@ -76,7 +76,6 @@ class _PeerListState extends State<PeerList> {
       focusNode: _searchFocusNode,
       controller: _searchController,
       placeholder: isApple() ? 'Search devices...' : 'Search devices',
-      value: _searchTerm,
       onChanged: (value) {
         setState(() {
           _searchTerm = value;
