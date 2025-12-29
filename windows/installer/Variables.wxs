@@ -2,7 +2,7 @@
 <Include>
   <!-- Product Information -->
   <?define ProductName = "Cylonix Node Agent" ?>
-  <?define ProductVersion = "1.0.8" ?>
+  <?define ProductVersion = "1.0.10" ?>
   <?define ProductManufacturer = "EZBLOCK INC." ?>
   <?define ProductUpgradeCode = "{8ECC1F1E-F887-41C3-801C-4D21EA6B6F47}" ?>
 

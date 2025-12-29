@@ -5,8 +5,11 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   charset_converter
   downloadsfolder
+  screen_retriever
   share_plus
+  system_tray
   url_launcher_windows
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

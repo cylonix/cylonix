@@ -1,6 +1,7 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:io' show Platform;
 import 'package:cylonix/widgets/adaptive_widgets.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -103,10 +104,11 @@ class AlertDialogWidget extends StatelessWidget {
 
     final cancelString = cancelText ?? 'Cancel';
     final okString = okText ?? 'OK';
+    final textAlign = Platform.isWindows ? null : TextAlign.center;
 
     return AlertDialog.adaptive(
       key: key,
-      title: Text(title, textAlign: TextAlign.center),
+      title: Text(title, textAlign: textAlign),
       content: Material(
         type: MaterialType.transparency,
         child: SingleChildScrollView(
@@ -122,7 +124,7 @@ class AlertDialogWidget extends StatelessWidget {
               if (content != null)
                 Text(
                   content!,
-                  textAlign: TextAlign.center,
+                  textAlign: textAlign,
                   style: textStyle,
                 ),
               if (successMsg != null) ...[
@@ -131,12 +133,12 @@ class AlertDialogWidget extends StatelessWidget {
                   Text(
                     successSubtitle!,
                     style: subtitleStyle,
-                    textAlign: TextAlign.center,
+                    textAlign: textAlign,
                   ),
                 Text(
                   successMsg!,
                   style: green,
-                  textAlign: TextAlign.center,
+                  textAlign: textAlign,
                 ),
               ],
               if (failureMsg != null) ...[
@@ -145,12 +147,12 @@ class AlertDialogWidget extends StatelessWidget {
                   Text(
                     failureSubtitle!,
                     style: subtitleStyle,
-                    textAlign: TextAlign.center,
+                    textAlign: textAlign,
                   ),
                 Text(
                   failureMsg!,
                   style: red,
-                  textAlign: TextAlign.center,
+                  textAlign: textAlign,
                 ),
               ],
               if (child != null) ...[
@@ -196,7 +198,8 @@ class AlertDialogWidget extends StatelessWidget {
           ),
         ...actions ?? []
       ],
-      actionsAlignment: isApple() ? null : MainAxisAlignment.center,
+      actionsAlignment:
+          isApple() || Platform.isWindows ? null : MainAxisAlignment.center,
     );
   }
 }

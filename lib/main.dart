@@ -1,6 +1,7 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -9,10 +10,13 @@ import 'app.dart';
 import 'models/platform.dart';
 import 'models/shared_file.dart';
 import 'providers/share_file.dart';
+import 'services/system_tray_service.dart';
 import 'utils/applog.dart';
 import 'utils/logger.dart';
+import 'package:window_manager/window_manager.dart';
 
 var _logger = Logger(tag: "Main");
+
 void main(List<String> args) async {
   const _channel = MethodChannel('io.cylonix.sase/share_channel');
   await _loadEnv();
@@ -21,6 +25,13 @@ void main(List<String> args) async {
   _logger = Logger(tag: "Main");
 
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize system tray and window manager for Windows
+  if (Platform.isWindows) {
+    await windowManager.ensureInitialized();
+    await windowManager.setPreventClose(true);
+    await SystemTrayService.init();
+  }
 
   _logger.i("Starting Cylonix app with args: $args");
   _logger.i("Setting up MethodChannel for share events");
