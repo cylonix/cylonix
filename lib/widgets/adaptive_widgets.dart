@@ -473,6 +473,7 @@ class CupertinoLargeNavigationBar extends StatelessWidget
   final Widget? leading;
   final Widget? largeTitle;
   final Widget? trailing;
+  final double height;
   final bool transitionBetweenRoutes;
   final Object? heroTag;
 
@@ -484,6 +485,7 @@ class CupertinoLargeNavigationBar extends StatelessWidget
     this.largeTitle,
     this.trailing,
     this.transitionBetweenRoutes = true,
+    this.height = 80.0,
     this.heroTag,
   });
 
@@ -514,7 +516,7 @@ class CupertinoLargeNavigationBar extends StatelessWidget
 
   @override
   Size get preferredSize {
-    return const Size.fromHeight(80.0);
+    return Size.fromHeight(height);
   }
 }
 

@@ -236,7 +236,7 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
       (key, value) => infos.add(_buildValue(context, key, value)),
     );
 
-    return ListView(
+    final list = ListView(
       controller: ScrollController(),
       children: [
         const SizedBox(height: 32),
@@ -297,6 +297,12 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
           ),
         ),
       ],
+    );
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 1200),
+        child: list,
+      ),
     );
   }
 

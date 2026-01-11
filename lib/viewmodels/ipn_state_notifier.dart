@@ -457,7 +457,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
     final profiles = await getProfiles();
     state = AsyncValue.data(
-      const IpnState().copyWith(
+      (state.valueOrNull ?? const IpnState()).copyWith(
         loginProfiles: profiles ?? [],
       ),
     );

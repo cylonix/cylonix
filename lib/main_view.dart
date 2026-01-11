@@ -225,6 +225,25 @@ class _MainViewState extends ConsumerState<MainView> {
     final showLeading =
         (backendState?.value ?? 0) > BackendState.needsLogin.index;
 
+    if (useNavigationRail(context) && showLeading) {
+      return CupertinoLargeNavigationBar(
+        backgroundColor: Colors.transparent,
+        transitionBetweenRoutes: false,
+        height: 120,
+        heroTag: "MainView",
+        largeTitle: Row(
+          spacing: 16,
+          children: [
+            _buildLeading(context, ref),
+            Expanded(child: _buildTitle(context, ref)),
+            _buildToggleDeviceViewButton(context, ref),
+            if (isAndroidTV) _buildProfileButton(context, ref, user),
+            const SizedBox(width: 16),
+          ].nonNulls.toList(),
+        ),
+      );
+    }
+
     final leading = _buildLeading(context, ref);
     final title = _buildTitle(context, ref);
     return AppBar(

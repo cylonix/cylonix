@@ -128,7 +128,12 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
           _buildHeaderMenu(),
         ],
       ),
-      body: _buildUserList(context, users, loading: loading),
+      body: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: _buildUserList(context, users, loading: loading),
+        ),
+      ),
     );
   }
 
@@ -468,6 +473,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
 
   void _showSwitchOrDeleteProfileModal(LoginProfile profile) async {
     await AdaptiveModalPopup(
+      maxWidth: 800,
       child: Column(mainAxisSize: MainAxisSize.min, spacing: 16, children: [
         AdaptiveListTile(
           backgroundColor: Colors.transparent,
@@ -615,6 +621,9 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
         "Delete Profile",
         "Are you sure you want to delete this profile for ${profile.name}?",
         showCancel: true,
+        okText: "Delete",
+        destructiveButton: "Delete",
+        defaultButton: "Cancel",
       );
       if (ok != true) return;
       await ref.read(ipnStateNotifierProvider.notifier).deleteProfile(
