@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/ipn.dart';
 import '../services/ipn.dart';
 import '../services/mdm.dart';
+import '../services/system_tray_service.dart';
 import '../utils/logger.dart';
 import '../utils/utils.dart';
 import '../providers/settings.dart';
@@ -59,6 +60,18 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     state = const AsyncValue.data(IpnState(vpnState: VpnState.connecting));
 
     try {
+      if (Platform.isWindows) {
+        SystemTrayService.setCallbacks(
+          onConnect: () async {
+            _logger.d("System tray connect clicked");
+            await startVpn();
+          },
+          onDisconnect: () async {
+            _logger.d("System tray disconnect clicked");
+            await stopVpn();
+          },
+        );
+      }
       _notificationSubscription?.cancel();
       _notificationSubscription =
           _ipnService.notificationStream.listen((notification) {
@@ -266,6 +279,53 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
 
     state = AsyncValue.data(newState);
+
+    // For windows, update the system tray status.
+    updateSystemTrayStatus();
+  }
+
+  void updateSystemTrayStatus() {
+    if (!Platform.isWindows) {
+      return;
+    }
+    final vpnState = state.valueOrNull?.vpnState ?? VpnState.disconnected;
+    final displayName = state.valueOrNull?.loggedInUser?.displayName ?? '';
+    final deviceName = state.valueOrNull?.selfNode?.name ?? '';
+    final avatarUrl = state.valueOrNull?.loggedInUser?.profilePicURL;
+    final email = state.valueOrNull?.loggedInUser?.loginName;
+
+    var isConnected = false;
+    var tooltip = 'Cylonix - Disconnected';
+    switch (vpnState) {
+      case VpnState.connected:
+        isConnected = true;
+        tooltip = 'Cylonix - Connected';
+        break;
+      case VpnState.connecting:
+        isConnected = false;
+        tooltip = 'Cylonix - Connecting...';
+        break;
+      case VpnState.disconnecting:
+        isConnected = false;
+        tooltip = 'Cylonix - Disconnecting...';
+        break;
+      case VpnState.disconnected:
+        isConnected = false;
+        tooltip = 'Cylonix - Disconnected. Click to connect.';
+        break;
+      case VpnState.error:
+        isConnected = false;
+        tooltip = 'Cylonix - Error';
+        break;
+    }
+    SystemTrayService.setConnectionState(
+      isConnected: isConnected,
+      tooltip: tooltip,
+      displayName: displayName,
+      deviceName: deviceName,
+      avatarUrl: avatarUrl,
+      email: email,
+    );
   }
 
   VpnState _determineVpnState(IpnNotification notification) {

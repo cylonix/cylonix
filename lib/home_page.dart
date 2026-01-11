@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:window_manager/window_manager.dart';
 import 'about_view.dart';
 import 'custom_login_view.dart';
 import 'dns_settings_view.dart';
@@ -40,7 +41,7 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> {
+class _HomePageState extends ConsumerState<HomePage> with WindowListener {
   static final _logger = Logger(tag: "HomePage");
   Page _page = Page.mainView;
   int _previousPage = Page.mainView.value;
@@ -51,6 +52,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   void initState() {
     super.initState();
     _initLogger();
+    if (Platform.isWindows) {
+      windowManager.addListener(this);
+    }
     WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged =
         () {
       _logger.i("Platform brightness changed");
@@ -58,6 +62,70 @@ class _HomePageState extends ConsumerState<HomePage> {
           WidgetsBinding.instance.platformDispatcher.platformBrightness;
       ref.read(systemBrightnessProvider.notifier).updateBrightness(brightness);
     };
+  }
+
+  @override
+  void dispose() {
+    if (Platform.isWindows) {
+      windowManager.removeListener(this);
+    }
+    super.dispose();
+  }
+
+  @override
+  void onWindowClose() async {
+    final hideDialog = ref.read(hideMinimizeToTrayDialogProvider);
+
+    if (hideDialog) {
+      // User has chosen not to see the dialog, just minimize to tray
+      await windowManager.hide();
+      return;
+    }
+
+    // Show dialog
+    if (!mounted) {
+      await windowManager.hide();
+      return;
+    }
+
+    await _showMinimizeToTrayDialog();
+  }
+
+  Future<void> _showMinimizeToTrayDialog() async {
+    bool dontShowAgain = false;
+
+    await showAlertDialog(
+      context,
+      'Minimizing to System Tray',
+      'Cylonix is being minimized to the system tray instead of closing the '
+          'app.\n\nTo exit the app, right-click on the Cylonix icon in the '
+          'system tray and select "Exit".',
+      child: StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Row(
+            children: [
+              Checkbox(
+                value: dontShowAgain,
+                onChanged: (value) {
+                  setDialogState(() {
+                    dontShowAgain = value ?? false;
+                  });
+                },
+              ),
+              const Text("Don't show this again"),
+            ],
+          );
+        },
+      ),
+      onPressOK: () async {
+        if (dontShowAgain) {
+          await ref
+              .read(hideMinimizeToTrayDialogProvider.notifier)
+              .setValue(true);
+        }
+        await windowManager.hide();
+      },
+    );
   }
 
   void _initLogger() async {

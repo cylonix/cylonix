@@ -172,3 +172,14 @@ final isAndroidTVProvider =
     prefs: prefs,
   );
 });
+
+/// Provider for hiding the "minimize to tray" notification dialog on Windows
+final hideMinimizeToTrayDialogProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'hide_minimize_to_tray_dialog',
+    defaultValue: false,
+    prefs: prefs,
+  );
+});
