@@ -45,6 +45,7 @@ class _PeerListState extends State<PeerList> {
             peerCategorizer.groupedAndFilteredPeers(_searchTerm);
         final showNoResults = _searchTerm.isNotEmpty &&
             filteredSets.every((set) => set.peers.isEmpty);
+        final isAndroidTV = ref.watch(isAndroidTVProvider);
 
         return GestureDetector(
           onTap: () {
@@ -52,10 +53,10 @@ class _PeerListState extends State<PeerList> {
             _searchFocusNode.unfocus();
           },
           child: Column(
-            spacing: 12,
+            spacing: isAndroidTV ? 8 : 12,
             children: [
               Container(
-                constraints: _isLargeDisplay
+                constraints: _isLargeDisplay || isAndroidTV
                     ? const BoxConstraints(maxWidth: 800)
                     : null,
                 child: _buildSearchBar(context, ref),
@@ -108,7 +109,11 @@ class _PeerListState extends State<PeerList> {
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: 20.0 /* Match cupertino list section margin */,
-        vertical: useNavigationRail(context) ? 8.0 : 16.0,
+        vertical: isAndroidTV
+            ? 0
+            : _isLargeDisplay
+                ? 8.0
+                : 16.0,
       ),
       child: Row(
         children: [
@@ -308,7 +313,7 @@ class _PeerListState extends State<PeerList> {
         ),
       ],
     );
-    return _isLargeDisplay ? _fitWithinMaxWidth(child) : child;
+    return _isLargeDisplay || isAndroidTV ? _fitWithinMaxWidth(child) : child;
   }
 
   double _getLeadingSizeForPeerSet(PeerSet peerSet) {
@@ -353,17 +358,19 @@ class _PeerListState extends State<PeerList> {
                     borderRadius: BorderRadius.circular(12.0),
                   ),
                   automaticallyImplyLeading: false,
-                  collapsedHeight: 100.0,
-                  expandedHeight: _isLargeDisplay ? 100.0 : 140.0,
+                  collapsedHeight: 80.0,
+                  expandedHeight: _isLargeDisplay || isAndroidTV ? 80.0 : 120.0,
                   primary: false,
                   leadingWidth: 0,
                   centerTitle: false,
-                  forceMaterialTransparency: _isLargeDisplay,
-                  backgroundColor: isApple()
-                      ? appleScaffoldBackgroundColor(context)
-                      : Theme.of(context).colorScheme.surface,
+                  forceMaterialTransparency: _isLargeDisplay || isAndroidTV,
+                  backgroundColor: isAndroidTV
+                      ? Colors.transparent
+                      : isApple()
+                          ? appleScaffoldBackgroundColor(context)
+                          : Theme.of(context).colorScheme.surface,
                   titleSpacing: 0,
-                  title: _isLargeDisplay
+                  title: _isLargeDisplay || isAndroidTV
                       ? Container(
                           padding: const EdgeInsets.symmetric(
                             vertical: 8.0,
@@ -380,7 +387,7 @@ class _PeerListState extends State<PeerList> {
                           ),
                         )
                       : null,
-                  flexibleSpace: _isLargeDisplay
+                  flexibleSpace: _isLargeDisplay || isAndroidTV
                       ? null
                       : FlexibleSpaceBar(
                           centerTitle: false,
@@ -408,9 +415,9 @@ class _PeerListState extends State<PeerList> {
                         isOnline(peer),
                         leadingSize,
                       );
-                      if (!_isLargeDisplay) {
+                      if (!_isLargeDisplay && !isAndroidTV) {
                         return Padding(
-                          padding: const EdgeInsets.only(left: 10.0),
+                          padding: const EdgeInsets.symmetric(horizontal: 10.0),
                           child: child,
                         );
                       }
@@ -419,7 +426,7 @@ class _PeerListState extends State<PeerList> {
                     childCount: filteredPeers.length,
                   ),
                 ),
-                const SizedBox(height: 32.0),
+                const SizedBox(height: 16.0),
               ],
             );
           }()

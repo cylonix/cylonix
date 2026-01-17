@@ -392,7 +392,7 @@ class _MainViewState extends ConsumerState<MainView> {
         children: [
           ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: isLargeDisplay ? 800 : double.infinity,
+              maxWidth: isLargeDisplay || isAndroidTV ? 800 : double.infinity,
             ),
             child: Column(spacing: 16, children: [
               ...common,

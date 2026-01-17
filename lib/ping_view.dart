@@ -20,19 +20,29 @@ class PingView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(pingStateProvider);
 
-    return state.when(
-      loading: () => isApple()
-          ? const CupertinoActivityIndicator()
-          : const CircularProgressIndicator(),
-      error: (error, stack) => Text(
-        'Error: $error',
-        style: isApple()
-            ? CupertinoTheme.of(context).textTheme.textStyle
-            : Theme.of(context).textTheme.bodyMedium,
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          // Stop ping when page is closed via back button
+          ref.read(pingStateProvider.notifier).stopPing();
+          ref.read(pd.peerDetailsViewModelProvider.notifier).close();
+        }
+      },
+      child: state.when(
+        loading: () => isApple()
+            ? const CupertinoActivityIndicator()
+            : const CircularProgressIndicator(),
+        error: (error, stack) => Text(
+          'Error: $error',
+          style: isApple()
+              ? CupertinoTheme.of(context).textTheme.textStyle
+              : Theme.of(context).textTheme.bodyMedium,
+        ),
+        data: (data) => isApple()
+            ? _buildCupertinoScaffold(context, ref, data)
+            : _buildMaterialScaffold(context, ref, data),
       ),
-      data: (data) => isApple()
-          ? _buildCupertinoScaffold(context, ref, data)
-          : _buildMaterialScaffold(context, ref, data),
     );
   }
 
@@ -98,7 +108,7 @@ class PingView extends ConsumerWidget {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: isCupertino
-                    ? CupertinoColors.systemRed.withOpacity(0.1)
+                    ? CupertinoColors.systemRed.withValues(alpha: 0.1)
                     : Theme.of(context).colorScheme.error.withValues(
                           alpha: 0.1,
                         ),
