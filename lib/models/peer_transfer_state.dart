@@ -5,7 +5,6 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'ipn.dart';
 
 part 'peer_transfer_state.freezed.dart';
-part 'peer_transfer_state.g.dart';
 
 /// Status of a file transfer
 enum TransferStatus {
@@ -33,7 +32,4 @@ class PeerTransferState with _$PeerTransferState {
   bool get allSuccessButWithFailedStatus =>
       files.every((f) => f.finished && f.succeeded) &&
       status == TransferStatus.failed;
-
-  factory PeerTransferState.fromJson(Map<String, dynamic> json) =>
-      _$PeerTransferStateFromJson(json);
 }

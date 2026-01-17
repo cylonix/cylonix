@@ -14,10 +14,6 @@ T _$identity<T>(T value) => value;
 final _privateConstructorUsedError = UnsupportedError(
     'It seems like you constructed your class using `MyClass._()`. This constructor is only meant to be used by freezed and you are not supposed to need it nor use it.\nPlease check the documentation here for more information: https://github.com/rrousselGit/freezed#adding-getters-and-methods-to-our-models');
 
-PeerTransferState _$PeerTransferStateFromJson(Map<String, dynamic> json) {
-  return _PeerTransferState.fromJson(json);
-}
-
 /// @nodoc
 mixin _$PeerTransferState {
   String get peerID => throw _privateConstructorUsedError;
@@ -25,9 +21,6 @@ mixin _$PeerTransferState {
   double get progress => throw _privateConstructorUsedError; // 0.0...1.0
   TransferStatus get status => throw _privateConstructorUsedError;
   String? get errorMessage => throw _privateConstructorUsedError;
-
-  /// Serializes this PeerTransferState to a JSON map.
-  Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
   /// Create a copy of PeerTransferState
   /// with the given fields replaced by the non-null parameter values.
@@ -157,7 +150,7 @@ class __$$PeerTransferStateImplCopyWithImpl<$Res>
 }
 
 /// @nodoc
-@JsonSerializable()
+
 class _$PeerTransferStateImpl extends _PeerTransferState {
   const _$PeerTransferStateImpl(
       {required this.peerID,
@@ -167,9 +160,6 @@ class _$PeerTransferStateImpl extends _PeerTransferState {
       this.errorMessage})
       : _files = files,
         super._();
-
-  factory _$PeerTransferStateImpl.fromJson(Map<String, dynamic> json) =>
-      _$$PeerTransferStateImplFromJson(json);
 
   @override
   final String peerID;
@@ -209,7 +199,6 @@ class _$PeerTransferStateImpl extends _PeerTransferState {
                 other.errorMessage == errorMessage));
   }
 
-  @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(
       runtimeType,
@@ -227,13 +216,6 @@ class _$PeerTransferStateImpl extends _PeerTransferState {
   _$$PeerTransferStateImplCopyWith<_$PeerTransferStateImpl> get copyWith =>
       __$$PeerTransferStateImplCopyWithImpl<_$PeerTransferStateImpl>(
           this, _$identity);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return _$$PeerTransferStateImplToJson(
-      this,
-    );
-  }
 }
 
 abstract class _PeerTransferState extends PeerTransferState {
@@ -244,9 +226,6 @@ abstract class _PeerTransferState extends PeerTransferState {
       required final TransferStatus status,
       final String? errorMessage}) = _$PeerTransferStateImpl;
   const _PeerTransferState._() : super._();
-
-  factory _PeerTransferState.fromJson(Map<String, dynamic> json) =
-      _$PeerTransferStateImpl.fromJson;
 
   @override
   String get peerID;

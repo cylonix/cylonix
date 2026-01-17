@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
         "apitype",
+        "appleid",
         "applog",
         "appstore",
         "checkmark",
@@ -26,9 +27,12 @@
         "mullvad",
         "netmap",
         "prefs",
+        "privaterelay",
+        "privkey",
         "questionmark",
         "radiowaves",
         "Reauthenticating",
+        "Sharee",
         "stdlib",
         "subheadline",
         "Syspolicy",

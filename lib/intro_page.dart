@@ -1,11 +1,13 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:introduction_screen/introduction_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'models/platform.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'viewmodels/state_notifier.dart';
@@ -25,6 +27,15 @@ class _State extends ConsumerState<IntroPage> {
   final _key = GlobalKey<IntroductionScreenState>();
   int _index = 0;
   bool _privacyAgreed = false;
+  final _agreeButtonFocusNode = FocusNode();
+  final _doneButtonFocusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _agreeButtonFocusNode.dispose();
+    _doneButtonFocusNode.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -51,9 +62,24 @@ class _State extends ConsumerState<IntroPage> {
       next: Icon(
         isApple() ? CupertinoIcons.chevron_right : Icons.arrow_forward_rounded,
       ),
-      onChange: (v) => setState(() {
-        _index = v;
-      }),
+      onChange: (v) {
+        setState(() {
+          _index = v;
+        });
+        // Wait for the page transition animation to complete before requesting focus
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            // Explicitly request focus on the button for each page
+            if (v == 1) {
+              // Privacy page - "I Agree" button
+              _agreeButtonFocusNode.requestFocus();
+            } else if (v == 2) {
+              // Done page - "Setup Cylonix" button
+              _doneButtonFocusNode.requestFocus();
+            }
+          }
+        });
+      },
     );
   }
 
@@ -88,6 +114,7 @@ class _State extends ConsumerState<IntroPage> {
 
   Widget get _doneButton {
     return AdaptiveButton(
+      focusNode: _doneButtonFocusNode,
       autofocus: true,
       filled: true,
       onPressed: _handleIntroDone,
@@ -164,6 +191,12 @@ class _State extends ConsumerState<IntroPage> {
   }
 
   PageViewModel get _introPage {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    final showTVToggle =
+        Platform.isAndroid && !isNativeAndroidTV && isLandscape;
+
     return _getPage(
       _logo,
       "Welcome to Cylonix",
@@ -178,22 +211,73 @@ class _State extends ConsumerState<IntroPage> {
       Column(
         spacing: 16,
         children: [
+          if (showTVToggle)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: isApple()
+                      ? CupertinoColors.separator.resolveFrom(context)
+                      : Theme.of(context).dividerColor,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Android TV Mode",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: isApple()
+                                ? CupertinoColors.label.resolveFrom(context)
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Optimize interface for TV devices",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isApple()
+                                ? CupertinoColors.secondaryLabel
+                                    .resolveFrom(context)
+                                : Theme.of(context).textTheme.bodySmall?.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AdaptiveSwitch(
+                    value: isAndroidTV,
+                    onChanged: (value) {
+                      ref.read(isAndroidTVProvider.notifier).setValue(value);
+                    },
+                  ),
+                ],
+              ),
+            ),
           AdaptiveButton(
-            autofocus: true,
+            autofocus: (!showTVToggle || isAndroidTV),
             filled: true,
             onPressed: _nextPage,
             child: const Text("Get Started"),
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            spacing: 10,
             children: [
               Text(
                 "New to Cylonix?",
                 style: _smallStyle,
               ),
               AdaptiveButton(
-                padding: const EdgeInsets.only(left: 8),
-                textButton: true,
+                textButton: isAndroidTV ? false : true,
                 onPressed: _openWebsite,
                 child: Text(
                   "Learn more",
@@ -240,6 +324,7 @@ class _State extends ConsumerState<IntroPage> {
       Column(
         children: [
           AdaptiveButton(
+            focusNode: _agreeButtonFocusNode,
             autofocus: true,
             filled: true,
             onPressed: () {

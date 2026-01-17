@@ -7974,9 +7974,10 @@ class __$$PeerSetImplCopyWithImpl<$Res>
 
 /// @nodoc
 
-class _$PeerSetImpl implements _PeerSet {
+class _$PeerSetImpl extends _PeerSet {
   const _$PeerSetImpl({this.user, required final List<Node> peers})
-      : _peers = peers;
+      : _peers = peers,
+        super._();
 
   @override
   final UserProfile? user;
@@ -8015,10 +8016,11 @@ class _$PeerSetImpl implements _PeerSet {
       __$$PeerSetImplCopyWithImpl<_$PeerSetImpl>(this, _$identity);
 }
 
-abstract class _PeerSet implements PeerSet {
+abstract class _PeerSet extends PeerSet {
   const factory _PeerSet(
       {final UserProfile? user,
       required final List<Node> peers}) = _$PeerSetImpl;
+  const _PeerSet._() : super._();
 
   @override
   UserProfile? get user;

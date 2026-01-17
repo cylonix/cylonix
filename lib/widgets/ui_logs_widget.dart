@@ -12,10 +12,12 @@ import 'adaptive_widgets.dart';
 class UILogsWidget extends StatelessWidget {
   final VoidCallback? onNavigateBack;
   final Function(Widget)? onNavigateToLogConsole;
+  final bool showFilterBar;
   const UILogsWidget({
     super.key,
     this.onNavigateBack,
     this.onNavigateToLogConsole,
+    this.showFilterBar = true,
   });
   static final _logger = logger.Logger(tag: "UILogsWidget");
 
@@ -64,6 +66,7 @@ class UILogsWidget extends StatelessWidget {
             )
           : null,
       showRefreshButton: true,
+      showFilterBar: showFilterBar,
       dark: Theme.of(context).brightness == Brightness.dark,
       saveFile: _save,
       shareFile: Platform.isLinux ? null : (logs) => _share(context, logs),

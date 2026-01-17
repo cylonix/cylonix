@@ -384,57 +384,46 @@ class _MainViewState extends ConsumerState<MainView> {
       _buildFilesWaitingSummary(context, ref),
       ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
     ];
-
-    final child = !showDevices
-        ? Column(
-            spacing: 16,
-            children: <Widget>[
+    final isLargeDisplay = MediaQuery.of(context).size.width > 1200.0;
+    return Container(
+      alignment: Alignment.topCenter,
+      child: Column(
+        spacing: 16,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isLargeDisplay ? 800 : double.infinity,
+            ),
+            child: Column(spacing: 16, children: [
               ...common,
-              if (isAndroidTV) ...[
+              if (!showDevices && isAndroidTV) ...[
                 const HealthStateWidget(),
               ],
-              if (!isAndroidTV)
-                Expanded(
-                  child: _buildCenteredWidget(const HealthStateWidget()),
-                ),
-            ],
-          )
-        : Column(
-            children: [
-              ...common,
+              if (!showDevices && !isAndroidTV) ...[
+                _buildCenteredWidget(const HealthStateWidget()),
+              ]
+            ]),
+          ),
+          if (showDevices) ...[
+            Expanded(
+              child: PeerList(
+                onPeerTap: widget.onNavigateToPeerDetails,
+              ),
+            ),
+            const SizedBox(height: 16)
+          ] else ...[
+            if (isAndroidTV)
               Expanded(
-                child: PeerList(
-                  onPeerTap: widget.onNavigateToPeerDetails,
+                child: Image.asset(
+                  'lib/assets/images/landing-banner.webp',
+                  width: MediaQuery.of(context).size.width,
+                  fit: BoxFit.fill,
                 ),
               ),
-              const SizedBox(height: 16)
-            ],
-          );
-
-    final container = Container(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 800),
-        child: child,
+          ],
+        ],
       ),
     );
-
-    if (isAndroidTV && !showDevices) {
-      return Column(
-        spacing: 32,
-        children: [
-          container,
-          Expanded(
-            child: Image.asset(
-              'lib/assets/images/landing-banner.webp',
-              width: MediaQuery.of(context).size.width,
-              fit: BoxFit.fill,
-            ),
-          ),
-        ],
-      );
-    }
-    return container;
   }
 
   Widget _buildCupertinoScaffold(BuildContext context, WidgetRef ref) {
@@ -573,6 +562,7 @@ class _MainViewState extends ConsumerState<MainView> {
       BuildContext context, WidgetRef ref, UserProfile? user) {
     final healthSeverity = ref.watch(healthSeverityProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
 
     showModalBottomSheet<void>(
       isScrollControlled: true,
@@ -605,14 +595,15 @@ class _MainViewState extends ConsumerState<MainView> {
                   widget.onNavigateToSettings();
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.upload_file_outlined, size: 24),
-                title: const Text('Send Files'),
-                onTap: () {
-                  Navigator.pop(context);
-                  widget.onNavigateToSendFiles();
-                },
-              ),
+              if (!isAndroidTV)
+                ListTile(
+                  leading: const Icon(Icons.upload_file_outlined, size: 24),
+                  title: const Text('Send Files'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    widget.onNavigateToSendFiles();
+                  },
+                ),
               ListTile(
                 leading: (healthSeverity == null)
                     ? AdaptiveHealthyIcon(size: 24)

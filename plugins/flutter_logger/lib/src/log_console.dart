@@ -39,10 +39,12 @@ class LogConsole extends StatefulWidget {
   final void Function(void Function())? listenToUpdateTrigger;
   final Future<String?> Function(List<OutputEvent>)? saveFile;
   final Future<void> Function(List<OutputEvent>)? shareFile;
+  final bool showFilterBar;
 
   LogConsole({
     super.key,
     this.dark = false,
+    this.showFilterBar = true,
     this.title,
     this.subtitle,
     this.events,
@@ -1072,9 +1074,10 @@ class _LogConsoleState extends State<LogConsole> {
       child: Row(
         mainAxisSize: MainAxisSize.max,
         children: <Widget>[
-          Expanded(
-            child: filter,
-          ),
+          if (widget.showFilterBar)
+            Expanded(
+              child: filter,
+            ),
           const SizedBox(width: 20),
           DropdownButton(
             focusNode: _filterLevelFocusNode,

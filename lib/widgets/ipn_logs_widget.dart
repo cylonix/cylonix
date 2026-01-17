@@ -13,6 +13,7 @@ import '../models/log_file.dart';
 import '../utils/logger.dart' as logger;
 import '../utils/utils.dart';
 import '../viewmodels/ipn_logs.dart';
+import '../viewmodels/state_notifier.dart';
 
 class IpnLogsWidget extends ConsumerWidget {
   final VoidCallback? onNavigateBack;
@@ -87,6 +88,7 @@ class IpnLogsWidget extends ConsumerWidget {
     ListQueue<OutputEvent> events,
   ) {
     final viewModel = ref.read(ipnLogsProvider.notifier);
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     return LogConsole(
       backButton: onNavigateBack != null
           ? AdaptiveBackButton(
@@ -96,6 +98,7 @@ class IpnLogsWidget extends ConsumerWidget {
       events: events,
       getLogOutputEvents: viewModel.getLogs,
       showRefreshButton: true,
+      showFilterBar: !isAndroidTV,
       dark: Theme.of(context).brightness == Brightness.dark,
       saveFile: _save,
       shareFile: Platform.isLinux ? null : (logs) => _share(context, logs),

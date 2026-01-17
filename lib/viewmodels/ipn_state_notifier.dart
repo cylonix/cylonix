@@ -777,10 +777,16 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
-  Future<IpnPrefs> editPrefs(MaskedPrefs prefs) async {
+  Future<IpnPrefs> editPrefs(
+    MaskedPrefs prefs, {
+    int timeOutMilliseconds = 10000,
+  }) async {
     _logger.d("Editing preferences: $prefs");
     try {
-      final current = await _ipnService.editPrefs(prefs);
+      final current = await _ipnService.editPrefs(
+        prefs,
+        timeOutMilliseconds: timeOutMilliseconds,
+      );
       state = AsyncValue.data(
         (state.valueOrNull ?? const IpnState()).copyWith(prefs: current),
       );

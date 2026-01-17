@@ -353,7 +353,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 'Advanced Options',
               ),
               children: [
-                if (Platform.isAndroid && !isNativeAndroidTV)
+                if (true || Platform.isAndroid && !isNativeAndroidTV)
                   AdaptiveListTile.notched(
                     title: const Text('Enable Android TV Mode'),
                     subtitle: const Text('Optimize for Android TV'),
@@ -423,6 +423,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   UILogsWidget(
                     onNavigateBack: widget.onNavigateBackToSettings,
                     onNavigateToLogConsole: widget.onPushNewPage,
+                    showFilterBar: !ref.watch(isAndroidTVProvider),
                   ),
                   IpnLogsWidget(
                     onNavigateBack: widget.onNavigateBackToSettings,
@@ -451,9 +452,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   }
 
   void _showDNSQueryBottomSheet() async {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     await AdaptiveModalPopup(
       height:
-          isNativeAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
+          isAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
       child: DNSQuery(
         onQuery: (String name) async {
           return await ref

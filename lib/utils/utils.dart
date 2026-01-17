@@ -33,7 +33,7 @@ bool useNavigationRail(BuildContext context) {
   if (isNativeAndroidTV) {
     return false; // Don't use navigation rail on Android TV
   }
-  return MediaQuery.of(context).size.width >= 800.0;
+  return MediaQuery.of(context).size.width >= 900.0;
 }
 
 bool isInPortraitMode(BuildContext context) {

@@ -23,10 +23,14 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.annotation.NonNull
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel;
 import java.util.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -85,10 +89,23 @@ class MainActivity: FlutterFragmentActivity() {
         Log.d(LOG_TAG, "Starting cylonix activity")
 		super.onCreate(savedInstanceState)
 
-        App.get().setIpnStateChangeCallback(::onIpnStateChanged)
-        App.get().setNotificationCallback(::onNotificationReceived)
-        Log.d(LOG_TAG, "onCreate: setting up VPN permission launcher")
-        setVpnPermissionLauncher()
+        // Register VPN permission launcher BEFORE activity reaches STARTED state
+        // (ActivityResultLauncher must be registered before STARTED)
+        registerVpnPermissionLauncher()
+
+        // Initialize App on a background thread to avoid ANR during Libtailscale.start()
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                Log.d(LOG_TAG, "Initializing App on background thread")
+                App.get() // This triggers Libtailscale.start() which is CPU-intensive
+            }
+            // Back on main thread - set up callbacks that require initialized App
+            Log.d(LOG_TAG, "App initialized, setting up callbacks")
+            App.get().setIpnStateChangeCallback(::onIpnStateChanged)
+            App.get().setNotificationCallback(::onNotificationReceived)
+            Log.d(LOG_TAG, "onCreate: initializing VPN ViewModel")
+            initializeVpnViewModel()
+        }
         //checkDownloadsFolderPermission()
 	}
 
@@ -140,10 +157,16 @@ class MainActivity: FlutterFragmentActivity() {
       ViewModelProvider(this, MainViewModelFactory(vpnViewModel)).get(MainViewModel::class.java)
     }
     private lateinit var vpnViewModel: VpnViewModel
-    private fun setVpnPermissionLauncher() {
-        vpnViewModel = ViewModelProvider(App.get()).get(VpnViewModel::class.java)
+
+    // Must be called BEFORE activity reaches STARTED state
+    private fun registerVpnPermissionLauncher() {
         vpnPermissionLauncher =
         registerForActivityResult(VpnPermissionContract()) { granted ->
+          // vpnViewModel will be initialized by the time this callback is invoked
+          if (!::vpnViewModel.isInitialized) {
+            Log.w(LOG_TAG, "VPN permission result received but vpnViewModel not initialized")
+            return@registerForActivityResult
+          }
           if (granted) {
             Log.d(LOG_TAG, "VPN permission granted")
             vpnViewModel.setVpnPrepared(true)
@@ -163,6 +186,11 @@ class MainActivity: FlutterFragmentActivity() {
             ))
           }
         }
+    }
+
+    // Called after App.get() is initialized
+    private fun initializeVpnViewModel() {
+        vpnViewModel = ViewModelProvider(App.get()).get(VpnViewModel::class.java)
         viewModel.setVpnPermissionLauncher(vpnPermissionLauncher)
     }
 
@@ -196,6 +224,10 @@ class MainActivity: FlutterFragmentActivity() {
 
     private var ipnState: Ipn.State = Ipn.State.NoState
     fun onIpnStateChanged(state: Ipn.State) {
+        if (vpnViewModel == null) {
+            Log.w(LOG_TAG, "VPN ViewModel is not initialized yet")
+            return
+        }
         val isPrepared = vpnViewModel.vpnPrepared.value
         Log.d(LOG_TAG, "$ipnState -> $state vpn isPrepared=$isPrepared")
         if (ipnState != state && state == Ipn.State.Running) {

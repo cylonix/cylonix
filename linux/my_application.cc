@@ -1,11 +1,19 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <signal.h>
+#include <stdlib.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+
+// Workaround for Flutter 3.38+ GL context cleanup crash on exit.
+// See: https://github.com/flutter/flutter/issues/XXXXX
+static void ignore_sigabrt_on_exit(void) {
+  signal(SIGABRT, SIG_IGN);
+}
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -86,6 +94,10 @@ static gboolean my_application_local_command_line(GApplication* application, gch
 static void my_application_dispose(GObject *object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+
+  // Ignore SIGABRT during shutdown to work around Flutter GL context cleanup crash.
+  ignore_sigabrt_on_exit();
+
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 

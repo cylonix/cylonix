@@ -52,14 +52,22 @@ class _PeerListState extends State<PeerList> {
             _searchFocusNode.unfocus();
           },
           child: Column(
+            spacing: 12,
             children: [
-              _buildSearchBar(context, ref),
+              Container(
+                constraints: _isLargeDisplay
+                    ? const BoxConstraints(maxWidth: 800)
+                    : null,
+                child: _buildSearchBar(context, ref),
+              ),
               showNoResults
                   ? _buildNoResults(context)
                   : Expanded(
                       child: Padding(
-                        padding: const EdgeInsetsGeometry.symmetric(
-                          horizontal: 20,
+                        padding: const EdgeInsetsGeometry.only(
+                          left: 20,
+                          right: 20,
+                          bottom: 20,
                         ),
                         child: _buildPeersList(context, filteredSets, ref),
                       ),
@@ -69,6 +77,10 @@ class _PeerListState extends State<PeerList> {
         );
       },
     );
+  }
+
+  bool get _isLargeDisplay {
+    return MediaQuery.of(context).size.width >= 1200.0;
   }
 
   Widget _buildSearchField(BuildContext context) {
@@ -100,7 +112,7 @@ class _PeerListState extends State<PeerList> {
       ),
       child: Row(
         children: [
-          Flexible(
+          Expanded(
             child: isAndroidTV ? Container() : _buildSearchField(context),
           ),
           Checkbox.adaptive(
@@ -164,47 +176,151 @@ class _PeerListState extends State<PeerList> {
   Color get _offlineColor =>
       isApple() ? CupertinoColors.systemGrey : Theme.of(context).disabledColor;
 
-  Widget _userTitle(UserProfile? user, WidgetRef ref) {
+  Widget _userTitle(PeerSet peerSet, WidgetRef ref) {
+    final user = peerSet.user;
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final isSharingUser = peerSet.isSharee || peerSet.isSharer;
     final style = isApple()
-        ? TextStyle(color: CupertinoColors.label.resolveFrom(context))
-        : null;
+        ? isSharingUser
+            ? TextStyle(
+                fontWeight: FontWeight.w600,
+                color: CupertinoColors.systemBlue.resolveFrom(context))
+            : TextStyle(color: CupertinoColors.label.resolveFrom(context))
+        : isSharingUser
+            ? Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600, color: Colors.blue)
+            : Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600);
     if (user == null) {
       return Text('Unknown User', style: style);
     }
-    if (user.displayName.toLowerCase().endsWith('@privaterelay.appleid.com')) {
-      return Column(
-        spacing: 8,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(user.displayName.split('@').first, style: style),
-          Text(
-            'Apple Private Relay',
+    final isApplePrivateRelay =
+        user.displayName.toLowerCase().endsWith('@privaterelay.appleid.com');
+
+    final title = Text(
+      isApplePrivateRelay
+          ? "Apple Private Relay " +
+              user.displayName.split('@').first +
+              (isSharingUser ? '*' : '')
+          : (user.displayName.isNotEmpty ? user.displayName : 'Unknown User') +
+              (isSharingUser ? '*' : ''),
+      style: style,
+    );
+    final subTitle = isSharingUser
+        ? Text(
+            '* ' +
+                (peerSet.isSharee
+                    ? 'Current device is shared to this user. '
+                    : '') +
+                (peerSet.isSharer ? 'This user shared device with you.' : ''),
             style: TextStyle(
               fontSize: 12,
               color: isApple()
                   ? CupertinoColors.secondaryLabel.resolveFrom(context)
                   : Colors.grey,
             ),
-          ),
-        ],
+          )
+        : null;
+    final child = Column(
+      spacing: 4,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        title,
+        if (subTitle != null) subTitle,
+      ],
+    );
+
+    final isSmallDisplay = MediaQuery.of(context).size.width < 500;
+    if (isSmallDisplay && subTitle != null) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        minLeadingWidth: 0,
+        title: title,
+        onTap: () {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog.adaptive(
+              title: title,
+              content: subTitle,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          );
+        },
       );
     }
-    final child = Text(
-      user.displayName.isNotEmpty ? user.displayName : 'Unknown User',
-      style: style,
-    );
     if (isAndroidTV) {
-      return Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8.0),
-          onTap: () {},
-          child: Padding(padding: const EdgeInsets.all(8.0), child: child),
-        ),
+      return ListTile(
+        onTap: () {},
+        minLeadingWidth: 0,
+        title: title,
+        subtitle: subTitle,
       );
     }
     return child;
+  }
+
+  Widget _fitWithinMaxWidth(Widget child) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          constraints: const BoxConstraints(
+            maxWidth: 760.0,
+          ),
+          child: child,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTitle(PeerSet peerSet, int filteredPeersLength, WidgetRef ref) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final smallDisplay = MediaQuery.of(context).size.width < 500;
+    final child = Row(
+      spacing: isAndroidTV ? 0 : 12,
+      children: [
+        if (!smallDisplay)
+          AdaptiveAvatar(
+            user: peerSet.user,
+            radius: 20,
+          ),
+        Expanded(child: _userTitle(peerSet, ref)),
+        Text(
+          filteredPeersLength == 1
+              ? '1 device'
+              : '$filteredPeersLength devices',
+          style: TextStyle(
+            color: isApple()
+                ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                : Theme.of(context).textTheme.bodyMedium?.color,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+    return _isLargeDisplay ? _fitWithinMaxWidth(child) : child;
+  }
+
+  double _getLeadingSizeForPeerSet(PeerSet peerSet) {
+    if (peerSet.peers
+        .any((peer) => peer.isExitNode && (peer.isJailed ?? false))) {
+      return 48.0;
+    } else if (peerSet.peers
+        .any((peer) => peer.isExitNode || (peer.isJailed ?? false))) {
+      return 32.0;
+    } else {
+      return 20.0;
+    }
   }
 
   Widget _buildPeersList(
@@ -222,6 +338,7 @@ class _PeerListState extends State<PeerList> {
       slivers: [
         for (final peerSet in peerSets)
           () {
+            final leadingSize = _getLeadingSizeForPeerSet(peerSet);
             final filteredPeers = _onlineOnly
                 ? peerSet.peers.where((peer) => isOnline(peer)).toList()
                 : peerSet.peers;
@@ -236,60 +353,49 @@ class _PeerListState extends State<PeerList> {
                     borderRadius: BorderRadius.circular(12.0),
                   ),
                   automaticallyImplyLeading: false,
-                  expandedHeight: 120.0,
+                  collapsedHeight: 100.0,
+                  expandedHeight: _isLargeDisplay ? 100.0 : 140.0,
+                  primary: false,
+                  leadingWidth: 0,
+                  centerTitle: false,
+                  forceMaterialTransparency: _isLargeDisplay,
                   backgroundColor: isApple()
                       ? appleScaffoldBackgroundColor(context)
                       : Theme.of(context).colorScheme.surface,
-                  title: isAndroidTV ? _userTitle(peerSet.user, ref) : null,
-                  flexibleSpace: isAndroidTV
-                      ? null
-                      : FlexibleSpaceBar(
-                          titlePadding: const EdgeInsets.symmetric(
-                            horizontal: 16.0,
+                  titleSpacing: 0,
+                  title: _isLargeDisplay
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
                             vertical: 8.0,
                           ),
-                          centerTitle: false,
-                          title: _userTitle(peerSet.user, ref),
-                        ),
-                  actions: [
-                    if (isAndroidTV)
-                      Text(
-                        filteredPeers.length == 1
-                            ? '1 device'
-                            : '${filteredPeers.length} devices',
-                      )
-                  ],
-                  bottom: isAndroidTV
+                          color: isAndroidTV
+                              ? null
+                              : isApple()
+                                  ? appleScaffoldBackgroundColor(context)
+                                  : Theme.of(context).colorScheme.surface,
+                          child: _buildTitle(
+                            peerSet,
+                            filteredPeers.length,
+                            ref,
+                          ),
+                        )
+                      : null,
+                  flexibleSpace: _isLargeDisplay
                       ? null
-                      : PreferredSize(
-                          preferredSize: const Size.fromHeight(30.0),
-                          child: Padding(
-                            padding: const EdgeInsets.only(
-                              right: 8.0,
-                              bottom: 8.0,
+                      : FlexibleSpaceBar(
+                          centerTitle: false,
+                          title: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10.0,
+                              vertical: 8.0,
                             ),
-                            child: Row(
-                              children: [
-                                Expanded(child: Container()),
-                                Text(
-                                  filteredPeers.length == 1
-                                      ? '1 device'
-                                      : '${filteredPeers.length} devices',
-                                  textAlign: TextAlign.end,
-                                  style: TextStyle(
-                                    color: isApple()
-                                        ? CupertinoColors.secondaryLabel
-                                            .resolveFrom(context)
-                                        : Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.color,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
+                            child: _buildTitle(
+                              peerSet,
+                              filteredPeers.length,
+                              ref,
                             ),
                           ),
+                          expandedTitleScale: 1.2,
                         ),
                   pinned: !isAndroidTV,
                 ),
@@ -297,11 +403,23 @@ class _PeerListState extends State<PeerList> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final peer = filteredPeers[index];
-                      return _buildPeer(peer, isOnline(peer));
+                      final child = _buildPeer(
+                        peer,
+                        isOnline(peer),
+                        leadingSize,
+                      );
+                      if (!_isLargeDisplay) {
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 10.0),
+                          child: child,
+                        );
+                      }
+                      return _fitWithinMaxWidth(child);
                     },
                     childCount: filteredPeers.length,
                   ),
                 ),
+                const SizedBox(height: 32.0),
               ],
             );
           }()
@@ -309,11 +427,15 @@ class _PeerListState extends State<PeerList> {
     );
   }
 
-  Widget _buildPeer(Node peer, bool online) {
+  Widget _buildPeer(Node peer, bool online, double leadingSize) {
     final leading = [
+      AdaptiveOnlineIcon(
+        online: online,
+        disabledColor: Theme.of(context).disabledColor,
+      ),
       if (peer.isExitNode)
         Padding(
-          padding: const EdgeInsets.only(right: 4),
+          padding: const EdgeInsets.only(left: 4),
           child: Icon(
             isApple()
                 ? CupertinoIcons.arrow_up_right_circle
@@ -322,10 +444,6 @@ class _PeerListState extends State<PeerList> {
             size: 12,
           ),
         ),
-      AdaptiveOnlineIcon(
-        online: online,
-        disabledColor: Theme.of(context).disabledColor,
-      ),
       if (peer.isJailed ?? false)
         Padding(
           padding: const EdgeInsets.only(left: 4),
@@ -338,13 +456,15 @@ class _PeerListState extends State<PeerList> {
     ];
     return AdaptiveListTile(
       backgroundColor: Colors.transparent,
-      title: Text(peer.name,
-          style: isApple()
-              ? null
-              : Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w500)),
+      title: Text(
+        peer.displayName,
+        style: isApple()
+            ? null
+            : Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(fontWeight: FontWeight.w500),
+      ),
       subtitle: Text(
         peer.addresses.join(', '),
         style: isApple()
@@ -358,7 +478,7 @@ class _PeerListState extends State<PeerList> {
         mainAxisSize: MainAxisSize.min,
         children: leading,
       ),
-      leadingSize: leading.length > 2 ? 50 : 30,
+      leadingSize: leadingSize,
       dense: true,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       onTap: () => widget.onPeerTap(peer),

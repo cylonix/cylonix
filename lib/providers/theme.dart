@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/platform.dart';
+import '../viewmodels/state_notifier.dart';
 import '../theme.dart';
 
 const _themePreferenceKey = 'theme_mode';
@@ -42,11 +42,21 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
     ref.listen(systemBrightnessProvider, (previous, current) {
       _handleSystemChange(current.$1, current.$2);
     });
+    // Listen to Android TV mode changes and update theme accordingly
+    ref.listen(isAndroidTVProvider, (previous, current) {
+      if (current) {
+        state = ThemeMode.dark;
+      } else if (previous == true && current == false) {
+        // When disabling Android TV mode, revert to system theme
+        state = ThemeMode.system;
+      }
+    });
   }
 
   Future<void> _loadTheme() async {
     // For android TV, we default to dark mode
-    if (isNativeAndroidTV) {
+    final isAndroidTV = ref.read(isAndroidTVProvider);
+    if (isAndroidTV) {
       state = ThemeMode.dark;
       return;
     }

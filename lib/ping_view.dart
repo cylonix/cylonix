@@ -45,7 +45,7 @@ class PingView extends ConsumerWidget {
         backgroundColor: CupertinoColors.systemBackground.resolveFrom(context),
         automaticallyImplyLeading: false,
         transitionBetweenRoutes: false,
-        middle: Text('Ping ${peer.computedName}'),
+        middle: Text('Ping ${peer.displayName}'),
         trailing: _actionButton(isPinging, ref, context),
       ),
       child: SafeArea(
@@ -60,7 +60,7 @@ class PingView extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text('Ping ${peer.computedName}'),
+        title: Text('Ping ${peer.displayName}'),
         actions: [
           _actionButton(isPinging, ref, context),
         ],

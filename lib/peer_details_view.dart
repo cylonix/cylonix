@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'dart:convert';
-import 'package:cylonix/models/platform.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +11,7 @@ import 'ping_view.dart';
 import 'providers/ipn.dart';
 import 'utils/utils.dart';
 import 'viewmodels/peer_details.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/tv_widgets.dart';
 
@@ -230,6 +230,56 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
     );
   }
 
+  Widget _buildNodeJsonSection(BuildContext context, Node node) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+    return AdaptiveListSection.insetGrouped(
+      header: _buildSectionHeader(context, 'Node Data'),
+      children: [
+        AdaptiveListTile(
+            leading: const Icon(CupertinoIcons.info_circle),
+            title: Text(
+              _showNodeJson ? "Close" : "Open",
+            ),
+            trailing: Icon(
+              _showNodeJson
+                  ? CupertinoIcons.chevron_up
+                  : isAndroidTV
+                      ? CupertinoIcons.chevron_right
+                      : CupertinoIcons.chevron_down,
+            ),
+            onTap: () {
+              setState(
+                () {
+                  _showNodeJson = !_showNodeJson;
+                },
+              );
+              if (_showNodeJson && isAndroidTV) {
+                const encoder = JsonEncoder.withIndent('  ');
+                final prettyJson = encoder.convert(node.toJson());
+
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => Scaffold(
+                      appBar: AppBar(
+                        title: const Text('Node Data'),
+                      ),
+                      body: ScrollableTextTV(longText: prettyJson),
+                    ),
+                  ),
+                );
+                _showNodeJson = false;
+              }
+            }),
+        if (_showNodeJson && !isAndroidTV) ...[
+          _buildNodeJson(context, node),
+        ],
+      ],
+      footer: const AdaptiveGroupedFooter(
+        'Node data in JSON format for troubleshooting purposes.',
+      ),
+    );
+  }
+
   Widget _buildContent(BuildContext context, Node node) {
     final List<Widget> infos = [];
     _getInfos(node).forEach(
@@ -250,52 +300,8 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
         AdaptiveListSection.insetGrouped(
           children: infos,
         ),
-        AdaptiveListSection.insetGrouped(
-          header: _buildSectionHeader(context, 'Node Data'),
-          children: [
-            AdaptiveListTile(
-                leading: const Icon(CupertinoIcons.info_circle),
-                title: Text(
-                  _showNodeJson ? "Close" : "Open",
-                ),
-                trailing: Icon(
-                  _showNodeJson
-                      ? CupertinoIcons.chevron_up
-                      : isNativeAndroidTV
-                          ? CupertinoIcons.chevron_right
-                          : CupertinoIcons.chevron_down,
-                ),
-                onTap: () {
-                  setState(
-                    () {
-                      _showNodeJson = !_showNodeJson;
-                    },
-                  );
-                  if (_showNodeJson && isNativeAndroidTV) {
-                    const encoder = JsonEncoder.withIndent('  ');
-                    final prettyJson = encoder.convert(node.toJson());
-
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => Scaffold(
-                          appBar: AppBar(
-                            title: const Text('Node Data'),
-                          ),
-                          body: ScrollableTextTV(longText: prettyJson),
-                        ),
-                      ),
-                    );
-                    _showNodeJson = false;
-                  }
-                }),
-            if (_showNodeJson && !isNativeAndroidTV) ...[
-              _buildNodeJson(context, node),
-            ],
-          ],
-          footer: const AdaptiveGroupedFooter(
-            'Node data in JSON format for troubleshooting purposes.',
-          ),
-        ),
+        if (!node.isShareeNode || node.isJailed == true)
+          _buildNodeJsonSection(context, node),
       ],
     );
     return Center(
@@ -309,7 +315,9 @@ class _PeerDetailsViewState extends ConsumerState<PeerDetailsView> {
   Widget _buildNodeJson(BuildContext context, Node node) {
     const encoder = JsonEncoder.withIndent('  ');
     final prettyJson = encoder.convert(node.toJson());
-    if (isNativeAndroidTV) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+
+    if (isAndroidTV) {
       return Padding(
         padding: const EdgeInsets.all(16.0),
         child: Text(

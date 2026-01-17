@@ -632,6 +632,7 @@ class AdaptiveListTile extends StatelessWidget {
       leading: leading,
       trailing: trailing ?? additionalInfo,
       subtitle: subtitle,
+      minLeadingWidth: leadingSize,
       onTap: onTap,
     );
     return isApple()

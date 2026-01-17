@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/alert.dart';
-import 'models/platform.dart';
 import 'utils/utils.dart';
 import 'viewmodels/settings.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_chip.dart';
 import 'widgets/alert_dialog_widget.dart';
@@ -99,11 +99,12 @@ class SubnetRoutingView extends ConsumerWidget {
   }
 
   void _editRoute(BuildContext context, WidgetRef ref, String route) async {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
     try {
       ref.read(subnetRoutingProvider.notifier).startEditingRoute(route);
       await AdaptiveModalPopup(
         height:
-            isNativeAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
+            isAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
         child: const EditSubnetRoutePopup(),
       ).show(context, adaptive: false);
     } finally {

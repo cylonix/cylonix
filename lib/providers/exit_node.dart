@@ -146,7 +146,10 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
         exitNodeID: node?.id,
         exitNodeIDSet: true,
       );
-      await ref.read(ipnStateNotifierProvider.notifier).editPrefs(prefs);
+      await ref.read(ipnStateNotifierProvider.notifier).editPrefs(
+            prefs,
+            timeOutMilliseconds: 20000, // Allow more time for exit node change
+          );
     } finally {
       ref.read(exitNodeLoadingProvider.notifier).setLoading(false);
     }

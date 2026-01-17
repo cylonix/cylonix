@@ -508,14 +508,22 @@ class IpnService {
     }
   }
 
-  Future<IpnPrefs> editPrefs(MaskedPrefs edits) async {
+  Future<IpnPrefs> editPrefs(
+    MaskedPrefs edits, {
+    int timeOutMilliseconds = 10000,
+  }) async {
     final result = _useHttpLocalApi
         ? await _sendCommandOverHttp(
             Uri.parse('$_localBaseURL/prefs'),
             'PATCH',
             body: edits,
+            timeoutMilliseconds: timeOutMilliseconds,
           )
-        : await _sendCommand('edit_prefs', jsonEncode(edits));
+        : await _sendCommand(
+            'edit_prefs',
+            jsonEncode(edits),
+            timeoutMilliseconds: timeOutMilliseconds,
+          );
     if (result.startsWith("Error")) {
       throw Exception("Failed to edit prefs: $result");
     }

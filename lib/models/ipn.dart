@@ -410,7 +410,9 @@ class Node with _$Node {
 
   bool get isMullvadNode => name.endsWith('.mullvad.ts.net.');
 
-  String get displayName => computedName ?? name;
+  String get displayName => isShareeNode && (isJailed != true)
+      ? "device of shared to user"
+      : (computedName ?? name);
 
   String get exitNodeName {
     final location = hostinfo?.location;
@@ -423,13 +425,17 @@ class Node with _$Node {
     return displayName;
   }
 
+  bool get isShareeNode => hostinfo?.shareeNode == true;
+
   bool get keyDoesNotExpire => keyExpiry == '0001-01-01T00:00:00Z';
 
   String get nameWithoutTrailingDot => name.replaceAll(RegExp(r'\.$'), '');
 
   List<DisplayAddress> get displayAddresses {
     final result = <DisplayAddress>[];
-    result.add(DisplayAddress(nameWithoutTrailingDot));
+    if (!isShareeNode || (isJailed == true)) {
+      result.add(DisplayAddress(nameWithoutTrailingDot));
+    }
     if (addresses.isNotEmpty) {
       result.addAll(addresses.map((addr) => DisplayAddress(addr)));
     }
@@ -714,10 +720,34 @@ class ClientVersion with _$ClientVersion {
 
 @freezed
 class PeerSet with _$PeerSet {
+  const PeerSet._();
+
   const factory PeerSet({
     UserProfile? user,
     required List<Node> peers,
   }) = _PeerSet;
+
+  // Since a node is shared to all the nodes of a user, we can check if any peer
+  // is a sharee. For sharee nodes, we hide the name and display a generic label.
+  bool get isSharee {
+    for (final peer in peers) {
+      if (peer.isShareeNode) return true;
+    }
+    return false;
+  }
+
+  // If any peer of the user is jailed, this means the peer is a node shared
+  // into us by another user. The user of this peer is then a sharer user
+  // and we can display a label indicating that.
+  // TODO: Note that we are using a jailed state as an indicator of a sharer.
+  // If a node can be jailed for other reasons in the future, this logic
+  // might need to be revisited.
+  bool get isSharer {
+    for (final peer in peers) {
+      if (peer.isJailed == true) return true;
+    }
+    return false;
+  }
 }
 
 class PeerCategorizer {
