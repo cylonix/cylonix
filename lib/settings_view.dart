@@ -353,7 +353,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 'Advanced Options',
               ),
               children: [
-                if (true || Platform.isAndroid && !isNativeAndroidTV)
+                if (Platform.isAndroid && !isNativeAndroidTV)
                   AdaptiveListTile.notched(
                     title: const Text('Enable Android TV Mode'),
                     subtitle: const Text('Optimize for Android TV'),
@@ -454,8 +454,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   void _showDNSQueryBottomSheet() async {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     await AdaptiveModalPopup(
-      height:
-          isAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
+      height: isAndroidTV ? MediaQuery.of(context).size.height * 0.9 : null,
       child: DNSQuery(
         onQuery: (String name) async {
           return await ref

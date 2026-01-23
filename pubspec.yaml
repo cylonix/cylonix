@@ -4,7 +4,7 @@ description: Cross platform client app for cylonix services
 # Make sure the version code (the number behind the '+') is higher than the
 # previous version. Android requires the version code to be always higher
 # when updating the app.
-version: 1.0.9+77
+version: 1.0.10+77
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `pub publish`. This is preferred for private packages.
@@ -130,5 +130,8 @@ flutter:
     - lib/assets/images/cylonix_512.png
     - lib/assets/images/landing-banner.webp
     - lib/assets/images/cylonix.ico
+    - lib/assets/images/cylonix_32_gray.png
     - lib/assets/images/cylonix_connected.ico
+    - lib/assets/images/cylonix_connected_32_gray.png
     - lib/assets/images/cylonix_disconnected.ico
+    - lib/assets/images/cylonix_disconnected_32_gray.png

@@ -52,7 +52,7 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
   void initState() {
     super.initState();
     _initLogger();
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       windowManager.addListener(this);
     }
     WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged =
@@ -66,7 +66,7 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
 
   @override
   void dispose() {
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       windowManager.removeListener(this);
     }
     super.dispose();
@@ -97,14 +97,15 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
     await showAlertDialog(
       context,
       'Minimizing to System Tray',
-      'Cylonix is being minimized to the system tray instead of closing the '
-          'app.\n\nTo exit the app, right-click on the Cylonix icon in the '
-          'system tray and select "Exit".',
+      '\nCylonix is being minimized to the system tray instead of closing the '
+          'app.\n\nTo exit the app, '
+          '${Platform.isWindows ? "right-click" : "click"} on the Cylonix icon '
+          'in the system tray and select "Exit".',
       child: StatefulBuilder(
         builder: (context, setDialogState) {
           return Row(
             children: [
-              Checkbox(
+              Checkbox.adaptive(
                 value: dontShowAgain,
                 onChanged: (value) {
                   setDialogState(() {

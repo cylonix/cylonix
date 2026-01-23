@@ -60,7 +60,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     state = const AsyncValue.data(IpnState(vpnState: VpnState.connecting));
 
     try {
-      if (Platform.isWindows) {
+      if (Platform.isWindows || Platform.isMacOS) {
         SystemTrayService.setCallbacks(
           onConnect: () async {
             _logger.d("System tray connect clicked");
@@ -285,7 +285,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   void updateSystemTrayStatus() {
-    if (!Platform.isWindows) {
+    if (!Platform.isWindows && !Platform.isMacOS) {
       return;
     }
     final vpnState = state.valueOrNull?.vpnState ?? VpnState.disconnected;

@@ -551,9 +551,7 @@ class _LogConsoleState extends State<LogConsole> {
     return Builder(
       builder: (c) => IconButton(
         icon: Icon(
-          _isCupertino
-              ? CupertinoIcons.download_circle
-              : Icons.download_rounded,
+          _isCupertino ? CupertinoIcons.folder : Icons.download_rounded,
           color: _buttonColor,
           size: 20,
         ),

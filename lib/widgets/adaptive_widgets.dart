@@ -416,9 +416,7 @@ class AdaptiveAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: isApple()
-          ? isDarkMode(context)
-              ? CupertinoColors.systemGrey
-              : CupertinoColors.systemGrey4
+          ? CupertinoColors.systemGrey4.resolveFrom(context)
           : Theme.of(context).colorScheme.secondaryContainer,
       backgroundImage: (user?.profilePicURL ?? "").isNotEmpty
           ? NetworkImage(user!.profilePicURL)
@@ -430,6 +428,7 @@ class AdaptiveAvatar extends StatelessWidget {
                   style: isApple()
                       ? TextStyle(
                           fontSize: radius,
+                          color: CupertinoColors.label.resolveFrom(context),
                         )
                       : Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontSize: radius,

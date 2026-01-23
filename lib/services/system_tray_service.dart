@@ -21,11 +21,16 @@ class SystemTrayService {
   static Future<void> Function()? _onDisconnect;
 
   // Icon paths (asset paths for bundled icons)
-  static const String _iconConnected =
-      'lib/assets/images/cylonix_connected.ico';
-  static const String _iconDisconnected =
-      'lib/assets/images/cylonix_disconnected.ico';
-  static const String _iconDefault = 'lib/assets/images/cylonix.ico';
+  // Windows uses .ico files, macOS uses .png files
+  static String get _iconConnected => Platform.isWindows
+      ? 'lib/assets/images/cylonix_connected.ico'
+      : 'lib/assets/images/cylonix_32_gray.png';
+  static String get _iconDisconnected => Platform.isWindows
+      ? 'lib/assets/images/cylonix_disconnected.ico'
+      : 'lib/assets/images/cylonix_disconnected_32_gray.png';
+  static String get _iconDefault => Platform.isWindows
+      ? 'lib/assets/images/cylonix.ico'
+      : 'lib/assets/images/cylonix_32_gray.png';
 
   // Cache directory for generated icons (user-writable)
   static String? _cacheDir;
@@ -49,7 +54,7 @@ class SystemTrayService {
     Future<void> Function()? onConnect,
     Future<void> Function()? onDisconnect,
   }) async {
-    if (!Platform.isWindows) return;
+    if (!Platform.isWindows && !Platform.isMacOS) return;
     if (_isInitialized) return;
 
     _onConnect = onConnect;
@@ -57,7 +62,7 @@ class SystemTrayService {
 
     try {
       await _systemTray.initSystemTray(
-        title: "Cylonix",
+        title: Platform.isMacOS ? "" : "Cylonix",
         iconPath: _iconDefault,
         toolTip: "Cylonix - Disconnected",
       );
@@ -94,7 +99,9 @@ class SystemTrayService {
   static Future<String> _getIconCacheDir() async {
     if (_cacheDir != null) return _cacheDir!;
 
-    final appDir = await getApplicationSupportDirectory();
+    final appDir = await (Platform.isWindows
+        ? getApplicationSupportDirectory()
+        : getTemporaryDirectory());
     _cacheDir = p.join(appDir.path, 'tray_icons');
 
     // Ensure directory exists
@@ -113,7 +120,8 @@ class SystemTrayService {
     try {
       final initial = _displayName[0].toUpperCase();
       final cacheDir = await _getIconCacheDir();
-      final fullPath = p.join(cacheDir, 'cylonix_initial_$initial.bmp');
+      final extension = Platform.isWindows ? 'bmp' : 'png';
+      final fullPath = p.join(cacheDir, 'cylonix_initial_$initial.$extension');
       _logger.d("Initial icon path: $fullPath");
 
       // Check if we already generated this initial
@@ -133,7 +141,7 @@ class SystemTrayService {
     }
   }
 
-  /// Create a Windows-compatible BMP file with an initial letter
+  /// Create a Windows-compatible BMP file or a PNG file with an initial letter
   static Future<void> _createInitialIcon(String path, String initial) async {
     const size = 32;
 
@@ -141,13 +149,16 @@ class SystemTrayService {
     final canvas = ui.Canvas(recorder);
 
     // Fill with menu background color (light gray, similar to Windows menu)
-    final bgPaint = ui.Paint()
-      ..color = const ui.Color(0xFFF0F0F0) // Light gray background
-      ..style = ui.PaintingStyle.fill;
-    canvas.drawRect(
-      const ui.Rect.fromLTWH(0, 0, 32.0, 32.0),
-      bgPaint,
-    );
+    // Or transparent for macOS to blend with the menu bar
+    if (Platform.isWindows) {
+      final bgPaint = ui.Paint()
+        ..color = const ui.Color(0xFFF0F0F0) // Light gray background
+        ..style = ui.PaintingStyle.fill;
+      canvas.drawRect(
+        const ui.Rect.fromLTWH(0, 0, 32.0, 32.0),
+        bgPaint,
+      );
+    }
 
     // Draw blue circle
     final circlePaint = ui.Paint()
@@ -180,18 +191,25 @@ class SystemTrayService {
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(size, size);
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-
-    if (byteData == null) {
-      throw Exception('Failed to convert image to bytes');
+    // On Windows we need a BMP; on macOS write PNG bytes directly (preserves alpha).
+    if (Platform.isWindows) {
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) throw Exception('Failed to convert image to bytes');
+      final rgbaBytes = byteData.buffer.asUint8List();
+      final bmpBytes = _createWindows24BitBmp(rgbaBytes, size, size);
+      await File(path).writeAsBytes(bmpBytes);
+      _logger.d(
+          "Created Windows BMP file at $path, size: ${bmpBytes.length} bytes");
+    } else {
+      final pngData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (pngData == null) {
+        throw Exception('Failed to convert image to PNG bytes');
+      }
+      await File(path).writeAsBytes(pngData.buffer.asUint8List());
+      _logger
+          .d("Created PNG file at $path, size: ${pngData.lengthInBytes} bytes");
     }
-
-    final rgbaBytes = byteData.buffer.asUint8List();
-    final bmpBytes = _createWindows24BitBmp(rgbaBytes, size, size);
-    await File(path).writeAsBytes(bmpBytes);
-
-    _logger
-        .d("Created Windows BMP file at $path, size: ${bmpBytes.length} bytes");
   }
 
   /// Download avatar from URL and cache it locally
@@ -226,22 +244,28 @@ class SystemTrayService {
       // Resize to 32x32 for menu icon
       final resized = img.copyResize(originalImage, width: 32, height: 32);
 
-      // Apply circular mask with light gray background
+      // Apply circular mask with light gray (Windows) or transparent (macOS)
       final circularAvatar = _applyCircularMask(resized);
-
-      // Convert to RGBA bytes
-      final rgbaBytes = _imageToRgba(circularAvatar);
 
       // Get cache directory and full path
       final cacheDir = await _getIconCacheDir();
-      final fullPath = p.join(cacheDir, 'cylonix_avatar.bmp');
+      final extension = Platform.isWindows ? 'bmp' : 'png';
+      final fullPath = p.join(cacheDir, 'cylonix_avatar.$extension');
 
-      // Create Windows-compatible BMP
-      final bmpBytes = _createWindows24BitBmp(rgbaBytes, 32, 32);
-      await File(fullPath).writeAsBytes(bmpBytes);
+      // Create platform-appropriate icon format
+      if (Platform.isWindows) {
+        // Convert to RGBA bytes and create BMP for Windows
+        final rgbaBytes = _imageToRgba(circularAvatar);
+        final bmpBytes = _createWindows24BitBmp(rgbaBytes, 32, 32);
+        await File(fullPath).writeAsBytes(bmpBytes);
+      } else {
+        // macOS: encode the processed img.Image directly to PNG to preserve alpha
+        final pngBytes = Uint8List.fromList(img.encodePng(circularAvatar));
+        await File(fullPath).writeAsBytes(pngBytes);
+      }
 
       _cachedAvatarPath = fullPath;
-      _logger.d("Avatar saved to: $fullPath, size: ${bmpBytes.length} bytes");
+      _logger.d("Avatar saved to: $fullPath");
       return fullPath;
     } catch (e) {
       _logger.e("Failed to get avatar: $e");
@@ -249,15 +273,26 @@ class SystemTrayService {
     }
   }
 
-  /// Apply circular mask to an image with light gray background
+  /// Apply circular mask to an image.
+  ///
+  /// On Windows we use a light gray background to match menu styling.
+  /// On macOS we use a fully transparent background so the avatar blends
+  /// with the menu bar/tray.
   static img.Image _applyCircularMask(img.Image source) {
     final size = source.width; // Assume square image
-    final result = img.Image(width: size, height: size);
+    final result = img.Image(width: size, height: size, numChannels: 4);
     final center = size / 2;
     final radius = size / 2 - 1; // Slightly smaller to show background edge
 
-    // Background color (light gray)
-    final bgColor = img.ColorRgba8(0xF0, 0xF0, 0xF0, 0xFF);
+    // Background color: light gray for Windows, transparent elsewhere
+    final bgColor = Platform.isWindows
+        ? img.ColorRgba8(0xF0, 0xF0, 0xF0, 0xFF)
+        : img.ColorRgba8(0x00, 0x00, 0x00, 0x00);
+
+    img.Image rgbaImage = source;
+    if (source.numChannels == 3) {
+      rgbaImage = source.convert(numChannels: 4);
+    }
 
     for (int y = 0; y < size; y++) {
       for (int x = 0; x < size; x++) {
@@ -268,7 +303,7 @@ class SystemTrayService {
 
         if (distance <= radius * radius) {
           // Inside circle - use source pixel
-          result.setPixel(x, y, source.getPixel(x, y));
+          result.setPixel(x, y, rgbaImage.getPixel(x, y));
         } else {
           // Outside circle - use background color
           result.setPixel(x, y, bgColor);
@@ -498,6 +533,7 @@ class SystemTrayService {
     String? avatarUrl,
   }) async {
     if (!_isInitialized) return;
+    if (!Platform.isWindows && !Platform.isMacOS) return;
 
     // Check if anything changed to avoid unnecessary updates
     final bool stateChanged = _isConnected != isConnected ||

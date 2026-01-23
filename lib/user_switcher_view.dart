@@ -359,21 +359,7 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     return AdaptiveListTile(
       title: Text(u.displayName),
       subtitle: subtitle.isEmpty ? null : Text(subtitle),
-      leading: CircleAvatar(
-        backgroundColor: isApple() ? CupertinoColors.systemGrey5 : null,
-        backgroundImage:
-            u.profilePicURL.isNotEmpty ? NetworkImage(u.profilePicURL) : null,
-        child: u.profilePicURL.isEmpty
-            ? Text(
-                u.displayName.characters.first.toUpperCase(),
-                style: TextStyle(
-                  color: isApple()
-                      ? CupertinoColors.label.resolveFrom(context)
-                      : null,
-                ),
-              )
-            : null,
-      ),
+      leading: AdaptiveAvatar(user: u, radius: isApple() ? 20 : 12),
       trailing: isSwitching || _deletingProfileID == user.id
           ? const AdaptiveLoadingWidget(maxWidth: 18)
           : isCurrentUser

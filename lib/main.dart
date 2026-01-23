@@ -26,8 +26,8 @@ void main(List<String> args) async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize system tray and window manager for Windows
-  if (Platform.isWindows) {
+  // Initialize system tray and window manager for Windows and macOS
+  if (Platform.isWindows || Platform.isMacOS) {
     await windowManager.ensureInitialized();
     await windowManager.setPreventClose(true);
     await SystemTrayService.init();
@@ -81,6 +81,8 @@ Future<void> _initLogger() async {
 Future<void> _loadEnv() async {
   try {
     await dotenv.load(fileName: ".env.local", isOptional: true);
+  } on EmptyEnvFileError catch (e) {
+    _logger.w("Optional env file not found: $e. Continuing without it.");
   } catch (e) {
     _logger.e("Failed to load the optional env file: $e");
   }

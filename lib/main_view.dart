@@ -459,6 +459,7 @@ class _MainViewState extends ConsumerState<MainView> {
         ),
       );
     }
+    final leading = _buildLeading(context, ref);
     return CupertinoNavigationBar(
       transitionBetweenRoutes: false,
       heroTag: "MainView",
@@ -467,7 +468,8 @@ class _MainViewState extends ConsumerState<MainView> {
               mainAxisSize: MainAxisSize.min,
               spacing: 8,
               children: [
-                _buildLeading(context, ref),
+                leading ??
+                    (Platform.isMacOS ? const SizedBox(width: 60) : null),
                 _buildTitle(context, ref),
               ].nonNulls.toList(),
             )

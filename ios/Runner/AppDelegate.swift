@@ -504,7 +504,7 @@ import UserNotifications
 
     #if os(macOS)
         override func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
-            return true
+            return false
         }
 
         override func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool {

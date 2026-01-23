@@ -292,13 +292,22 @@ class _PeerListState extends State<PeerList> {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     final smallDisplay = MediaQuery.of(context).size.width < 500;
     final child = Row(
-      spacing: isAndroidTV ? 0 : 12,
+      spacing: _isLargeDisplay || isAndroidTV ? 0 : 12,
       children: [
         if (!smallDisplay)
-          AdaptiveAvatar(
-            user: peerSet.user,
-            radius: 20,
-          ),
+          _isLargeDisplay || isAndroidTV
+              ? Container(
+                  alignment: Alignment.centerLeft,
+                  width: 66,
+                  child: AdaptiveAvatar(
+                    user: peerSet.user,
+                    radius: 20,
+                  ),
+                )
+              : AdaptiveAvatar(
+                  user: peerSet.user,
+                  radius: 20,
+                ),
         Expanded(child: _userTitle(peerSet, ref)),
         Text(
           filteredPeersLength == 1
@@ -316,7 +325,10 @@ class _PeerListState extends State<PeerList> {
     return _isLargeDisplay || isAndroidTV ? _fitWithinMaxWidth(child) : child;
   }
 
-  double _getLeadingSizeForPeerSet(PeerSet peerSet) {
+  double _getLeadingSizeForPeerSet(PeerSet peerSet, WidgetRef ref) {
+    if (_isLargeDisplay || ref.watch(isAndroidTVProvider)) {
+      return 48.0;
+    }
     if (peerSet.peers
         .any((peer) => peer.isExitNode && (peer.isJailed ?? false))) {
       return 48.0;
@@ -343,7 +355,7 @@ class _PeerListState extends State<PeerList> {
       slivers: [
         for (final peerSet in peerSets)
           () {
-            final leadingSize = _getLeadingSizeForPeerSet(peerSet);
+            final leadingSize = _getLeadingSizeForPeerSet(peerSet, ref);
             final filteredPeers = _onlineOnly
                 ? peerSet.peers.where((peer) => isOnline(peer)).toList()
                 : peerSet.peers;
@@ -482,7 +494,7 @@ class _PeerListState extends State<PeerList> {
                 ?.copyWith(fontWeight: FontWeight.w300),
       ),
       leading: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: leading,
       ),
       leadingSize: leadingSize,
