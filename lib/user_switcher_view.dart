@@ -308,14 +308,14 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               isLoading: _isAddingProfile,
               onTap: _handleAddProfile,
             ),
-            _buildActionTile(
-              context,
-              leading: const Icon(CupertinoIcons.arrow_right_circle),
-              title: 'Reauthenticate',
-              isLoading: _isReauthenticating,
-              onTap: _handleReauthenticate,
-            ),
             if (loginProfile != null) ...[
+              _buildActionTile(
+                context,
+                leading: const Icon(CupertinoIcons.arrow_right_circle),
+                title: 'Reauthenticate',
+                isLoading: _isReauthenticating,
+                onTap: _handleReauthenticate,
+              ),
               _buildActionTile(
                 context,
                 leading: const Icon(CupertinoIcons.arrow_turn_up_left),
@@ -350,14 +350,20 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     final isCurrentUser = user.id == currentUser?.id;
     final isSwitching = user.id == _switchingUserId;
     final u = user.userProfile;
+    final isApplePrivateRelay =
+        u.displayName.toLowerCase().endsWith('@privaterelay.appleid.com');
+
     var subtitle = u.loginName != u.displayName ? u.loginName : '';
+    if (isApplePrivateRelay) {
+      subtitle = u.displayName.split('@').first;
+    }
     subtitle += showControlURL
         ? subtitle.isEmpty
             ? "Server: ${user.controlURL}"
             : "\nServer: ${user.controlURL}"
         : '';
     return AdaptiveListTile(
-      title: Text(u.displayName),
+      title: Text(isApplePrivateRelay ? 'Apple Private Relay' : u.displayName),
       subtitle: subtitle.isEmpty ? null : Text(subtitle),
       leading: AdaptiveAvatar(user: u, radius: isApple() ? 20 : 12),
       trailing: isSwitching || _deletingProfileID == user.id
@@ -632,13 +638,25 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   Future<void> _handleReauthenticate() async {
     if (_isReauthenticating) return;
     setState(() => _isReauthenticating = true);
+    final loginProfile = ref.read(currentLoginProfileProvider);
 
     try {
       // Start re-authentication process. Basically login and generate a new
       // node key for the current profile.
       await ref
           .read(ipnStateNotifierProvider.notifier)
-          .login(controlURL: ref.read(controlURLProvider));
+          .login(controlURL: loginProfile?.controlURL);
+
+      // Wait for login to rotate a new node key and then restart the VPN.
+      // Note re-authentication does not ask user to re-enter credentials.
+      // It uses existing session to generate a new node key.
+      //
+      // To completely re-authenticate, user may need to sign out and then
+      // sign in again.
+      //
+      // Since there is no state change on getting a new node key, we wait
+      // for a short duration before restarting the VPN.
+      await Future.delayed(const Duration(seconds: 2));
 
       await ref.read(ipnStateNotifierProvider.notifier).startVpn();
       final completer = Completer<void>();

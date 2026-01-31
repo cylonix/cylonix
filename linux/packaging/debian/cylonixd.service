@@ -11,7 +11,7 @@ ExecStart=/usr/sbin/cylonixd --tun cylonix0 \
     --statedir=/var/lib/cylonix \
     --socket=/run/cylonix/cylonixd.sock \
     --port=${PORT} $FLAGS
-ExecStartPost=/usr/bin/cylonixc set --operator ${OPERATOR}
+ExecStartPost=/usr/bin/cylonix set --operator ${OPERATOR}
 ExecStopPost=/usr/sbin/cylonixd --cleanup
 
 Restart=on-failure

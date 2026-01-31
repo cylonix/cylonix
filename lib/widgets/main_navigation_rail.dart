@@ -353,6 +353,10 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
 
   Widget _buildLeading(BuildContext context, UserProfile? user) {
     final profiles = ref.watch(loginProfilesProvider);
+    final isApplePrivateRelay =
+        user?.displayName.toLowerCase().endsWith('@privaterelay.appleid.com') ??
+            false;
+
     return Column(
       crossAxisAlignment:
           isApple() ? CrossAxisAlignment.start : CrossAxisAlignment.center,
@@ -374,7 +378,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
               if (_extended && user != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  user.displayName,
+                  isApplePrivateRelay
+                      ? "Apple Private Relay"
+                      : user.displayName,
                   style: isApple()
                       ? const TextStyle(
                           fontSize: 14,
@@ -382,6 +388,23 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
                       : Theme.of(context).textTheme.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
+                if (isApplePrivateRelay) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    user.displayName.split('@').first,
+                    style: isApple()
+                        ? TextStyle(
+                            fontSize: 12,
+                            color: CupertinoColors.secondaryLabel
+                                .resolveFrom(context),
+                          )
+                        : Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ],
               const SizedBox(height: 16),
             ],

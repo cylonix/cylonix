@@ -267,6 +267,7 @@ class _PeerListState extends State<PeerList> {
       return ListTile(
         onTap: () {},
         minLeadingWidth: 0,
+        contentPadding: EdgeInsets.zero,
         title: title,
         subtitle: subTitle,
       );
@@ -298,7 +299,7 @@ class _PeerListState extends State<PeerList> {
           _isLargeDisplay || isAndroidTV
               ? Container(
                   alignment: Alignment.centerLeft,
-                  width: 66,
+                  width: 64,
                   child: AdaptiveAvatar(
                     user: peerSet.user,
                     radius: 20,
@@ -494,7 +495,7 @@ class _PeerListState extends State<PeerList> {
                 ?.copyWith(fontWeight: FontWeight.w300),
       ),
       leading: Row(
-        mainAxisSize: MainAxisSize.max,
+        mainAxisSize: isApple() ? MainAxisSize.max : MainAxisSize.min,
         children: leading,
       ),
       leadingSize: leadingSize,

@@ -1,8 +1,9 @@
 [Desktop Entry]
 Name=Cylonix
+StartupWMClass=cylonix-app
 Comment=Open source secure network access
-Path=/usr/bin/cylonix
-Exec=cylonix
+Path=/usr/bin
+Exec=cylonix-app
 Icon=cylonix.png
 Terminal=false
 Type=Application

@@ -10,7 +10,7 @@ override_dh_auto_install:
 	mkdir -p $(CURDIR)/debian/cylonix/usr/sbin
 	install -m 755 ../../tailscale/tailscaled $(CURDIR)/debian/cylonix/usr/sbin/cylonixd
 	mkdir -p $(CURDIR)/debian/cylonix/usr/bin
-	install -m 755 ../../tailscale/tailscale $(CURDIR)/debian/cylonix/usr/bin/cylonixc
+	install -m 755 ../../tailscale/tailscale $(CURDIR)/debian/cylonix/usr/bin/cylonix
 	rm -f ../../tailscale/tailscale ../../tailscale/tailscaled
 
 	mkdir -p $(CURDIR)/debian/cylonix/lib/systemd/system
@@ -24,7 +24,7 @@ override_dh_auto_install:
 	cp -r ../../build/linux/x64/release/bundle/cylonix $(CURDIR)/debian/cylonix/opt/cylonix/.
 	cp -r ../../build/linux/x64/release/bundle/* $(CURDIR)/debian/cylonix/opt/cylonix/.
 	mkdir -p $(CURDIR)/debian/cylonix/usr/bin
-	ln -sf /opt/cylonix/cylonix $(CURDIR)/debian/cylonix/usr/bin/cylonix
+	ln -sf /opt/cylonix/cylonix $(CURDIR)/debian/cylonix/usr/bin/cylonix-app
 
 	mkdir -p $(CURDIR)/debian/cylonix/usr/share/applications
 	mkdir -p $(CURDIR)/debian/cylonix/usr/share/pixmaps
