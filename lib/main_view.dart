@@ -1184,6 +1184,7 @@ class _MainViewState extends ConsumerState<MainView> {
         mainAxisSize: MainAxisSize.min,
         spacing: 16,
         children: [
+          ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
           Icon(
             Icons.power_settings_new,
             size: 40,

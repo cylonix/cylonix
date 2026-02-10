@@ -125,6 +125,7 @@ class _ExitNodePickerState extends ConsumerState<ExitNodePicker> {
         netmap?.peers?.any((peer) => peer.stableID == exitNodeID) == true;
     final filteredNodes = _filterNodes(model.tailnetExitNodes);
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final exitNodeIDToNameMap = ref.watch(exitNodeIDToNameMapProvider);
 
     final children = [
       if (model.tailnetExitNodes.isNotEmpty && !isAndroidTV)
@@ -157,7 +158,8 @@ class _ExitNodePickerState extends ConsumerState<ExitNodePicker> {
             ExitNodeItem(
               node: ExitNode(
                 id: exitNodeID,
-                label: "$exitNodeID (Not connected! All Traffic is dropped)",
+                label: "${exitNodeIDToNameMap[exitNodeID]} [$exitNodeID] "
+                    "(Not connected! All Traffic is dropped)",
                 online: false,
                 selected: true,
               ),

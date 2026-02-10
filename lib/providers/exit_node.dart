@@ -4,6 +4,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
+import '../viewmodels/state_notifier.dart';
 import 'ipn.dart';
 
 class ExitNodeState {
@@ -79,6 +80,18 @@ class ExitNodePickerNotifier extends StateNotifier<ExitNodeState> {
         city: peer.hostinfo?.location?.city ?? '',
       );
     }).toList();
+
+    // Add mapping of exit node ID to name for all nodes (including offline)
+    // Merge with existing map in prefs to preserve names for offline nodes
+    // or nodes that disappeared from netmap. The map is used to show names for
+    // exit nodes that are selected but offline.
+    final exitNodeIDToNameMap = {
+      for (var node in allNodes) node.id!: node.label,
+    };
+    final currentMap = ref.read(exitNodeIDToNameMapProvider);
+    final mergedMap = Map<String, String>.from(currentMap)
+      ..addAll(exitNodeIDToNameMap);
+    ref.read(exitNodeIDToNameMapProvider.notifier).setValue(mergedMap);
 
     // Filter tailnet nodes (non-Mullvad)
     final tailnetNodes = allNodes.where((node) => !node.mullvad).toList()

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
 import '../providers/exit_node.dart';
 import '../providers/ipn.dart';
+import '../viewmodels/state_notifier.dart';
 import '../utils/utils.dart';
 import 'adaptive_widgets.dart';
 
@@ -39,6 +40,7 @@ class ExitNodeStatusWidget extends ConsumerWidget {
           exitNode,
           exitNodeID,
           isRunningExitNode,
+          ref,
         ),
       ],
     );
@@ -84,7 +86,7 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: CupertinoColors.systemRed.withOpacity(0.1),
+        color: CupertinoColors.systemRed.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -126,11 +128,14 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     Node? exitNode,
     String? exitNodeID,
     bool isRunningExitNode,
+    WidgetRef ref,
   ) {
     final bool isOffline = nodeState == NodeState.activeNotRunning;
+    final exitNodeIDToNameMap = ref.watch(exitNodeIDToNameMapProvider);
     var nodeName = exitNode?.name ?? "Not connected";
     if (exitNodeID != null && exitNode == null) {
-      nodeName = "$exitNodeID (Offline! All Traffic is dropped)";
+      nodeName = "${exitNodeIDToNameMap[exitNodeID]} [$exitNodeID] "
+          "(Offline! All Traffic is dropped)";
     }
     return Text(
       nodeState == NodeState.none
@@ -154,6 +159,7 @@ class ExitNodeStatusWidget extends ConsumerWidget {
     Node? exitNode,
     String? exitNodeID,
     bool isRunningExitNode,
+    WidgetRef ref,
   ) {
     final bool isActive = nodeState == NodeState.activeAndRunning;
     final bool isNotConnected = exitNode == null && exitNodeID != null;
@@ -166,6 +172,7 @@ class ExitNodeStatusWidget extends ConsumerWidget {
         exitNode,
         exitNodeID,
         isRunningExitNode,
+        ref,
       ),
       leading: nodeState == NodeState.none
           ? null

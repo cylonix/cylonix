@@ -1,6 +1,8 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/const.dart';
@@ -40,6 +42,11 @@ class PreferenceNotifier<T> extends StateNotifier<T> {
       case const (List<String>):
         await prefs.setStringList(key, value as List<String>);
         break;
+      case const (Map<String, String>):
+        // For Map<String, String>, we can serialize it as a JSON string
+        final jsonString = jsonEncode(value);
+        await prefs.setString(key, jsonString);
+        break;
       default:
         throw Exception('Unsupported type: $T');
     }
@@ -69,6 +76,13 @@ class PreferenceNotifier<T> extends StateNotifier<T> {
       case const (List<String>):
         final saved = _prefs!.getStringList(key);
         if (saved != null) state = saved as T;
+        break;
+      case const (Map<String, String>):
+        final jsonString = _prefs!.getString(key);
+        if (jsonString != null) {
+          final Map<String, dynamic> decoded = jsonDecode(jsonString);
+          state = decoded.map((k, v) => MapEntry(k, v.toString())) as T;
+        }
         break;
       default:
         throw Exception('Unsupported type: $T');
@@ -180,6 +194,16 @@ final hideMinimizeToTrayDialogProvider =
   return PreferenceNotifier(
     'hide_minimize_to_tray_dialog',
     defaultValue: false,
+    prefs: prefs,
+  );
+});
+
+final exitNodeIDToNameMapProvider = StateNotifierProvider<
+    PreferenceNotifier<Map<String, String>>, Map<String, String>>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'exit_node_id_to_name_map',
+    defaultValue: {},
     prefs: prefs,
   );
 });
