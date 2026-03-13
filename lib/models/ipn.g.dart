@@ -390,6 +390,7 @@ _$NodeImpl _$$NodeImplFromJson(Map<String, dynamic> json) => _$NodeImpl(
           ?.map((e) => e as String)
           .toList(),
       capMap: json['CapMap'] as Map<String, dynamic>?,
+      cap: (json['Cap'] as num?)?.toInt(),
       computedName: json['ComputedName'] as String?,
       computedNameWithHost: json['ComputedNameWithHost'] as String?,
     );
@@ -415,6 +416,7 @@ Map<String, dynamic> _$$NodeImplToJson(_$NodeImpl instance) =>
       'IsWireGuardOnly': instance.isWireGuardOnly,
       'Capabilities': instance.capabilities,
       'CapMap': instance.capMap,
+      'Cap': instance.cap,
       'ComputedName': instance.computedName,
       'ComputedNameWithHost': instance.computedNameWithHost,
     };

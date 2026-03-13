@@ -29,6 +29,7 @@
 		251B9A4F2DD4F4D1004B3BAF /* FileDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251B9A4D2DD4F4D1004B3BAF /* FileDropView.swift */; };
 		2569A93B2DCB3459006D00B7 /* BackgroundTaskManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2569A93A2DCB3459006D00B7 /* BackgroundTaskManager.swift */; };
 		2569A93D2DCB3A03006D00B7 /* UserDefaults+AtomicUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2569A93C2DCB3A03006D00B7 /* UserDefaults+AtomicUpdate.swift */; };
+		257520CF2F3BAAA9004C6003 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 257520CE2F3BAAA9004C6003 /* libresolv.9.tbd */; };
 		25A9F5112D939F930085BEBC /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25A9F5102D939F930085BEBC /* NetworkExtension.framework */; };
 		25A9F5192D939F930085BEBC /* CylonixNetworkExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 25A9F50F2D939F930085BEBC /* CylonixNetworkExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		25B0F0142D93B8C300222F78 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25B0EFF72D93B8C100222F78 /* Keychain.swift */; };
@@ -61,6 +62,7 @@
 		25B0F0302D93B8C300222F78 /* ringlogger.c in Sources */ = {isa = PBXBuildFile; fileRef = 25B0F0132D93B8C300222F78 /* ringlogger.c */; };
 		25E16CAF2D93FD4500370B6F /* LocalizationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E16CAE2D93FD4500370B6F /* LocalizationHelper.swift */; };
 		25F66A742D93D00A0076904B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A732D93D0090076904B /* AppDelegate.swift */; };
+		25CC000300000000000A0001 /* NativeSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000200000000000A0001 /* NativeSwitchView.swift */; };
 		25F66A8D2D93D1DF0076904B /* TunnelConfiguration+UapiConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A872D93D1DE0076904B /* TunnelConfiguration+UapiConfig.swift */; };
 		25F66A8E2D93D1DF0076904B /* MockTunnels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A882D93D1DE0076904B /* MockTunnels.swift */; };
 		25F66A8F2D93D1DF0076904B /* TunnelsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A892D93D1DE0076904B /* TunnelsManager.swift */; };
@@ -174,6 +176,7 @@
 		251B9A4D2DD4F4D1004B3BAF /* FileDropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileDropView.swift; path = ../apple/Sources/ShareExtension/FileDropView.swift; sourceTree = "<group>"; };
 		2569A93A2DCB3459006D00B7 /* BackgroundTaskManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackgroundTaskManager.swift; path = ../ios/Runner/BackgroundTaskManager.swift; sourceTree = "<group>"; };
 		2569A93C2DCB3A03006D00B7 /* UserDefaults+AtomicUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "UserDefaults+AtomicUpdate.swift"; path = "../ios/Runner/UserDefaults+AtomicUpdate.swift"; sourceTree = "<group>"; };
+		257520CE2F3BAAA9004C6003 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
 		25A9F50F2D939F930085BEBC /* CylonixNetworkExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CylonixNetworkExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		25A9F5102D939F930085BEBC /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
 		25B0EFF72D93B8C100222F78 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Keychain.swift; path = "../wireguard-apple/Sources/Shared/Keychain.swift"; sourceTree = "<group>"; };
@@ -207,6 +210,7 @@
 		25B0F0132D93B8C300222F78 /* ringlogger.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = ringlogger.c; path = "../wireguard-apple/Sources/Shared/Logging/ringlogger.c"; sourceTree = "<group>"; };
 		25E16CAE2D93FD4500370B6F /* LocalizationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocalizationHelper.swift; path = "../wireguard-apple/Sources/WireGuardApp/LocalizationHelper.swift"; sourceTree = "<group>"; };
 		25F66A732D93D0090076904B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ../ios/Runner/AppDelegate.swift; sourceTree = "<group>"; };
+		25CC000200000000000A0001 /* NativeSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeSwitchView.swift; path = ../ios/Runner/NativeSwitchView.swift; sourceTree = "<group>"; };
 		25F66A872D93D1DE0076904B /* TunnelConfiguration+UapiConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TunnelConfiguration+UapiConfig.swift"; path = "../wireguard-apple/Sources/WireGuardApp/Tunnel/TunnelConfiguration+UapiConfig.swift"; sourceTree = "<group>"; };
 		25F66A882D93D1DE0076904B /* MockTunnels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockTunnels.swift; path = "../wireguard-apple/Sources/WireGuardApp/Tunnel/MockTunnels.swift"; sourceTree = "<group>"; };
 		25F66A892D93D1DE0076904B /* TunnelsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TunnelsManager.swift; path = "../wireguard-apple/Sources/WireGuardApp/Tunnel/TunnelsManager.swift"; sourceTree = "<group>"; };
@@ -325,6 +329,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				257520CF2F3BAAA9004C6003 /* libresolv.9.tbd in Frameworks */,
 				25A9F5112D939F930085BEBC /* NetworkExtension.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -393,6 +398,7 @@
 				25F66A892D93D1DE0076904B /* TunnelsManager.swift */,
 				25F66A8A2D93D1DE0076904B /* TunnelStatus.swift */,
 				25F66A732D93D0090076904B /* AppDelegate.swift */,
+				25CC000200000000000A0001 /* NativeSwitchView.swift */,
 				25B0F00C2D93B8C200222F78 /* Array+ConcurrentMap.swift */,
 				25B0EFF92D93B8C100222F78 /* DNSResolver.swift */,
 				25B0F0112D93B8C300222F78 /* DNSServer.swift */,
@@ -492,6 +498,7 @@
 		D73912EC22F37F3D000D13A0 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				257520CE2F3BAAA9004C6003 /* libresolv.9.tbd */,
 				DA5513B20D217664FFC5720C /* Pods_Runner.framework */,
 				25A9F5102D939F930085BEBC /* NetworkExtension.framework */,
 			);
@@ -837,6 +844,7 @@
 				25F66A912D93D1DF0076904B /* ActivateOnDemandOption.swift in Sources */,
 				25F66A922D93D1DF0076904B /* TunnelErrors.swift in Sources */,
 				25F66A742D93D00A0076904B /* AppDelegate.swift in Sources */,
+				25CC000300000000000A0001 /* NativeSwitchView.swift in Sources */,
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
@@ -1407,7 +1415,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.10;
+				MARKETING_VERSION = 1.0.11;
 				PRODUCT_BUNDLE_IDENTIFIER = io.cylonix.sase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitC $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitGo";
@@ -1550,7 +1558,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.10;
+				MARKETING_VERSION = 1.0.11;
 				PRODUCT_BUNDLE_IDENTIFIER = io.cylonix.sase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitC $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitGo";
@@ -1587,7 +1595,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.10;
+				MARKETING_VERSION = 1.0.11;
 				PRODUCT_BUNDLE_IDENTIFIER = io.cylonix.sase;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitC $(SRCROOT)/../wireguard-apple/Sources/WireGuardKitGo";

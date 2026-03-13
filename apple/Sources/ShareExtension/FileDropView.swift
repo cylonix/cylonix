@@ -78,11 +78,23 @@ func fileDropDarwinNotificationCallback(
 }
 
 #if os(macOS)
-
     private let bgColor = Color(NSColor.windowBackgroundColor)
 #else
     private let bgColor = Color(UIColor.systemBackground)
 #endif
+
+private struct GlassButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, macOS 26, *) {
+            content
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .glassEffect()
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+    }
+}
 
 public struct FileDropView: View {
     @StateObject private var viewModel = FileDropViewModel()
@@ -130,7 +142,7 @@ public struct FileDropView: View {
                     viewModel.cleanupSharedTemp(for: sharedFiles)
                     onCancel()
                 }
-                .buttonStyle(.borderedProminent)
+                .modifier(GlassButtonModifier())
             }
             .padding()
 
@@ -212,6 +224,13 @@ public struct FileDropView: View {
         .frame(width: 480, height: 800)
         #endif
         .padding()
+        .background {
+            if #available(iOS 26, macOS 26, *) {
+                Rectangle().fill(.ultraThinMaterial)
+            } else {
+                Rectangle().fill(bgColor)
+            }
+        }
         .onAppear {
             viewModel.loadStatus()
             #if os(iOS)

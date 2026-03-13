@@ -10,6 +10,7 @@
     import FlutterMacOS
 #endif
 import NetworkExtension
+import Network
 import UserNotifications
 #if SWIFT_PACKAGE
     import WireGuardKitGo
@@ -23,6 +24,9 @@ import UserNotifications
     private let channel: String = "io.cylonix.sase/wg"
     private let tunnelName: String = "Cylonix Tunnel"
     private let serverAddress: String = "Cylonix Mesh"
+    private var localNetworkPermissionBrowser: NWBrowser?
+    private var localNetworkPermissionListener: NWListener?
+    private var localNetworkPermissionCompletion: FlutterResult?
 
     private func getCylonixTunnelConfiguration() -> TunnelConfiguration {
         let interface = InterfaceConfiguration(privateKey: PrivateKey())
@@ -43,7 +47,7 @@ import UserNotifications
         }
         channel.invokeMethod(method, arguments: arguments) { r in
             if r != nil {
-                // wg_log(.debug, message: "Invoke methold channel for method '\(method)' result: \(r as Optional)")
+                // wg_log(.debug, message: "Invoke method '\(method)' result: \(r as Optional)")
             }
         }
     }
@@ -164,18 +168,81 @@ import UserNotifications
         }
     }
 
-    #if os(iOS)
-        override func application(
-            _: UIApplication,
-            didFinishLaunchingWithOptions _: [UIApplication.LaunchOptionsKey: Any]?
-        ) -> Bool {
-            wg_log(.info, staticMessage: "iOS app launched.")
-            return commonDidFinishLaunching()
+    private func finishLocalNetworkPermission(_ granted: Bool, _ reason: String? = nil) {
+        DispatchQueue.main.async {
+            guard let completion = self.localNetworkPermissionCompletion else {
+                return
+            }
+            self.localNetworkPermissionCompletion = nil
+            self.localNetworkPermissionBrowser?.cancel()
+            self.localNetworkPermissionBrowser = nil
+            self.localNetworkPermissionListener?.cancel()
+            self.localNetworkPermissionListener = nil
+            if let reason {
+                wg_log(.info, message: "Local network permission probe finished: granted=\(granted) reason=\(reason)")
+            } else {
+                wg_log(.info, message: "Local network permission probe finished: granted=\(granted)")
+            }
+            completion(granted)
+        }
+    }
+
+    private func requestLocalNetworkPermission(_ result: @escaping FlutterResult) {
+        if localNetworkPermissionCompletion != nil {
+            result(false)
+            return
+        }
+        localNetworkPermissionCompletion = result
+
+        let queue = DispatchQueue(label: "io.cylonix.sase.localnetwork")
+        let serviceType = "_cylonix-permission._udp"
+        let parameters = NWParameters.udp
+        parameters.includePeerToPeer = true
+
+        do {
+            let listener = try NWListener(using: parameters, on: .any)
+            listener.service = NWListener.Service(name: UUID().uuidString, type: serviceType)
+            listener.stateUpdateHandler = { state in
+                if case let .failed(error) = state {
+                    self.finishLocalNetworkPermission(false, "listener_failed=\(error)")
+                }
+            }
+            listener.newConnectionHandler = { _ in }
+            localNetworkPermissionListener = listener
+            listener.start(queue: queue)
+        } catch {
+            finishLocalNetworkPermission(false, "listener_create_failed=\(error)")
+            return
         }
 
-        override func applicationDidBecomeActive(_ application: UIApplication) {
-            super.applicationDidBecomeActive(application)
-            BackgroundTaskManager.shared.processFilesFromSharedContainer { _ in }
+        let browser = NWBrowser(for: .bonjour(type: serviceType, domain: nil), using: parameters)
+        browser.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                self.finishLocalNetworkPermission(true, "browser_ready")
+            case let .failed(error):
+                self.finishLocalNetworkPermission(false, "browser_failed=\(error)")
+            default:
+                break
+            }
+        }
+        browser.browseResultsChangedHandler = { _, _ in }
+        localNetworkPermissionBrowser = browser
+        browser.start(queue: queue)
+
+        queue.asyncAfter(deadline: .now() + .seconds(8)) {
+            self.finishLocalNetworkPermission(false, "timeout")
+        }
+    }
+
+    #if os(iOS)
+        override func application(
+            _ application: UIApplication,
+            didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+        ) -> Bool {
+            wg_log(.info, staticMessage: "iOS app launched.")
+            commonDidFinishLaunching()
+            return super.application(application, didFinishLaunchingWithOptions: launchOptions)
         }
 
     #elseif os(macOS)
@@ -190,6 +257,7 @@ import UserNotifications
         }
     #endif
 
+    @discardableResult
     private func commonDidFinishLaunching() -> Bool {
         Logger.configureGlobal(tagged: "APP", withFilePath: FileManager.logFileURL?.path)
         setupTunnelNotificationObserver()
@@ -198,16 +266,10 @@ import UserNotifications
         setupUserNotifications()
 
         #if os(iOS)
-            wg_log(.info, staticMessage: "iOS app launched. Setting up method channel")
-            let controller: FlutterViewController = window?.rootViewController as! FlutterViewController
-            methodChannel = FlutterMethodChannel(
-                name: "io.cylonix.sase/wg",
-                binaryMessenger: controller.binaryMessenger
-            )
-
             if #available(iOS 10.0, *) {
                 UNUserNotificationCenter.current().delegate = self
             }
+            // Channel setup and plugin registration happen in didInitializeImplicitFlutterEngine
         #elseif os(macOS)
             wg_log(.info, staticMessage: "macOS app launched. Setting up method channel")
             let controller: FlutterViewController = mainFlutterWindow?.contentViewController as! FlutterViewController
@@ -215,10 +277,20 @@ import UserNotifications
                 name: "io.cylonix.sase/wg",
                 binaryMessenger: controller.engine.binaryMessenger
             )
+            setupMethodCallHandler()
+            RegisterGeneratedPlugins(registry: controller.engine)
+            let switchRegistrar = controller.registrar(forPlugin: "NativeSwitchViewPlugin")
+            switchRegistrar.register(
+                NativeSwitchViewFactory(messenger: switchRegistrar.messenger),
+                withId: "io.cylonix/uiswitch"
+            )
         #endif
+        return true
+    }
 
+    private func setupMethodCallHandler() {
         methodChannel!.setMethodCallHandler {
-            (call: FlutterMethodCall, result: FlutterResult) in
+            (call: FlutterMethodCall, result: @escaping FlutterResult) in
                 if call.method == "create_tunnels_manager" {
                     self.setupTunnelsManager(call.arguments as? String ?? "")
                     result("Success")
@@ -227,6 +299,10 @@ import UserNotifications
                 if call.method == "checkVPNPermission" {
                     self.checkVPNPermission(call.arguments as? String ?? "")
                     result("Success")
+                    return
+                }
+                if call.method == "requestLocalNetworkPermission" {
+                    self.requestLocalNetworkPermission(result)
                     return
                 }
                 #if os(macOS)
@@ -316,12 +392,6 @@ import UserNotifications
                     result("Error: unknown method \(call.method)")
                 }
         }
-        #if os(iOS)
-            GeneratedPluginRegistrant.register(with: self)
-        #elseif os(macOS)
-            RegisterGeneratedPlugins(registry: controller.engine)
-        #endif
-        return true
     }
 
     private func setupUserNotifications() {
@@ -572,6 +642,13 @@ import UserNotifications
 
             if let error = error {
                 wg_log(.error, message: "Web auth failed: \(error.localizedDescription)")
+                if (error as NSError).code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                    self.invokeMethod("webAuthDone", arguments: [
+                        "canceled": true,
+                    ])
+                    return
+                }
+                // Only report error if it's not user cancellation
                 self.invokeMethod("webAuthDone", arguments: [
                     "success": false,
                     "error": error.localizedDescription,
@@ -728,6 +805,24 @@ extension AppDelegate: ASWebAuthenticationPresentationContextProviding {
         #else
             return mainFlutterWindow ?? NSWindow()
         #endif
+    }
+}
+#endif
+
+#if os(iOS)
+extension AppDelegate: FlutterImplicitEngineDelegate {
+    func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+        GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+        let messenger = engineBridge.applicationRegistrar.messenger()
+        methodChannel = FlutterMethodChannel(name: channel, binaryMessenger: messenger)
+        setupMethodCallHandler()
+
+        if let switchRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "NativeSwitchViewPlugin") {
+            switchRegistrar.register(
+                NativeSwitchViewFactory(messenger: switchRegistrar.messenger()),
+                withId: "io.cylonix/uiswitch"
+            )
+        }
     }
 }
 #endif

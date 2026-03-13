@@ -36,6 +36,15 @@ bool useNavigationRail(BuildContext context) {
   return MediaQuery.of(context).size.width >= 900.0;
 }
 
+bool usingNavigationRail(BuildContext context) {
+  return useNavigationRail(context) && isCurrentRouteHomePage(context);
+}
+
+bool isCurrentRouteHomePage(BuildContext context) {
+  print('Current route: ${ModalRoute.of(context)?.settings.name}');
+  return (ModalRoute.of(context)?.settings.name ?? '/') == '/';
+}
+
 bool isInPortraitMode(BuildContext context) {
   return MediaQuery.of(context).orientation == Orientation.portrait;
 }

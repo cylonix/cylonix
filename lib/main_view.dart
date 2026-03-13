@@ -59,7 +59,8 @@ class _MainViewState extends ConsumerState<MainView> {
   bool _waitingForURL = false;
   int _launchCountDown = 10;
   bool _signingInWithApple = false;
-  bool _signInWithAppSuccess = false;
+  bool _signInWithAppleSuccess = false;
+  bool _signInWithWebSuccess = false;
   bool _showingSigninQRCode = false;
   bool _isReauthenticating = false;
 
@@ -432,7 +433,7 @@ class _MainViewState extends ConsumerState<MainView> {
     return Scaffold(
       backgroundColor: appleScaffoldBackgroundColor(context),
       appBar: _buildCupertinoHeader(context, ref),
-      body: _buildContent(context, ref),
+      body: SafeArea(child: _buildContent(context, ref)),
     );
   }
 
@@ -481,6 +482,7 @@ class _MainViewState extends ConsumerState<MainView> {
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const SizedBox(width: 8),
                 const Text("Cylonix"),
                 _buildHealthButton(context, ref),
                 _buildToggleDeviceViewButton(context, ref),
@@ -804,11 +806,32 @@ class _MainViewState extends ConsumerState<MainView> {
     if (mounted) {
       setState(() {
         // Reset the state to trigger UI update
+        _signingInWithApple = false;
+        _signInWithAppleSuccess = false;
+        _signInWithWebSuccess = false;
       });
     }
     if (mounted) {
       try {
-        await ref.read(ipnStateNotifierProvider.notifier).startWebAuth(url);
+        final loginSent = ref.read(ipnStateNotifierProvider.notifier).loginSent;
+        if (!loginSent) {
+          _logger.d("Login not yet sent, sending login request first.");
+          await ref
+              .read(ipnStateNotifierProvider.notifier)
+              .login(controlURL: ref.read(controlURLProvider));
+        } else {
+          _logger.d("Login already sent, starting VPN directly.");
+        }
+        final success =
+            await ref.read(ipnStateNotifierProvider.notifier).startWebAuth(url);
+        if (success == true) {
+          _logger.d("Successfully signed in with '$url'");
+          if (mounted) {
+            setState(() {
+              _signInWithWebSuccess = true;
+            });
+          }
+        }
       } catch (e) {
         _logger.e("Failed to sign in with '$url': $e");
         if (mounted) {
@@ -885,8 +908,10 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildConnectingView(BuildContext context, bool turningOn) {
     final health = ref.watch(healthProvider);
+    final loginURL = ref.read(ipnStateProvider)?.browseToURL;
     if (health != null && health.warnings?['login-state'] != null) {
-      return _buildLoginRequiredView(context, ref, null);
+      print("Login state warning: ${health.warnings!['login-state']}");
+      return _buildLoginRequiredView(context, ref, loginURL);
     }
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 600),
@@ -950,6 +975,7 @@ class _MainViewState extends ConsumerState<MainView> {
     }
     if (state.browseToURL != null ||
         state.backendState == BackendState.needsLogin) {
+      print("Build LoginRequiredView Browse to URL: ${state.browseToURL}");
       return _buildLoginRequiredView(context, ref, state.browseToURL);
     }
     if (state.loggedInUser != null) {
@@ -1311,7 +1337,8 @@ class _MainViewState extends ConsumerState<MainView> {
     try {
       setState(() {
         _signingInWithApple = true;
-        _signInWithAppSuccess = false;
+        _signInWithAppleSuccess = false;
+        _signInWithWebSuccess = false;
       });
       final uri = Uri.parse(loginURL);
       final pathSegments = uri.pathSegments;
@@ -1319,11 +1346,20 @@ class _MainViewState extends ConsumerState<MainView> {
         throw Exception("Invalid URL: missing state in path");
       }
       final state = pathSegments[1];
+      final loginSent = ref.read(ipnStateNotifierProvider.notifier).loginSent;
+      if (!loginSent) {
+        _logger.d("Login not yet sent, sending login request first.");
+        await ref
+            .read(ipnStateNotifierProvider.notifier)
+            .login(controlURL: ref.read(controlURLProvider));
+      } else {
+        _logger.d("Login already sent, starting VPN directly.");
+      }
       final resp = await ref
           .read(ipnStateNotifierProvider.notifier)
           .signinWithApple(loginURL);
       setState(() {
-        _signInWithAppSuccess = true;
+        _signInWithAppleSuccess = true;
       });
       if (resp == null) {
         return;
@@ -1508,8 +1544,11 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildLoginRequiredView(
       BuildContext context, WidgetRef ref, String? loginURL) {
     final profiles = ref.watch(loginProfilesProvider);
-    final urlLaunched = ref.watch(ipnStateNotifierProvider.notifier).urlBrowsed;
+    var urlLaunched = ref.watch(urlBrowsedProvider);
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    print("urlLaunched1: $urlLaunched, loginURL: $loginURL");
+    urlLaunched = ref.read(ipnStateNotifierProvider.notifier).urlBrowsed;
+    _logger.d("urlLaunched2: $urlLaunched, loginURL: $loginURL");
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1555,18 +1594,24 @@ class _MainViewState extends ConsumerState<MainView> {
           if (loginURL != null && _canSignInWithAppleInApp) ...[
             if (_signingInWithApple || urlLaunched == loginURL) ...[
               const AdaptiveLoadingWidget(),
-              _signInWithAppSuccess
+              _signInWithAppleSuccess
                   ? const Text(
                       "Signed in with Apple. Starting cylonix network. "
                       "Please wait...",
                       textAlign: TextAlign.center,
                     )
-                  : Text(
-                      _signingInWithApple
-                          ? "Signing in with Apple. Please wait..."
-                          : "Signing in. Please wait...",
-                      textAlign: TextAlign.center,
-                    ),
+                  : _signInWithWebSuccess
+                      ? const Text(
+                          "Signed in. Starting cylonix network. "
+                          "Please wait...",
+                          textAlign: TextAlign.center,
+                        )
+                      : Text(
+                          _signingInWithApple
+                              ? "Signing in with Apple. Please wait..."
+                              : "Signing in. Please wait...",
+                          textAlign: TextAlign.center,
+                        ),
               AdaptiveButton(
                 width: 250,
                 onPressed: () => _resetIpnStateNotifier(),

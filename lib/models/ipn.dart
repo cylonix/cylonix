@@ -383,6 +383,7 @@ class Node with _$Node {
     @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
     @JsonKey(name: 'Capabilities') List<String>? capabilities,
     @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
+    @JsonKey(name: 'Cap') int? cap,
     @JsonKey(name: 'ComputedName') String? computedName,
     @JsonKey(name: 'ComputedNameWithHost') String? computedNameWithHost,
   }) = _Node;

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/ipn.dart';
 import '../utils/utils.dart';
 import '../viewmodels/state_notifier.dart';
+import 'native_switch.dart';
 import 'tv_widgets.dart';
 
 class AdaptiveSearchBar extends StatelessWidget {
@@ -126,7 +127,7 @@ class AppleBackButton extends StatelessWidget {
       sizeStyle: CupertinoButtonSize.small,
       alignment: Alignment.centerLeft,
       padding: EdgeInsets.only(
-        left: Platform.isMacOS && !useNavigationRail(context) ? 64 : 0,
+        left: Platform.isMacOS && !usingNavigationRail(context) ? 64 : 0,
       ),
       onPressed: onPressed,
       child: const Icon(
@@ -350,11 +351,7 @@ class AdaptiveSwitch extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     return isApple()
-        ? CupertinoSwitch(
-            value: value,
-            onChanged: onChanged,
-            activeTrackColor: activeColor ?? CupertinoColors.activeGreen,
-          )
+        ? NativeSwitch(value: value, onChanged: onChanged)
         : isAndroidTV
             ? TVSwitch(
                 value: value,
@@ -366,7 +363,7 @@ class AdaptiveSwitch extends ConsumerWidget {
             : Switch(
                 value: value,
                 onChanged: onChanged,
-                activeColor: activeColor,
+                activeThumbColor: activeColor,
                 inactiveThumbColor: inactiveThumbColor,
                 inactiveTrackColor: inactiveTrackColor,
               );
@@ -1234,9 +1231,9 @@ class AdaptiveSwitchListTile extends StatelessWidget {
         leading: leading,
         title: title,
         subtitle: subtitle,
-        trailing: CupertinoSwitch(
-          value: value,
-          onChanged: onChanged,
+        trailing: Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: NativeSwitch(value: value, onChanged: onChanged),
         ),
       );
     }

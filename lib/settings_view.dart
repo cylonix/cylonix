@@ -30,6 +30,7 @@ class SettingsView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToCustomControlURL;
   final VoidCallback onNavigateToUserSwitcher;
   final VoidCallback onNavigateToDNSSettings;
+  final VoidCallback onNavigateToL2RelaySettings;
   final VoidCallback onNavigateToSplitTunneling;
   final VoidCallback onNavigateToSubnetRouting;
   final VoidCallback onNavigateToTailnetLock;
@@ -48,6 +49,7 @@ class SettingsView extends ConsumerStatefulWidget {
     required this.onNavigateToCustomControlURL,
     required this.onNavigateToUserSwitcher,
     required this.onNavigateToDNSSettings,
+    required this.onNavigateToL2RelaySettings,
     required this.onNavigateToSplitTunneling,
     required this.onNavigateToSubnetRouting,
     required this.onNavigateToTailnetLock,
@@ -285,9 +287,22 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   title: const Text('Subnet Routing'),
                   subtitle: const Text(
                     "Manage access for devices not installed with Cylonix",
+                    softWrap: true,
+                    maxLines: 3,
                   ),
                   trailing: _trailingIcon,
                   onTap: widget.onNavigateToSubnetRouting,
+                ),
+                AdaptiveListTile.notched(
+                  title: const Text('Local Discovery Relay'),
+                  subtitle: const Text(
+                    'Relay printer, storage and game discovery et al '
+                    'across your mesh network',
+                    softWrap: true,
+                    maxLines: 3,
+                  ),
+                  trailing: _trailingIcon,
+                  onTap: widget.onNavigateToL2RelaySettings,
                 ),
                 if (Platform.isAndroid)
                   AdaptiveListTile.notched(
@@ -388,7 +403,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 if (Platform.isIOS) ...[
                   AdaptiveListTile.notched(
                     title: const Text('Start Tailchat on Launch'),
-                    trailing: CupertinoSwitch(
+                    trailing: AdaptiveSwitch(
                       value: tailchatAutoStart,
                       onChanged: (value) {
                         ref

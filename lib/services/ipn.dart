@@ -11,6 +11,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import '../models/backend_notify_event.dart';
+import '../models/exception.dart';
 import '../models/ipn.dart';
 import '../models/log_file.dart';
 import '../utils/logger.dart';
@@ -18,6 +19,8 @@ import '../utils/utils.dart';
 import 'named_pipe_socket.dart';
 
 class IpnService {
+  static const _capRelayL2Discovery = 'can-relay-l2-discovery';
+  static const _capInjectL2Discovery = 'can-inject-l2-discovery';
   static bool _initialized = false;
   static const _channel = MethodChannel('io.cylonix.sase/wg');
   static final _logger = Logger(tag: "IpnService");
@@ -201,7 +204,8 @@ class IpnService {
           break;
         case "webAuthDone":
           _logger.d("Web auth done: ${call.arguments}");
-          // Nothing to do here for now.
+          _commandCompleters['web_auth']?.complete(call.arguments);
+          _commandCompleters.remove('web_auth');
           break;
         default:
           _logger.d("unknown method call: ${call.method}");
@@ -494,6 +498,29 @@ class IpnService {
     }
   }
 
+  Future<bool> requestLocalNetworkPermission() async {
+    if (!isApple()) {
+      return true;
+    }
+    try {
+      final result =
+          await _channel.invokeMethod("requestLocalNetworkPermission");
+      if (result is bool) {
+        return result;
+      }
+      if (result is String) {
+        return parseBool(result);
+      }
+      _logger.e(
+        "requestLocalNetworkPermission returned unexpected result: $result",
+      );
+      return false;
+    } catch (e) {
+      _logger.e("requestLocalNetworkPermission failed: $e");
+      return false;
+    }
+  }
+
   Future<void> _loginInteractive() async {
     if (_useHttpLocalApi) {
       await _sendCommandOverHttp(
@@ -546,6 +573,7 @@ class IpnService {
   }
 
   Future<void> _start(IpnOptions options) async {
+    _logger.d("Starting backend with options: $options");
     if (_useHttpLocalApi) {
       await _sendCommandOverHttp(
         Uri.parse('$_localBaseURL/start'),
@@ -558,6 +586,10 @@ class IpnService {
     if (result != 'Success') {
       throw Exception('Start failed: $result');
     }
+  }
+
+  Future<void> start() async {
+    await _start(const IpnOptions());
   }
 
   Future<HttpClient> watchNotificationsOverHttp(
@@ -977,6 +1009,97 @@ class IpnService {
     _logger.d("Set always use relay to $on DONE.");
   }
 
+  Future<void> setLocalDiscoveryRelay(bool on) async {
+    final op = on ? 'add' : 'del';
+    final caps = <String>[_capRelayL2Discovery];
+    final shouldInject = Platform.isAndroid ||
+        Platform.isLinux ||
+        Platform.isWindows ||
+        (Platform.isMacOS && _useHttpLocalApi);
+    if (shouldInject) {
+      caps.add(_capInjectL2Discovery);
+    }
+
+    if (_useHttpLocalApi) {
+      for (final cap in caps) {
+        await _sendCommandOverHttp(
+          Uri(
+            scheme: 'http',
+            host: _localApiHost,
+            path: '$_localApiPrefix/cap',
+            queryParameters: {
+              'cap': cap,
+              'op': op,
+            },
+          ),
+          'POST',
+        );
+      }
+      return;
+    }
+    for (final cap in caps) {
+      final result = await _sendCommand(
+        'add_del_cap',
+        '$cap $op',
+      );
+      if (result != "Success") {
+        throw Exception(
+            "Failed to set local discovery relay ($cap/$op): $result");
+      }
+    }
+    _logger.d("Set local discovery relay to $on DONE.");
+  }
+
+  Future<void> setL2RelayCapture(bool on) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp(
+        Uri(
+          scheme: 'http',
+          host: _localApiHost,
+          path: '$_localApiPrefix/l2relay-capture',
+          queryParameters: {
+            'enabled': on ? 'true' : 'false',
+          },
+        ),
+        'POST',
+      );
+      return;
+    }
+    final result = await _sendCommand(
+      'set_l2relay_capture',
+      on ? '1' : '0',
+    );
+    if (result != "Success") {
+      throw Exception("Failed to set l2relay capture: $result");
+    }
+    _logger.d("Set l2relay capture to $on DONE.");
+  }
+
+  Future<void> setL2RelayVerboseDebug(bool on) async {
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp(
+        Uri(
+          scheme: 'http',
+          host: _localApiHost,
+          path: '$_localApiPrefix/envknob',
+          queryParameters: {
+            'env': jsonEncode({'TS_DEBUG_L2RELAY_VERBOSE': on ? '1' : '0'}),
+          },
+        ),
+        'POST',
+      );
+      return;
+    }
+    final result = await _sendCommand(
+      'set_env_knobs',
+      'TS_DEBUG_L2RELAY_VERBOSE=${on ? 1 : 0}',
+    );
+    if (result != "Success") {
+      throw Exception("Failed to set l2relay verbose debug: $result");
+    }
+    _logger.d("Set l2relay verbose debug to $on DONE.");
+  }
+
   Future<void> setUserDialUseRoutes(bool on) async {
     if (_useHttpLocalApi) {
       await _sendCommandOverHttp(
@@ -1112,6 +1235,80 @@ class IpnService {
     }
   }
 
+  Future<bool> getLocalDiscoveryRelay() async {
+    final result = await (_useHttpLocalApi
+        ? _sendCommandOverHttp(
+            Uri.parse('$_localBaseURL/status'),
+            'GET',
+            timeoutMilliseconds: 2000,
+          )
+        : _sendCommand(
+            'status',
+            '',
+            timeoutMilliseconds: 2000,
+          ));
+    try {
+      final v = jsonDecode(result) as Map<String, dynamic>;
+      final selfNode = v['Self'] as Map<String, dynamic>?;
+      final capMap = selfNode?['CapMap'] as Map<String, dynamic>?;
+      return capMap?.containsKey(_capRelayL2Discovery) ?? false;
+    } catch (e) {
+      throw Exception("Failed to get local discovery relay: $result");
+    }
+  }
+
+  Future<bool> getL2RelayCapture() async {
+    if (_useHttpLocalApi) {
+      final result = await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/l2relay-capture'),
+        'GET',
+        timeoutMilliseconds: 2000,
+      );
+      try {
+        final v = jsonDecode(result);
+        return v['enabled'] == true;
+      } catch (e) {
+        throw Exception("Failed to get l2relay capture: $result");
+      }
+    }
+    final result = await _sendCommand(
+      'get_l2relay_capture',
+      '',
+      timeoutMilliseconds: 2000,
+    );
+    try {
+      return parseBool(result);
+    } catch (e) {
+      throw Exception("Failed to get l2relay capture: $result");
+    }
+  }
+
+  Future<bool> getL2RelayVerboseDebug() async {
+    if (_useHttpLocalApi) {
+      final result = await _sendCommandOverHttp(
+        Uri.parse('/envknob?env=TS_DEBUG_L2RELAY_VERBOSE'),
+        'GET',
+        timeoutMilliseconds: 2000,
+      );
+      try {
+        final v = jsonDecode(result);
+        return v['value'] != null ? parseBool(v['value'] as String) : false;
+      } catch (e) {
+        throw Exception('Failed to get l2relay verbose debug: ');
+      }
+    }
+    final result = await _sendCommand(
+      'get_env_knob',
+      'TS_DEBUG_L2RELAY_VERBOSE',
+      timeoutMilliseconds: 2000,
+    );
+    try {
+      return parseBool(result);
+    } catch (e) {
+      throw Exception('Failed to get l2relay verbose debug: ');
+    }
+  }
+
   Future<void> login({
     MaskedPrefs? maskedPrefs,
     String? authKey,
@@ -1123,13 +1320,6 @@ class IpnService {
       Future<void> editPrefsBeforeLogin() async {
         // Handle MDM control URL (assuming you have MDM settings)
         var prefs = maskedPrefs;
-        if (authKey != null) {
-          prefs ??= const MaskedPrefs();
-          prefs = prefs.copyWith(
-            wantRunning: true,
-            wantRunningSet: true,
-          );
-        }
         final mdmControlURL = await _getMdmControlURL();
         if (mdmControlURL.isNotEmpty) {
           controlURL = mdmControlURL;
@@ -1141,6 +1331,8 @@ class IpnService {
         prefs = prefs.copyWith(
           controlURL: controlURL,
           controlURLSet: true,
+          wantRunning: true,
+          wantRunningSet: true,
         );
         _logger.d("apply control URL $controlURL");
         await editPrefs(prefs);
@@ -1235,7 +1427,10 @@ class IpnService {
       _logger.d("Starting VPN engine...");
       try {
         final ret = await status(light: true, fast: true);
-        _logger.d("status: $ret");
+        final s = ret.toString().length > 256
+            ? ret.toString().substring(0, 256) + "..."
+            : ret.toString();
+        _logger.d("status: $s");
         final state = BackendState.fromString(ret.backendState);
         await watchNotifications(onError);
         if (state.value > BackendState.needsLogin.value) {
@@ -1331,11 +1526,26 @@ class IpnService {
     );
   }
 
-  Future<void> startWebAuth(String url) async {
+  Future<void> startWebAuth(String url, VoidCallback onStart) async {
     _logger.d("Starting web auth with URL: $url");
+    final completer = Completer();
+    _commandCompleters['web_auth'] = completer;
     final result = await _channel.invokeMethod('startWebAuth', url);
     if (result != "Success") {
       throw Exception("Failed to start web auth: $result");
+    }
+    onStart();
+    final authResult =
+        await completer.future.timeout(const Duration(minutes: 5));
+    _logger.d("Web auth completed with result: $authResult");
+    if (authResult is! Map<dynamic, dynamic>) {
+      throw Exception("Unknown auth result: $authResult");
+    }
+    if (authResult['canceled'] == true) {
+      throw WebAuthCanceledException("Web auth was cancelled by user");
+    }
+    if (authResult['success'] != true) {
+      throw Exception("Web auth failed: ${authResult['error']}");
     }
   }
 

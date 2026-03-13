@@ -6,7 +6,9 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../models/exception.dart';
 import '../models/ipn.dart';
 import '../services/ipn.dart';
 import '../services/mdm.dart';
@@ -24,10 +26,17 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   StreamSubscription<IpnNotification>? _notificationSubscription;
   bool _isProcessingNotification = false;
   bool _initializingAlwaysUseDerp = false;
+  bool _initializingLocalDiscoveryRelay = false;
+  bool _initializingL2RelayCapture = false;
+  bool _initializingL2RelayVerboseDebug = false;
   bool _isTailchatInitialized = false;
   bool _isAlwaysUseDerpInitialized = false;
+  bool _isLocalDiscoveryRelayInitialized = false;
+  bool _isL2RelayCaptureInitialized = false;
+  bool _isL2RelayVerboseDebugInitialized = false;
   bool _checkedFilesWaiting = false;
   String? urlBrowsed;
+  bool loginSent = false;
 
   var peerCategorizer = PeerCategorizer();
   static final _logger = Logger(tag: "IpnStateNotifier");
@@ -113,6 +122,18 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
             _logger.d("Initializing always use DERP");
             _initAlwaysUseDerp();
           }
+          if (!_isLocalDiscoveryRelayInitialized) {
+            _logger.d("Initializing local discovery relay");
+            _initLocalDiscoveryRelay();
+          }
+          if (!_isL2RelayCaptureInitialized) {
+            _logger.d("Initializing l2 relay capture");
+            _initL2RelayCapture();
+          }
+          if (!_isL2RelayVerboseDebugInitialized) {
+            _logger.d("Initializing l2 relay verbose debug");
+            _initL2RelayVerboseDebug();
+          }
           if (!_isTailchatInitialized && !_initializingTailchat) {
             _logger.d("Initializing tailchat");
             _initTailchat();
@@ -125,10 +146,12 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> _handleIpnNotification(IpnNotification notification) async {
-    //_logger.d(
-    //  "Received notification state=${notification.state} "
-    //  "url=${notification.browseToURL}",
-    //);
+    if (notification.state != null || notification.browseToURL != null) {
+      _logger.d(
+        "Received notification state=${notification.state} "
+        "url=${notification.browseToURL}",
+      );
+    }
     List<LoginProfile>? loginProfiles;
     var currentProfile = state.valueOrNull?.currentProfile;
     if (notification.netMap != null) {
@@ -179,10 +202,19 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       _logger.d("\n\n******** VPN state -> $vpnState **********\n\n");
     }
 
+    // If local backend sends another URL to us. Clear the browsed URL
+    // even if they match since backend wants to try again.
+    if ((notification.browseToURL ?? "") != "") {
+      _logger.d("Received browseToURL: ${notification.browseToURL}, "
+          "clearing urlBrowsed");
+      urlBrowsed = null;
+    }
+
     // Determine browseToURL
     var browseToURL = notification.browseToURL ?? currentState?.browseToURL;
     if (backendState.value > BackendState.needsLogin.index) {
       browseToURL = null;
+      loginSent = false;
     }
 
     var health = notification.health;
@@ -279,6 +311,10 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
 
     state = AsyncValue.data(newState);
+    final relayEnabled =
+        newState.selfNode?.capMap?.containsKey('can-relay-l2-discovery') ??
+            false;
+    ref.read(localDiscoveryRelayProvider.notifier).setState(relayEnabled);
 
     // For windows, update the system tray status.
     updateSystemTrayStatus();
@@ -349,7 +385,10 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> reset() async {
+    loginSent = false;
+    urlBrowsed = null;
     state = const AsyncValue.data(IpnState());
+    ref.read(localDiscoveryRelayProvider.notifier).setState(false);
     _logger.d("Resetting and re-initialize IpnStateNotifier");
     await start();
   }
@@ -357,6 +396,9 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   Future<void> start() async {
     _isTailchatInitialized = false;
     _isAlwaysUseDerpInitialized = false;
+    _isLocalDiscoveryRelayInitialized = false;
+    _isL2RelayCaptureInitialized = false;
+    ref.read(localDiscoveryRelayProvider.notifier).setState(false);
     await _initialize();
   }
 
@@ -443,6 +485,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     );
     try {
       await _ipnService.login(authKey: authKey, controlURL: controlURL);
+      loginSent = true;
     } catch (error, stack) {
       state = AsyncValue.error(error, stack);
     }
@@ -454,6 +497,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
   void clearBrowseToURL() {
     _logger.d("Clearing browseToURL");
+    urlBrowsed = null;
     state = AsyncValue.data(
       (state.valueOrNull ?? const IpnState()).copyWith(browseToURL: null),
     );
@@ -502,6 +546,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         ),
       );
       await _ipnService.login(controlURL: controlURL);
+      loginSent = true;
       await _ipnService.startVpn();
     } catch (error, stack) {
       state = AsyncValue.error(error, stack);
@@ -575,6 +620,44 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       _logger.e("Failed to set always use DERP: $error, stackTrace: $stack");
       rethrow;
     }
+  }
+
+  Future<void> setLocalDiscoveryRelay(bool on) async {
+    try {
+      _logger.d("Setting local discovery relay to: $on");
+      await _ipnService.setLocalDiscoveryRelay(on);
+    } catch (error, stack) {
+      _logger.e(
+        "Failed to set local discovery relay: $error, stackTrace: $stack",
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> setL2RelayCapture(bool on) async {
+    try {
+      _logger.d("Setting l2 relay capture to: $on");
+      await _ipnService.setL2RelayCapture(on);
+    } catch (error, stack) {
+      _logger.e("Failed to set l2 relay capture: $error, stackTrace: $stack");
+      rethrow;
+    }
+  }
+
+  Future<void> setL2RelayVerboseDebug(bool on) async {
+    try {
+      _logger.d("Setting l2 relay verbose debug to: $on");
+      await _ipnService.setL2RelayVerboseDebug(on);
+    } catch (error, stack) {
+      _logger.e(
+        "Failed to set l2 relay verbose debug: $error, stackTrace: $stack",
+      );
+      rethrow;
+    }
+  }
+
+  Future<bool> requestLocalNetworkPermission() async {
+    return _ipnService.requestLocalNetworkPermission();
   }
 
   Future<void> setUserDialUseRoutes(bool on) async {
@@ -728,15 +811,98 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
-  Future<void> startWebAuth(String url) async {
+  Future<void> _initLocalDiscoveryRelay() async {
+    if (_initializingLocalDiscoveryRelay) return;
+    _initializingLocalDiscoveryRelay = true;
+    try {
+      _logger.d("Initializing local discovery relay state");
+      final isSet = await _ipnService.getLocalDiscoveryRelay();
+      ref.read(localDiscoveryRelayProvider.notifier).setState(isSet);
+      _isLocalDiscoveryRelayInitialized = true;
+    } catch (e) {
+      _logger.e("Failed to initialize local discovery relay state: $e");
+    } finally {
+      _initializingLocalDiscoveryRelay = false;
+    }
+  }
+
+  Future<void> _initL2RelayCapture() async {
+    if (_initializingL2RelayCapture) return;
+    _initializingL2RelayCapture = true;
+    try {
+      _logger.d("Initializing l2 relay capture state");
+      final prefs = ref.read(sharedPreferencesProvider);
+      if (prefs.isLoading) {
+        _logger.d(
+          "SharedPreferences not ready, defer l2 relay capture initialization",
+        );
+        await Future.delayed(const Duration(milliseconds: 100));
+        _initializingL2RelayCapture = false;
+        _initL2RelayCapture();
+        return;
+      }
+
+      final captureEnabled = ref.read(l2RelayCaptureProvider);
+      _logger.d("L2 relay capture: $captureEnabled");
+      final isSet = await _ipnService.getL2RelayCapture();
+      if (captureEnabled && !isSet) {
+        await setL2RelayCapture(true);
+      }
+      _isL2RelayCaptureInitialized = true;
+    } catch (e) {
+      _logger.e("Failed to initialize l2 relay capture state: $e");
+    } finally {
+      _initializingL2RelayCapture = false;
+    }
+  }
+
+  Future<void> _initL2RelayVerboseDebug() async {
+    if (_initializingL2RelayVerboseDebug) return;
+    _initializingL2RelayVerboseDebug = true;
+    try {
+      _logger.d("Initializing l2 relay verbose debug state");
+      final prefs = ref.read(sharedPreferencesProvider);
+      if (prefs.isLoading) {
+        _logger.d(
+          "SharedPreferences not ready, defer l2 relay verbose debug initialization",
+        );
+        await Future.delayed(const Duration(milliseconds: 100));
+        _initializingL2RelayVerboseDebug = false;
+        _initL2RelayVerboseDebug();
+        return;
+      }
+
+      final verboseDebugEnabled = ref.read(l2RelayVerboseDebugProvider);
+      _logger.d("L2 relay verbose debug: ");
+      final isSet = await _ipnService.getL2RelayVerboseDebug();
+      if (verboseDebugEnabled != isSet) {
+        await setL2RelayVerboseDebug(verboseDebugEnabled);
+      }
+      _isL2RelayVerboseDebugInitialized = true;
+    } catch (e) {
+      _logger.e("Failed to initialize l2 relay verbose debug state: ");
+    } finally {
+      _initializingL2RelayVerboseDebug = false;
+    }
+  }
+
+  Future<bool?> startWebAuth(String url) async {
     _logger.d("Starting web auth with URL: $url");
     try {
       if (Platform.isMacOS) {
         // On macOS, we use the native side to handle web auth
         _logger.d("Launching web auth on macOS");
-        await _ipnService.startWebAuth(url);
-        urlBrowsed = url;
-        return;
+        await _ipnService.startWebAuth(url, () {
+          _logger.d("Web auth started on macOS");
+          urlBrowsed = url;
+          _logger.d("Set urlBrowsed and browseToURL to $url in callback");
+          state = AsyncValue.data(
+            (state.valueOrNull ?? const IpnState()).copyWith(
+              browseToURL: url,
+            ),
+          );
+        });
+        return true;
       }
       _logger.d("Launching to URL $url");
       final launched = await launchUrl(
@@ -746,10 +912,27 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         throw Exception("Failed to launch login URL at '$url'");
       }
       urlBrowsed = url;
+      _logger.d("Set urlBrowsed and browseToURL to $url");
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(
+          browseToURL: url,
+        ),
+      );
+    } on WebAuthCanceledException {
+      _logger.d("User canceled web auth");
+      urlBrowsed = null;
+      _logger.d("Set urlBrowsed null due to cancellation");
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(
+          browseToURL: url,
+        ),
+      );
+      // Don't treat user cancellation as an error
     } catch (error, stack) {
       _logger.e("Failed to start web auth: $error, stackTrace: $stack");
       state = AsyncValue.error(error, stack);
     }
+    return null;
   }
 
   Future<http.Response?> signinWithApple(String url) async {
@@ -757,7 +940,22 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     try {
       final resp = await _ipnService.signinWithApple(url);
       urlBrowsed = url;
+      _logger.d("Set urlBrowsed and browseToURL to $url");
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const IpnState()).copyWith(
+          browseToURL: url,
+        ),
+      );
+      _logger.d("Changed ipn state to include browseToURL for Apple sign-in");
       return resp;
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) {
+        _logger.d("User canceled Apple sign-in");
+        // Don't treat user cancellation as an error
+        return null;
+      }
+      _logger.e("Failed to sign in with Apple: $e");
+      state = AsyncValue.error(e, StackTrace.current);
     } catch (error, stack) {
       _logger.e("Failed to sign in with Apple: $error, stackTrace: $stack");
       state = AsyncValue.error(error, stack);

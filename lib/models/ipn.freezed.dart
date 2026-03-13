@@ -3942,6 +3942,8 @@ mixin _$Node {
   List<String>? get capabilities => throw _privateConstructorUsedError;
   @JsonKey(name: 'CapMap')
   Map<String, dynamic>? get capMap => throw _privateConstructorUsedError;
+  @JsonKey(name: 'Cap')
+  int? get cap => throw _privateConstructorUsedError;
   @JsonKey(name: 'ComputedName')
   String? get computedName => throw _privateConstructorUsedError;
   @JsonKey(name: 'ComputedNameWithHost')
@@ -3981,6 +3983,7 @@ abstract class $NodeCopyWith<$Res> {
       @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') List<String>? capabilities,
       @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
+      @JsonKey(name: 'Cap') int? cap,
       @JsonKey(name: 'ComputedName') String? computedName,
       @JsonKey(name: 'ComputedNameWithHost') String? computedNameWithHost});
 
@@ -4021,6 +4024,7 @@ class _$NodeCopyWithImpl<$Res, $Val extends Node>
     Object? isWireGuardOnly = freezed,
     Object? capabilities = freezed,
     Object? capMap = freezed,
+    Object? cap = freezed,
     Object? computedName = freezed,
     Object? computedNameWithHost = freezed,
   }) {
@@ -4101,6 +4105,10 @@ class _$NodeCopyWithImpl<$Res, $Val extends Node>
           ? _value.capMap
           : capMap // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>?,
+      cap: freezed == cap
+          ? _value.cap
+          : cap // ignore: cast_nullable_to_non_nullable
+              as int?,
       computedName: freezed == computedName
           ? _value.computedName
           : computedName // ignore: cast_nullable_to_non_nullable
@@ -4154,6 +4162,7 @@ abstract class _$$NodeImplCopyWith<$Res> implements $NodeCopyWith<$Res> {
       @JsonKey(name: "IsWireGuardOnly") bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') List<String>? capabilities,
       @JsonKey(name: 'CapMap') Map<String, dynamic>? capMap,
+      @JsonKey(name: 'Cap') int? cap,
       @JsonKey(name: 'ComputedName') String? computedName,
       @JsonKey(name: 'ComputedNameWithHost') String? computedNameWithHost});
 
@@ -4192,6 +4201,7 @@ class __$$NodeImplCopyWithImpl<$Res>
     Object? isWireGuardOnly = freezed,
     Object? capabilities = freezed,
     Object? capMap = freezed,
+    Object? cap = freezed,
     Object? computedName = freezed,
     Object? computedNameWithHost = freezed,
   }) {
@@ -4272,6 +4282,10 @@ class __$$NodeImplCopyWithImpl<$Res>
           ? _value._capMap
           : capMap // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>?,
+      cap: freezed == cap
+          ? _value.cap
+          : cap // ignore: cast_nullable_to_non_nullable
+              as int?,
       computedName: freezed == computedName
           ? _value.computedName
           : computedName // ignore: cast_nullable_to_non_nullable
@@ -4307,6 +4321,7 @@ class _$NodeImpl extends _Node {
       @JsonKey(name: "IsWireGuardOnly") this.isWireGuardOnly,
       @JsonKey(name: 'Capabilities') final List<String>? capabilities,
       @JsonKey(name: 'CapMap') final Map<String, dynamic>? capMap,
+      @JsonKey(name: 'Cap') this.cap,
       @JsonKey(name: 'ComputedName') this.computedName,
       @JsonKey(name: 'ComputedNameWithHost') this.computedNameWithHost})
       : _addresses = addresses,
@@ -4413,6 +4428,9 @@ class _$NodeImpl extends _Node {
   }
 
   @override
+  @JsonKey(name: 'Cap')
+  final int? cap;
+  @override
   @JsonKey(name: 'ComputedName')
   final String? computedName;
   @override
@@ -4453,6 +4471,7 @@ class _$NodeImpl extends _Node {
             const DeepCollectionEquality()
                 .equals(other._capabilities, _capabilities) &&
             const DeepCollectionEquality().equals(other._capMap, _capMap) &&
+            (identical(other.cap, cap) || other.cap == cap) &&
             (identical(other.computedName, computedName) ||
                 other.computedName == computedName) &&
             (identical(other.computedNameWithHost, computedNameWithHost) ||
@@ -4482,6 +4501,7 @@ class _$NodeImpl extends _Node {
         isWireGuardOnly,
         const DeepCollectionEquality().hash(_capabilities),
         const DeepCollectionEquality().hash(_capMap),
+        cap,
         computedName,
         computedNameWithHost
       ]);
@@ -4523,6 +4543,7 @@ abstract class _Node extends Node {
       @JsonKey(name: "IsWireGuardOnly") final bool? isWireGuardOnly,
       @JsonKey(name: 'Capabilities') final List<String>? capabilities,
       @JsonKey(name: 'CapMap') final Map<String, dynamic>? capMap,
+      @JsonKey(name: 'Cap') final int? cap,
       @JsonKey(name: 'ComputedName') final String? computedName,
       @JsonKey(name: 'ComputedNameWithHost')
       final String? computedNameWithHost}) = _$NodeImpl;
@@ -4587,6 +4608,9 @@ abstract class _Node extends Node {
   @override
   @JsonKey(name: 'CapMap')
   Map<String, dynamic>? get capMap;
+  @override
+  @JsonKey(name: 'Cap')
+  int? get cap;
   @override
   @JsonKey(name: 'ComputedName')
   String? get computedName;

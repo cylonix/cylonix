@@ -120,10 +120,12 @@ class _PeerListState extends State<PeerList> {
           Expanded(
             child: isAndroidTV ? Container() : _buildSearchField(context),
           ),
+          const SizedBox(width: 8),
           Checkbox.adaptive(
             value: _onlineOnly,
             onChanged: (v) => {setState(() => _onlineOnly = v ?? false)},
           ),
+          const SizedBox(width: 4),
           const Text("Online"),
         ],
       ),

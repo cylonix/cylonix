@@ -15,5 +15,16 @@
 	<string>group.io.cylonix.sase.ios</string>
 	<key>NSUserNotificationAlertStyle</key>
 	<string>alert</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Cylonix can relay local discovery traffic when Local Network Discovery Relay is enabled.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dns-sd._udp</string>
+		<string>_ipp._tcp</string>
+		<string>_ipps._tcp</string>
+		<string>_printer._tcp</string>
+		<string>_universal._sub._ipps._tcp</string>
+		<string>_airplay._tcp</string>
+	</array>
 </dict>
 </plist>

@@ -188,6 +188,7 @@ Future<void> showQrCodeForURL(BuildContext context, String url) async {
     ),
   );
 }
+
 class ScrollableTextTV extends StatefulWidget {
   final String longText;
 
@@ -332,7 +333,7 @@ class _TVSwitchState extends State<TVSwitch> {
           child: Switch(
             value: widget.value,
             onChanged: widget.onChanged,
-            activeColor: widget.activeColor,
+            activeThumbColor: widget.activeColor,
             inactiveThumbColor: widget.inactiveThumbColor,
             inactiveTrackColor: widget.inactiveTrackColor,
           ),

@@ -46,6 +46,27 @@
 	<string>group.io.cylonix.sase.ios</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -93,5 +114,17 @@
 	<string>We need to notify you when files are received</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cylonix allows user to share files to cylonix peers. Only when user chooses to share photos or videos, the photos library is accessed.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Cylonix can discover local printers and game peers when Local Network Discovery Relay is enabled.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dns-sd._udp</string>
+		<string>_ipp._tcp</string>
+		<string>_ipps._tcp</string>
+		<string>_printer._tcp</string>
+		<string>_universal._sub._ipps._tcp</string>
+		<string>_airplay._tcp</string>
+		<string>_cylonix-permission._udp</string>
+	</array>
 </dict>
 </plist>

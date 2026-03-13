@@ -142,6 +142,41 @@ final alwaysUseDerpProvider =
   );
 });
 
+final localDiscoveryRelayProvider =
+    StateNotifierProvider<SimpleStateNotifier<bool>, bool>((ref) {
+  return SimpleStateNotifier<bool>(false);
+});
+
+final l2RelayCaptureProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'l2relay_capture',
+    defaultValue: false,
+    prefs: prefs,
+  );
+});
+
+final l2RelayVerboseDebugProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'l2relay_verbose_debug',
+    defaultValue: false,
+    prefs: prefs,
+  );
+});
+
+final localDiscoveryPrePromptShownProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'local_discovery_preprompt_shown',
+    defaultValue: false,
+    prefs: prefs,
+  );
+});
+
 final sendDNSToExitNodeInTunnelProvider =
     StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider).value;

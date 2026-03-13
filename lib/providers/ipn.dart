@@ -216,6 +216,17 @@ final userDialUseRoutesProvider = Provider<bool>((ref) {
   return netmap?.selfNode.capMap?.containsKey('user-dial-routes') ?? false;
 });
 
+final urlBrowsedProvider = Provider<String?>((ref) {
+  ref.watch(ipnStateProvider);
+  print("urlBrowsedProvider: Recomputing urlBrowsedProvider");
+  return ref.read(ipnStateNotifierProvider.notifier).urlBrowsed;
+});
+final loginSentProvider = Provider<bool>((ref) {
+  ref.watch(ipnStateProvider);
+  print("loginSentProvider: Recomputing loginSentProvider");
+  return ref.read(ipnStateNotifierProvider.notifier).loginSent;
+});
+
 // Enum for node states
 enum NodeState {
   none,

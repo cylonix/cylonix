@@ -14,6 +14,7 @@ import 'dns_settings_view.dart';
 import 'exit_node_picker.dart';
 import 'health_view.dart';
 import 'intro_page.dart';
+import 'l2_relay_settings_view.dart';
 import 'main_view.dart';
 import 'models/ipn.dart';
 import 'peer_details_view.dart';
@@ -207,6 +208,10 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
         return DNSSettingsView(
           onBackToSettings: () => _selectPage(Page.settings.value),
         );
+      case Page.l2RelaySettingsView:
+        return L2RelaySettingsView(
+          onBackToSettings: () => _selectPage(Page.settings.value),
+        );
       case Page.subnetRouting:
         return SubnetRoutingView(
           onBackToSettings: () => _selectPage(Page.settings.value),
@@ -286,6 +291,8 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
       onNavigateToCustomControlURL: () => _selectPage(Page.customControl.value),
       onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
       onNavigateToDNSSettings: () => _selectPage(Page.dnsSettingsView.value),
+      onNavigateToL2RelaySettings: () =>
+          _selectPage(Page.l2RelaySettingsView.value),
       onNavigateToSubnetRouting: () => _selectPage(Page.subnetRouting.value),
       onNavigateToSplitTunneling: () => _selectPage(Page.splitTunnel.value),
       onNavigateToTailnetLock: () =>
@@ -315,9 +322,9 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
       ref.read(navigationRailIndexProvider.notifier).setState(0);
     }
     setState(() {
-      _rightSide = null; // Clear the right side widget
       _previousPage = _page.value;
       _page = Page.fromInt(index);
+      _rightSide = _rightSidePage;
     });
   }
 
@@ -382,8 +389,8 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
   Widget get _mainPage {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     if (!useNavigationRail(context) || isAndroidTV) {
-      if (_page.value == Page.settings.value) {
-        return _settingsView;
+      if (_rightSide != null) {
+        return _rightSide!;
       }
       if (isAndroidTV) {
         return PopScope(
@@ -489,7 +496,8 @@ enum Page {
   runExitNodeView(10),
   dnsSettingsView(11),
   subnetRouting(12),
-  splitTunnel(13);
+  splitTunnel(13),
+  l2RelaySettingsView(14);
 
   const Page(this.value);
   final int value;

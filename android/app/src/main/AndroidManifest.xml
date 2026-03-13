@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-feature android:name="android.software.leanback"
         android:required="false" />
@@ -123,24 +124,6 @@
             android:name="flutterEmbedding"
             android:value="2"
 			/>
-	    <service android:name=".IPNService"
-            android:exported="false"
-            android:foregroundServiceType="systemExempted"
-			android:permission="android.permission.BIND_VPN_SERVICE">
-			<intent-filter>
-				<action android:name="android.net.VpnService"/>
-			</intent-filter>
-		</service>
-		<service
-			android:name=".QuickToggleService"
-			android:icon="@mipmap/ic_launcher"
-			android:label="@string/tile_name"
-            android:exported="false"
-			android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-		    <intent-filter>
-			    <action android:name="android.service.quicksettings.action.QS_TILE"/>
-		    </intent-filter>
-	    </service>
         <profileable android:shell="true"/>
     </application>
 </manifest>
