@@ -290,8 +290,8 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildToggleDeviceViewButton(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(vpnStateProvider);
-    if (state != VpnState.connected) {
+    final state = ref.watch(backendStateProvider);
+    if (state != BackendState.running) {
       return const SizedBox.shrink();
     }
 
