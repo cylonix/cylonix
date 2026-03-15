@@ -56,6 +56,7 @@ jobs:
         run: |
           wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.41.4-stable.tar.xz
           tar -xf flutter_linux_3.41.4-stable.tar.xz -C /root
+          git config --global --add safe.directory /root/flutter
           echo "/root/flutter/bin" >> $GITHUB_PATH
 
       - name: Flutter pub get
