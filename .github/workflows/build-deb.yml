@@ -11,8 +11,20 @@ on:
 jobs:
   build-deb:
     runs-on: ubuntu-latest
+    container: ubuntu:20.04
 
     steps:
+      - name: Install system dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y \
+            wget curl git make cmake ninja-build clang pkg-config \
+            build-essential libgtk-3-dev liblzma-dev libglu1-mesa \
+            debhelper fakeroot file unzip zip xz-utils \
+            libappindicator3-dev ca-certificates
+
       - name: Rewrite SSH submodule URLs to HTTPS
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
@@ -22,37 +34,29 @@ jobs:
           ref: ${{ github.event.inputs.branch || github.ref }}
           submodules: recursive
 
-      - name: Install system dependencies
+      - name: Install Go 1.25 (bootstrap for tailscale-go)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            wget curl git make cmake ninja-build clang pkg-config \
-            build-essential libgtk-3-dev liblzma-dev libglu1-mesa \
-            debhelper fakeroot file unzip zip xz-utils \
-            libayatana-appindicator3-dev
-
-      - name: Install bootstrap Go (for tailscale-go build)
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.x'
-          cache: false
+          wget -q https://go.dev/dl/go1.25.6.linux-amd64.tar.gz
+          tar -xf go1.25.6.linux-amd64.tar.gz -C /usr/local
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
 
       - name: Install tailscale-go toolchain
         run: |
+          export PATH="/usr/local/go/bin:$PATH"
           GO_COMMIT_ID=$(cat tailscale/go.toolchain.rev)
-          mkdir -p ~/.cache
-          cd ~/.cache && git clone https://github.com/tailscale/go.git
-          cd ~/.cache/go && git checkout ${GO_COMMIT_ID}
-          cd ~/.cache/go/src && ./make.bash
-          mv ~/.cache/go ~/.cache/tailscale-go
-          echo "${GO_COMMIT_ID}" > ~/.cache/tailscale-go.extracted
-          echo "$HOME/.cache/tailscale-go/bin" >> $GITHUB_PATH
+          mkdir -p /root/.cache
+          cd /root/.cache && git clone https://github.com/tailscale/go.git
+          cd /root/.cache/go && git checkout ${GO_COMMIT_ID}
+          cd /root/.cache/go/src && ./make.bash
+          mv /root/.cache/go /root/.cache/tailscale-go
+          echo "${GO_COMMIT_ID}" > /root/.cache/tailscale-go.extracted
+          echo "/root/.cache/tailscale-go/bin" >> $GITHUB_PATH
 
       - name: Install Flutter
         run: |
           wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.41.4-stable.tar.xz
-          tar -xf flutter_linux_3.41.4-stable.tar.xz -C $HOME
-          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+          tar -xf flutter_linux_3.41.4-stable.tar.xz -C /root
+          echo "/root/flutter/bin" >> $GITHUB_PATH
 
       - name: Flutter pub get
         run: flutter pub get
