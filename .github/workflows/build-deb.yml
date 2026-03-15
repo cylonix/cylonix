@@ -22,7 +22,7 @@ jobs:
           apt-get install -y \
             wget curl git make cmake ninja-build clang pkg-config \
             build-essential libgtk-3-dev liblzma-dev libglu1-mesa \
-            debhelper fakeroot file unzip zip xz-utils \
+            debhelper fakeroot golang-go file unzip zip xz-utils \
             libappindicator3-dev ca-certificates
 
       - name: Rewrite SSH submodule URLs to HTTPS
