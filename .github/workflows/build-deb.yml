@@ -28,7 +28,13 @@ jobs:
           sudo apt-get install -y \
             wget curl git make cmake ninja-build clang pkg-config \
             build-essential libgtk-3-dev liblzma-dev libglu1-mesa \
-            debhelper fakeroot golang-go file unzip zip xz-utils
+            debhelper fakeroot file unzip zip xz-utils
+
+      - name: Install bootstrap Go (for tailscale-go build)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+          cache: false
 
       - name: Install tailscale-go toolchain
         run: |
