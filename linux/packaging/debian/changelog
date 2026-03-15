@@ -1,3 +1,9 @@
+cylonix (1.0.12-1) unstable; urgency=low
+
+  * L2relay support
+
+ -- Cylonix authors <contact@cylonix.io>  Sat, 14 Mar 2026 08:00:00 +0000
+
 cylonix (1.0.10-0-1) unstable; urgency=low
 
   * XRAY derp underlay support

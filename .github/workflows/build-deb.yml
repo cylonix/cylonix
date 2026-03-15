@@ -1,0 +1,61 @@
+name: Build Debian Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: false
+        default: 'main'
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Rewrite SSH submodule URLs to HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            wget curl git make cmake ninja-build clang pkg-config \
+            build-essential libgtk-3-dev liblzma-dev libglu1-mesa \
+            debhelper fakeroot golang-go file unzip zip xz-utils
+
+      - name: Install tailscale-go toolchain
+        run: |
+          GO_COMMIT_ID=$(cat tailscale/go.toolchain.rev)
+          mkdir -p ~/.cache
+          cd ~/.cache && git clone https://github.com/tailscale/go.git
+          cd ~/.cache/go && git checkout ${GO_COMMIT_ID}
+          cd ~/.cache/go/src && ./make.bash
+          mv ~/.cache/go ~/.cache/tailscale-go
+          echo "${GO_COMMIT_ID}" > ~/.cache/tailscale-go.extracted
+          echo "$HOME/.cache/tailscale-go/bin" >> $GITHUB_PATH
+
+      - name: Install Flutter
+        run: |
+          wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
+          tar -xf flutter_linux_3.24.5-stable.tar.xz -C $HOME
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Debian package
+        run: make deb
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cylonix-deb
+          path: build/linux/x64/release/cylonix*.deb
+          retention-days: 30
