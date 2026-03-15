@@ -26,7 +26,9 @@ jobs:
             libappindicator3-dev ca-certificates
 
       - name: Rewrite SSH submodule URLs to HTTPS
-        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git config --global --add safe.directory '*'
 
       - name: Checkout
         uses: actions/checkout@v4
