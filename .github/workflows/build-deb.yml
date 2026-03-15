@@ -28,7 +28,8 @@ jobs:
           sudo apt-get install -y \
             wget curl git make cmake ninja-build clang pkg-config \
             build-essential libgtk-3-dev liblzma-dev libglu1-mesa \
-            debhelper fakeroot file unzip zip xz-utils
+            debhelper fakeroot file unzip zip xz-utils \
+            libayatana-appindicator3-dev
 
       - name: Install bootstrap Go (for tailscale-go build)
         uses: actions/setup-go@v5
@@ -49,12 +50,15 @@ jobs:
 
       - name: Install Flutter
         run: |
-          wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
-          tar -xf flutter_linux_3.24.5-stable.tar.xz -C $HOME
+          wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.41.4-stable.tar.xz
+          tar -xf flutter_linux_3.41.4-stable.tar.xz -C $HOME
           echo "$HOME/flutter/bin" >> $GITHUB_PATH
 
       - name: Flutter pub get
         run: flutter pub get
+
+      - name: Generate config
+        run: make config
 
       - name: Build Debian package
         run: make deb
