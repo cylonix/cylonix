@@ -1286,7 +1286,7 @@ class IpnService {
   Future<bool> getL2RelayVerboseDebug() async {
     if (_useHttpLocalApi) {
       final result = await _sendCommandOverHttp(
-        Uri.parse('/envknob?env=TS_DEBUG_L2RELAY_VERBOSE'),
+        Uri.parse('$_localBaseURL/envknob?env=TS_DEBUG_L2RELAY_VERBOSE'),
         'GET',
         timeoutMilliseconds: 2000,
       );
