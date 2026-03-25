@@ -14,6 +14,7 @@ import '../models/backend_notify_event.dart';
 import '../models/exception.dart';
 import '../models/ipn.dart';
 import '../models/log_file.dart';
+import '../models/peer_messaging.dart';
 import '../utils/logger.dart';
 import '../utils/utils.dart';
 import 'named_pipe_socket.dart';
@@ -154,6 +155,15 @@ class IpnService {
             eventBus.fire(BackendNotifyEvent(v));
           } catch (e, trace) {
             _logger.e("Failed to handle notification: $e: $trace");
+          }
+          break;
+        case "peerMessageEvent":
+          try {
+            final s = call.arguments as String;
+            final event = PeerMessagingEvent.fromEncodedJson(s);
+            eventBus.fire(PeerMessagingBridgeEvent(event));
+          } catch (e, trace) {
+            _logger.e("Failed to handle peer messaging event: $e: $trace");
           }
           break;
         case "tunnelStatus":
@@ -865,6 +875,26 @@ class IpnService {
     return result == "true";
   }
 
+  Future<void> sendOpenClawMessage(Map<String, dynamic> payload) async {
+    final result = await _sendCommand(
+      'send_openclaw_message',
+      jsonEncode(payload),
+    );
+    if (result != "Success") {
+      throw Exception("Failed to send OpenClaw message: $result");
+    }
+  }
+
+  Future<void> sendPeerMessagingMessage(Map<String, dynamic> payload) async {
+    final result = await _sendCommand(
+      'send_peer_message',
+      jsonEncode(payload),
+    );
+    if (result != "Success") {
+      throw Exception("Failed to send peer messaging message: $result");
+    }
+  }
+
   Future<void> switchProfile(String id) async {
     if (_useHttpLocalApi) {
       await _sendCommandOverHttp(
@@ -896,7 +926,7 @@ class IpnService {
     if (result.startsWith("Error")) {
       throw Exception("Failed to get waiting files: $result");
     }
-    print("Received waiting files: $result");
+    _logger.d("Received waiting files: $result");
     final list = jsonDecode(result) as List<dynamic>?;
     return list?.map((e) => AwaitingFile.fromJson(e)).toList();
   }

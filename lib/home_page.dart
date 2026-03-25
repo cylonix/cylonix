@@ -17,6 +17,7 @@ import 'intro_page.dart';
 import 'l2_relay_settings_view.dart';
 import 'main_view.dart';
 import 'models/ipn.dart';
+import 'peer_messaging_inbox_view.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
 import 'providers/share_file.dart';
@@ -161,6 +162,8 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
       ),
       onNavigateToExitNodes: () => Navigator.pushNamed(context, '/exit-nodes'),
       onNavigateToHealth: () => Navigator.pushNamed(context, '/health'),
+      onNavigateToPeerMessaging: () =>
+          Navigator.pushNamed(context, '/peer-messaging'),
       onNavigateToAbout: () => Navigator.pushNamed(context, '/about'),
     );
   }
@@ -176,6 +179,7 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
       },
       onNavigateToExitNodes: () => _selectPage(Page.exitNodes.value),
       onNavigateToHealth: () => _selectPage(Page.health.value),
+      onNavigateToPeerMessaging: () => _selectPage(Page.peerMessaging.value),
       onNavigateToAbout: () => _selectPage(Page.about.value),
     );
   }
@@ -192,6 +196,8 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
         return _exitNodesView;
       case Page.health:
         return _healthView;
+      case Page.peerMessaging:
+        return _peerMessagingView;
       case Page.settings:
         return _settingsView;
       case Page.userSwitcher:
@@ -282,6 +288,12 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
     );
   }
 
+  Widget get _peerMessagingView {
+    return PeerMessagingInboxView(
+      onNavigateBack: _navigateBack,
+    );
+  }
+
   Widget get _settingsView {
     return SettingsView(
       onNavigateBackHome: () => _selectPage(Page.mainView.value),
@@ -314,6 +326,7 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
     _logger.d("Navigating back to page $_previousPage");
     setState(() {
       _page = Page.fromInt(_previousPage);
+      _rightSide = _rightSidePage;
     });
   }
 
@@ -419,6 +432,8 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
           onNavigateToExitNodes: () => _selectPage(Page.exitNodes.value),
           onNavigateToSendFiles: _sendFiles,
           onNavigateToHealth: () => _selectPage(Page.health.value),
+          onNavigateToPeerMessaging: () =>
+              _selectPage(Page.peerMessaging.value),
           onNavigateToSettings: () => _selectPage(Page.settings.value),
           onNavigateToAbout: () => _selectPage(Page.about.value),
         ),
@@ -487,17 +502,18 @@ enum Page {
   settings(1),
   exitNodes(2),
   health(3),
-  userSwitcher(4),
-  customLogin(5),
-  customControl(6),
-  about(7),
-  perDetails(8),
-  permissions(9),
-  runExitNodeView(10),
-  dnsSettingsView(11),
-  subnetRouting(12),
-  splitTunnel(13),
-  l2RelaySettingsView(14);
+  peerMessaging(4),
+  userSwitcher(5),
+  customLogin(6),
+  customControl(7),
+  about(8),
+  perDetails(9),
+  permissions(10),
+  runExitNodeView(11),
+  dnsSettingsView(12),
+  subnetRouting(13),
+  splitTunnel(14),
+  l2RelaySettingsView(15);
 
   const Page(this.value);
   final int value;

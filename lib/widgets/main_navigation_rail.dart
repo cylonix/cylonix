@@ -9,6 +9,7 @@ import 'adaptive_widgets.dart';
 import '../models/ipn.dart';
 import '../models/platform.dart';
 import '../providers/ipn.dart';
+import '../providers/peer_messaging.dart';
 import '../providers/theme.dart';
 import '../utils/utils.dart';
 import '../viewmodels/state_notifier.dart';
@@ -20,6 +21,7 @@ class MainNavigationRail extends ConsumerStatefulWidget {
   final Function() onNavigateToSendFiles;
   final Function() onNavigateToHealth;
   final Function() onNavigateToHome;
+  final Function() onNavigateToPeerMessaging;
   final Function() onNavigateToAbout;
 
   const MainNavigationRail({
@@ -30,6 +32,7 @@ class MainNavigationRail extends ConsumerStatefulWidget {
     required this.onNavigateToSendFiles,
     required this.onNavigateToHealth,
     required this.onNavigateToHome,
+    required this.onNavigateToPeerMessaging,
     required this.onNavigateToAbout,
   });
 
@@ -59,6 +62,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
       isApple() ? CupertinoIcons.moon : Icons.dark_mode;
 
   IconData get _infoIcon => isApple() ? CupertinoIcons.info : Icons.info;
+  IconData get _peerMessagingIcon => isApple()
+      ? CupertinoIcons.chat_bubble_2
+      : Icons.mark_chat_unread_outlined;
 
   TextStyle? get _labelStyle {
     return isApple() ? const TextStyle(fontSize: 13) : null;
@@ -79,6 +85,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
   Widget _buildAppleRail(BuildContext context) {
     final user = ref.watch(userProfileProvider);
     final health = ref.watch(healthProvider);
+    final unread = ref.watch(peerMessagingUnreadCountProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
     final labelStyle = TextStyle(
@@ -143,6 +150,11 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             widget.onNavigateToHealth,
           ),
           row(
+            unread > 0 ? 'Peer Messages ($unread)' : 'Peer Messages',
+            _appleIcon(_peerMessagingIcon),
+            widget.onNavigateToPeerMessaging,
+          ),
+          row(
             isDarkMode ? 'Light Mode' : 'Dark Mode',
             _appleIcon(isDarkMode ? _lightModeIcon : _darkModeIcon),
             () => ref.read(themeProvider.notifier).toggleTheme(),
@@ -170,6 +182,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
   Widget build(BuildContext context) {
     final user = ref.watch(userProfileProvider);
     final health = ref.watch(healthProvider);
+    final unread = ref.watch(peerMessagingUnreadCountProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final selectedIndex = ref.watch(navigationRailIndexProvider);
 
@@ -188,7 +201,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
           : null,
       useIndicator: !isApple(), // Material 3 indicator style
       indicatorColor: isApple()
-          ? CupertinoColors.activeBlue.withOpacity(0.1)
+          ? CupertinoColors.activeBlue.withValues(alpha: 0.1)
           : Theme.of(context).colorScheme.secondaryContainer,
       selectedIconTheme: IconThemeData(
         color: isApple()
@@ -230,6 +243,13 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
           icon: _railIcon(_buildHeathIcon(health), "Health"),
           label: Text(
             'Health',
+            style: _labelStyle,
+          ),
+        ),
+        NavigationRailDestination(
+          icon: _railIcon(Icon(_peerMessagingIcon), "Peer Messages"),
+          label: Text(
+            unread > 0 ? 'Peer Messages ($unread)' : 'Peer Messages',
             style: _labelStyle,
           ),
         ),
@@ -305,9 +325,12 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
         widget.onNavigateToHealth();
         break;
       case 5:
-        ref.read(themeProvider.notifier).toggleTheme();
+        widget.onNavigateToPeerMessaging();
         break;
       case 6:
+        ref.read(themeProvider.notifier).toggleTheme();
+        break;
+      case 7:
         widget.onNavigateToAbout();
         break;
     }
@@ -327,6 +350,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
         widget.onNavigateToHealth();
         break;
       case 4:
+        widget.onNavigateToPeerMessaging();
+        break;
+      case 5:
         widget.onNavigateToAbout();
         break;
     }

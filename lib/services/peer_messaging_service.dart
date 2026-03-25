@@ -1,0 +1,718 @@
+// Copyright (c) EZBLOCK Inc & AUTHORS
+// SPDX-License-Identifier: BSD-3-Clause
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
+
+import '../models/peer_messaging.dart';
+import '../utils/logger.dart';
+import 'ipn.dart';
+
+class PeerMessagingService extends StateNotifier<PeerMessagingState> {
+  PeerMessagingService(this._ipnService) : super(PeerMessagingState.initial());
+
+  static const _protocolVersion = 'v1';
+  static const _listenPort = 50321;
+  static const _storageFolderName = 'openclaw';
+  static const _storageFileName = 'state.json';
+  static const _authTokenKey = 'openclaw_proxy_auth_token';
+  static final _logger = Logger(tag: 'PeerMessaging');
+
+  final IpnService _ipnService;
+  final _clients = <WebSocket>{};
+
+  StreamSubscription<PeerMessagingBridgeEvent>? _bridgeSubscription;
+  HttpServer? _server;
+  File? _stateFile;
+  bool _initialized = false;
+
+  bool get _supportsLocalProxy =>
+      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+
+  Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+
+    final storedState = await _loadState();
+    final authToken = await _loadOrCreateAuthToken();
+    state = storedState.copyWith(
+      initialized: true,
+      proxy: storedState.proxy.copyWith(
+        authToken: authToken,
+        url: _proxyUrl,
+      ),
+    );
+
+    _bridgeSubscription = IpnService.eventBus
+        .on<PeerMessagingBridgeEvent>()
+        .listen((event) => handleBridgeEvent(event.event));
+
+    await _startProxyServer();
+    await _persistState();
+  }
+
+  Future<void> disposeService() async {
+    await _bridgeSubscription?.cancel();
+    for (final client in _clients.toList()) {
+      await client.close();
+    }
+    _clients.clear();
+    await _server?.close(force: true);
+  }
+
+  @override
+  void dispose() {
+    disposeService();
+    super.dispose();
+  }
+
+  Future<void> markConversationRead(String conversationId) async {
+    final updated = state.conversations.map((conversation) {
+      if (conversation.id != conversationId) return conversation;
+      return conversation.copyWith(unreadCount: 0);
+    }).toList();
+    state = state.copyWith(conversations: _sortConversations(updated));
+    await _persistState();
+  }
+
+  Future<void> sendTextMessage(
+    String conversationId,
+    String text, {
+    String? conversationTitle,
+    List<PeerMessagingMenuOption> menuOptions = const [],
+  }) async {
+    final now = DateTime.now().toUtc();
+    final messageId = const Uuid().v4();
+    final message = PeerMessagingMessage(
+      id: messageId,
+      conversationId: conversationId,
+      role: PeerMessagingMessageRole.user,
+      kind: menuOptions.isNotEmpty
+          ? PeerMessagingMessageKind.menuRequest
+          : PeerMessagingMessageKind.text,
+      deliveryStatus: PeerMessagingDeliveryStatus.pending,
+      text: text,
+      createdAt: now,
+      menuOptions: menuOptions,
+    );
+    _upsertConversationMessage(
+      conversationId,
+      message,
+      title: conversationTitle ?? 'Peer Conversation',
+      incrementUnread: false,
+    );
+
+    final payload = {
+      'peer_id': conversationId,
+      'conversation_id': conversationId,
+      'message': message.toJson(),
+      if (conversationTitle != null) 'conversation_title': conversationTitle,
+    };
+
+    try {
+      await _ipnService.sendPeerMessagingMessage(payload);
+      await _applyDeliveryStatus(
+        conversationId,
+        messageId,
+        PeerMessagingDeliveryStatus.sent,
+      );
+      await _broadcast(
+        PeerMessagingEvent(
+          version: _protocolVersion,
+          type: PeerMessagingEventType.messageSent,
+          conversationId: conversationId,
+          messageId: messageId,
+          timestamp: now,
+          payload: payload,
+        ),
+      );
+    } catch (e) {
+      await _applyDeliveryStatus(
+        conversationId,
+        messageId,
+        PeerMessagingDeliveryStatus.failed,
+      );
+      await _broadcast(
+        PeerMessagingEvent(
+          version: _protocolVersion,
+          type: PeerMessagingEventType.error,
+          conversationId: conversationId,
+          messageId: messageId,
+          timestamp: DateTime.now().toUtc(),
+          payload: {'message': e.toString()},
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> submitApproval({
+    required String conversationId,
+    required String approvalId,
+    required bool approved,
+    String? note,
+  }) async {
+    final action = PeerMessagingApprovalAction(
+      id: const Uuid().v4(),
+      title: approved ? 'Approved' : 'Rejected',
+      approved: approved,
+      note: note,
+    );
+    final message = PeerMessagingMessage(
+      id: const Uuid().v4(),
+      conversationId: conversationId,
+      role: PeerMessagingMessageRole.user,
+      kind: PeerMessagingMessageKind.approvalResponse,
+      deliveryStatus: PeerMessagingDeliveryStatus.pending,
+      text: approved ? 'Approved' : 'Rejected',
+      createdAt: DateTime.now().toUtc(),
+      approvalId: approvalId,
+      approvalActions: [action],
+      metadata: {
+        'approved': approved,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    );
+    _upsertConversationMessage(
+      conversationId,
+      message,
+      title: 'Peer Conversation',
+      incrementUnread: false,
+    );
+
+    final payload = {
+      'peer_id': conversationId,
+      'conversation_id': conversationId,
+      'message': message.toJson(),
+      'approval_id': approvalId,
+      'approved': approved,
+      if (note != null && note.isNotEmpty) 'note': note,
+    };
+
+    try {
+      await _ipnService.sendPeerMessagingMessage(payload);
+      await _applyDeliveryStatus(
+        conversationId,
+        message.id,
+        PeerMessagingDeliveryStatus.sent,
+      );
+      await _broadcast(
+        PeerMessagingEvent(
+          version: _protocolVersion,
+          type: PeerMessagingEventType.approvalSubmitted,
+          conversationId: conversationId,
+          messageId: message.id,
+          timestamp: DateTime.now().toUtc(),
+          payload: payload,
+        ),
+      );
+    } catch (e) {
+      await _applyDeliveryStatus(
+        conversationId,
+        message.id,
+        PeerMessagingDeliveryStatus.failed,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> submitMenuSelection({
+    required String conversationId,
+    required String messageId,
+    required String action,
+    String? title,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final message = PeerMessagingMessage(
+      id: const Uuid().v4(),
+      conversationId: conversationId,
+      role: PeerMessagingMessageRole.user,
+      kind: PeerMessagingMessageKind.menuResponse,
+      deliveryStatus: PeerMessagingDeliveryStatus.pending,
+      text: title?.isNotEmpty == true ? title! : action,
+      createdAt: now,
+      metadata: {
+        'reply_to_message_id': messageId,
+        'selected_action': action,
+        if (title != null && title.isNotEmpty) 'selected_title': title,
+      },
+    );
+    _upsertConversationMessage(
+      conversationId,
+      message,
+      title: 'Peer Conversation',
+      incrementUnread: false,
+    );
+
+    final payload = {
+      'peer_id': conversationId,
+      'conversation_id': conversationId,
+      'message': message.toJson(),
+      'message_id': messageId,
+      'action': action,
+      if (title != null && title.isNotEmpty) 'title': title,
+    };
+
+    try {
+      await _ipnService.sendPeerMessagingMessage(payload);
+      await _applyDeliveryStatus(
+        conversationId,
+        message.id,
+        PeerMessagingDeliveryStatus.sent,
+      );
+      await _broadcast(
+        PeerMessagingEvent(
+          version: _protocolVersion,
+          type: PeerMessagingEventType.menuSubmitted,
+          conversationId: conversationId,
+          messageId: message.id,
+          timestamp: now,
+          payload: payload,
+        ),
+      );
+    } catch (e) {
+      await _applyDeliveryStatus(
+        conversationId,
+        message.id,
+        PeerMessagingDeliveryStatus.failed,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> handleBridgeEvent(PeerMessagingEvent event) async {
+    switch (event.type) {
+      case PeerMessagingEventType.conversationUpsert:
+        _upsertConversation(
+          event.conversationId,
+          title: event.payload['title'] as String? ?? 'Peer Conversation',
+          subtitle: event.payload['subtitle'] as String? ?? '',
+          updatedAt: event.timestamp,
+        );
+        break;
+      case PeerMessagingEventType.messageReceived:
+      case PeerMessagingEventType.approvalRequested:
+      case PeerMessagingEventType.messageSent:
+      case PeerMessagingEventType.approvalSubmitted:
+      case PeerMessagingEventType.menuRequested:
+      case PeerMessagingEventType.menuSubmitted:
+        final messageJson =
+            Map<String, dynamic>.from(event.payload['message'] as Map? ?? {});
+        if (messageJson.isNotEmpty) {
+          final mergedMetadata = <String, dynamic>{
+            ...Map<String, dynamic>.from(
+              messageJson['metadata'] as Map? ?? const {},
+            ),
+            if (event.payload['from_peer_id'] != null)
+              'from_peer_id': event.payload['from_peer_id'],
+            if (event.payload['from_peer_name'] != null)
+              'from_peer_name': event.payload['from_peer_name'],
+          };
+          final message = PeerMessagingMessage.fromJson({
+            ...messageJson,
+            if (mergedMetadata.isNotEmpty) 'metadata': mergedMetadata,
+          });
+          _upsertConversationMessage(
+            event.conversationId,
+            message,
+            title: event.payload['conversation_title'] as String? ??
+                'Peer Conversation',
+            subtitle: event.payload['subtitle'] as String? ?? '',
+            incrementUnread:
+                event.type == PeerMessagingEventType.messageReceived ||
+                    event.type == PeerMessagingEventType.approvalRequested ||
+                    event.type == PeerMessagingEventType.menuRequested,
+          );
+        }
+        break;
+      case PeerMessagingEventType.messageDeliveryUpdate:
+        final status = PeerMessagingDeliveryStatus.fromValue(
+          event.payload['delivery_status'] as String?,
+        );
+        if (event.messageId != null) {
+          await _applyDeliveryStatus(
+            event.conversationId,
+            event.messageId!,
+            status,
+          );
+        }
+        break;
+      case PeerMessagingEventType.syncSnapshot:
+        final snapshot = PeerMessagingState.fromJson(
+          Map<String, dynamic>.from(event.payload['state'] as Map? ?? {}),
+        );
+        state = snapshot.copyWith(
+          initialized: true,
+          proxy: state.proxy,
+        );
+        break;
+      case PeerMessagingEventType.authenticated:
+      case PeerMessagingEventType.error:
+        break;
+    }
+
+    await _persistState();
+    await _broadcast(event);
+  }
+
+  Future<void> _startProxyServer() async {
+    if (!_supportsLocalProxy) {
+      state = state.copyWith(
+        proxy: state.proxy.copyWith(
+          isRunning: false,
+          error: 'Local peer messaging proxy is desktop-only.',
+        ),
+      );
+      return;
+    }
+
+    try {
+      _server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        _listenPort,
+        shared: true,
+      );
+      state = state.copyWith(
+        proxy: state.proxy.copyWith(
+          isRunning: true,
+          url: _proxyUrl,
+          error: null,
+        ),
+      );
+      unawaited(_server!.forEach(_handleHttpRequest));
+      _logger.i('Peer messaging WebSocket proxy listening at $_proxyUrl');
+    } catch (e) {
+      _logger.e('Failed to start peer messaging proxy: $e');
+      state = state.copyWith(
+        proxy: state.proxy.copyWith(
+          isRunning: false,
+          error: e.toString(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleHttpRequest(HttpRequest request) async {
+    if (request.uri.path != '/peer-messaging/v1' &&
+        request.uri.path != '/openclaw/v1') {
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+      return;
+    }
+
+    WebSocket socket;
+    try {
+      socket = await WebSocketTransformer.upgrade(request);
+    } catch (e) {
+      _logger.e('Failed to upgrade peer messaging socket: $e');
+      return;
+    }
+
+    _clients.add(socket);
+    bool authenticated = false;
+    Timer? authTimeout;
+
+    authTimeout = Timer(const Duration(seconds: 5), () async {
+      if (!authenticated) {
+        socket.add(jsonEncode({
+          'type': PeerMessagingEventType.error.value,
+          'payload': {'message': 'Authentication timeout'},
+        }));
+        await socket.close(WebSocketStatus.policyViolation, 'auth-timeout');
+      }
+    });
+
+    socket.listen((message) async {
+      try {
+        final json = jsonDecode(message as String) as Map<String, dynamic>;
+        final action =
+            json['type'] as String? ?? json['action'] as String? ?? '';
+        final payload =
+            Map<String, dynamic>.from(json['payload'] as Map? ?? const {});
+
+        if (!authenticated) {
+          if (action != 'authenticate' ||
+              payload['token'] != state.proxy.authToken) {
+            socket.add(jsonEncode({
+              'type': PeerMessagingEventType.error.value,
+              'payload': {'message': 'Authentication failed'},
+            }));
+            await socket.close(
+              WebSocketStatus.policyViolation,
+              'auth-failed',
+            );
+            return;
+          }
+          authenticated = true;
+          authTimeout?.cancel();
+          socket.add(jsonEncode({
+            'version': _protocolVersion,
+            'type': PeerMessagingEventType.authenticated.value,
+            'conversation_id': '',
+            'timestamp': DateTime.now().toUtc().toIso8601String(),
+            'payload': {'url': _proxyUrl},
+          }));
+          socket.add(jsonEncode(_syncSnapshotEvent().toJson()));
+          return;
+        }
+
+        switch (action) {
+          case 'send_message':
+            final menuOptions =
+                ((payload['menu_options'] as List<dynamic>?) ?? const [])
+                    .whereType<Map<String, dynamic>>()
+                    .map(PeerMessagingMenuOption.fromJson)
+                    .toList();
+            await sendTextMessage(
+              payload['conversation_id'] as String? ?? '',
+              payload['text'] as String? ?? '',
+              conversationTitle: payload['conversation_title'] as String?,
+              menuOptions: menuOptions,
+            );
+            break;
+          case 'submit_approval':
+            await submitApproval(
+              conversationId: payload['conversation_id'] as String? ?? '',
+              approvalId: payload['approval_id'] as String? ?? '',
+              approved: payload['approved'] as bool? ?? false,
+              note: payload['note'] as String?,
+            );
+            break;
+          case 'submit_menu_selection':
+            await submitMenuSelection(
+              conversationId: payload['conversation_id'] as String? ?? '',
+              messageId: payload['message_id'] as String? ?? '',
+              action: payload['action'] as String? ?? '',
+              title: payload['title'] as String?,
+            );
+            break;
+          case 'mark_read':
+            await markConversationRead(
+                payload['conversation_id'] as String? ?? '');
+            break;
+          default:
+            socket.add(jsonEncode({
+              'version': _protocolVersion,
+              'type': PeerMessagingEventType.error.value,
+              'conversation_id': payload['conversation_id'] as String? ?? '',
+              'timestamp': DateTime.now().toUtc().toIso8601String(),
+              'payload': {'message': 'Unknown action: $action'},
+            }));
+        }
+      } catch (e) {
+        socket.add(jsonEncode({
+          'version': _protocolVersion,
+          'type': PeerMessagingEventType.error.value,
+          'conversation_id': '',
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+          'payload': {'message': e.toString()},
+        }));
+      }
+    }, onDone: () {
+      authTimeout?.cancel();
+      _clients.remove(socket);
+    }, onError: (Object error, StackTrace stackTrace) {
+      authTimeout?.cancel();
+      _clients.remove(socket);
+      _logger.e('Peer messaging socket error: $error');
+    });
+  }
+
+  Future<void> _broadcast(PeerMessagingEvent event) async {
+    if (_clients.isEmpty) return;
+    final encoded = jsonEncode(event.toJson());
+    final staleClients = <WebSocket>[];
+    for (final client in _clients) {
+      try {
+        client.add(encoded);
+      } catch (_) {
+        staleClients.add(client);
+      }
+    }
+    for (final client in staleClients) {
+      _clients.remove(client);
+      await client.close();
+    }
+  }
+
+  PeerMessagingEvent _syncSnapshotEvent() {
+    return PeerMessagingEvent(
+      version: _protocolVersion,
+      type: PeerMessagingEventType.syncSnapshot,
+      conversationId: '',
+      timestamp: DateTime.now().toUtc(),
+      payload: {'state': state.toJson()},
+    );
+  }
+
+  void _upsertConversation(
+    String conversationId, {
+    required String title,
+    String subtitle = '',
+    DateTime? updatedAt,
+  }) {
+    final existingIndex =
+        state.conversations.indexWhere((c) => c.id == conversationId);
+    final nextConversation = existingIndex >= 0
+        ? state.conversations[existingIndex].copyWith(
+            title: title,
+            subtitle: subtitle.isEmpty
+                ? state.conversations[existingIndex].subtitle
+                : subtitle,
+            updatedAt: updatedAt ?? DateTime.now().toUtc(),
+          )
+        : PeerMessagingConversation(
+            id: conversationId,
+            title: title,
+            subtitle: subtitle,
+            updatedAt: updatedAt ?? DateTime.now().toUtc(),
+            unreadCount: 0,
+            messages: const [],
+          );
+
+    final conversations = [...state.conversations];
+    if (existingIndex >= 0) {
+      conversations[existingIndex] = nextConversation;
+    } else {
+      conversations.add(nextConversation);
+    }
+    state = state.copyWith(conversations: _sortConversations(conversations));
+  }
+
+  void _upsertConversationMessage(
+    String conversationId,
+    PeerMessagingMessage message, {
+    required String title,
+    String subtitle = '',
+    required bool incrementUnread,
+  }) {
+    final conversations = [...state.conversations];
+    final index = conversations.indexWhere((c) => c.id == conversationId);
+    PeerMessagingConversation conversation;
+    if (index >= 0) {
+      conversation = conversations[index];
+    } else {
+      conversation = PeerMessagingConversation(
+        id: conversationId,
+        title: title,
+        subtitle: subtitle,
+        updatedAt: message.createdAt,
+        unreadCount: 0,
+        messages: const [],
+      );
+    }
+
+    final messages = [...conversation.messages];
+    final existingMessageIndex = messages.indexWhere((m) => m.id == message.id);
+    if (existingMessageIndex >= 0) {
+      messages[existingMessageIndex] = message;
+    } else {
+      messages.add(message);
+    }
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    final nextConversation = conversation.copyWith(
+      title: title.isEmpty ? conversation.title : title,
+      subtitle: subtitle.isEmpty ? conversation.subtitle : subtitle,
+      updatedAt: message.createdAt,
+      unreadCount: incrementUnread
+          ? conversation.unreadCount + (existingMessageIndex >= 0 ? 0 : 1)
+          : conversation.unreadCount,
+      messages: messages,
+    );
+
+    if (index >= 0) {
+      conversations[index] = nextConversation;
+    } else {
+      conversations.add(nextConversation);
+    }
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    unawaited(_persistState());
+  }
+
+  Future<void> _applyDeliveryStatus(
+    String conversationId,
+    String messageId,
+    PeerMessagingDeliveryStatus deliveryStatus,
+  ) async {
+    final conversations = state.conversations.map((conversation) {
+      if (conversation.id != conversationId) return conversation;
+      final messages = conversation.messages.map((message) {
+        if (message.id != messageId) return message;
+        return message.copyWith(deliveryStatus: deliveryStatus);
+      }).toList();
+      return conversation.copyWith(messages: messages);
+    }).toList();
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    await _persistState();
+  }
+
+  List<PeerMessagingConversation> _sortConversations(
+    List<PeerMessagingConversation> conversations,
+  ) {
+    conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return conversations;
+  }
+
+  Future<PeerMessagingState> _loadState() async {
+    try {
+      final file = await _ensureStateFile();
+      final json = await file.readAsString();
+      if (json.trim().isEmpty) {
+        return PeerMessagingState.initial();
+      }
+      return PeerMessagingState.fromJson(
+        jsonDecode(json) as Map<String, dynamic>,
+      );
+    } catch (e) {
+      _logger.w('Failed to load peer messaging state: $e');
+      return PeerMessagingState.initial();
+    }
+  }
+
+  Future<void> _persistState() async {
+    try {
+      final file = await _ensureStateFile();
+      await file.writeAsString(jsonEncode(state.toJson()));
+    } catch (e) {
+      _logger.e('Failed to persist peer messaging state: $e');
+    }
+  }
+
+  Future<File> _ensureStateFile() async {
+    if (_stateFile != null) {
+      return _stateFile!;
+    }
+    final appSupport = await getApplicationSupportDirectory();
+    final folder = Directory(p.join(appSupport.path, _storageFolderName));
+    if (!await folder.exists()) {
+      await folder.create(recursive: true);
+    }
+    final file = File(p.join(folder.path, _storageFileName));
+    if (!await file.exists()) {
+      await file.writeAsString('{}');
+    }
+    _stateFile = file;
+    return file;
+  }
+
+  Future<String> _loadOrCreateAuthToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString(_authTokenKey);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+    final token = const Uuid().v4();
+    await prefs.setString(_authTokenKey, token);
+    return token;
+  }
+
+  String get _proxyUrl => 'ws://127.0.0.1:$_listenPort/peer-messaging/v1';
+}

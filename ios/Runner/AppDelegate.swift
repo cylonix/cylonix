@@ -262,6 +262,7 @@ import UserNotifications
         Logger.configureGlobal(tagged: "APP", withFilePath: FileManager.logFileURL?.path)
         setupTunnelNotificationObserver()
         setupFilesWaitingNotificationObserver()
+        setupPeerMessagingNotificationObserver()
         setupShareNotificationObserver()
         setupUserNotifications()
 
@@ -597,6 +598,93 @@ import UserNotifications
             nil,
             .deliverImmediately
         )
+    }
+
+    private func setupPeerMessagingNotificationObserver() {
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let observer = UnsafeRawPointer(Unmanaged.passUnretained(self).toOpaque())
+
+        CFNotificationCenterAddObserver(
+            center,
+            observer,
+            { _, observer, _, _, _ in
+                let appDelegate = Unmanaged<AppDelegate>.fromOpaque(observer!).takeUnretainedValue()
+                appDelegate.handlePeerMessagingNotification()
+            },
+            PacketTunnelNotification.peerMessageReceived as CFString,
+            nil,
+            .deliverImmediately
+        )
+    }
+
+    private func handlePeerMessagingNotification() {
+        notificationQueue.async {
+            self._handlePeerMessagingNotification()
+        }
+    }
+
+    private func _handlePeerMessagingNotification() {
+        let coordinator = NSFileCoordinator()
+        var error: NSError?
+        let timeout = DispatchTime.now() + .seconds(5)
+        let timeoutGroup = DispatchGroup()
+        timeoutGroup.enter()
+
+        guard let sharedContainerURL = FileManager.sharedFolderURL else {
+            wg_log(.error, message: "Failed to get app shared container URL for peer messaging notifications")
+            return
+        }
+
+        coordinator.coordinate(readingItemAt: sharedContainerURL, options: [], error: &error) { url in
+            defer { timeoutGroup.leave() }
+
+            let queueFile = url.appendingPathComponent("peer_messaging_event_queue.json")
+
+            guard let data = try? Data(contentsOf: queueFile),
+                  let queue = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+            else {
+                wg_log(.error, message: "Failed to read peer messaging event queue")
+                return
+            }
+
+            let lastProcessedKey = "LastProcessedPeerMessagingTimestamp"
+            let lastProcessed = UserDefaults.standard.double(forKey: lastProcessedKey)
+
+            var idx = -1
+            for index in 0 ..< queue.count {
+                let itemIndex = queue.count - 1 - index
+                let item = queue[itemIndex]
+                let timestamp = item["timestamp"] as? Double ?? 0
+                if timestamp <= lastProcessed {
+                    break
+                }
+                idx = itemIndex
+                if index == 0 {
+                    UserDefaults.standard.set(timestamp, forKey: lastProcessedKey)
+                }
+            }
+
+            if idx >= 0 {
+                for index in idx ..< queue.count {
+                    let item = queue[index]
+                    if let notification = item["notification"] as? String {
+                        self.invokeMethod("peerMessageEvent", arguments: notification)
+                    }
+                }
+            }
+        }
+
+        if let error = error {
+            wg_log(.error, message: "Failed to read peer messaging queue: \(error.localizedDescription)")
+        }
+
+        switch timeoutGroup.wait(timeout: timeout) {
+        case .success:
+            break
+        case .timedOut:
+            wg_log(.error, message: "Timeout while reading peer messaging queue")
+            coordinator.cancel()
+        }
     }
 
     private func handleShareNotification() {

@@ -16,6 +16,7 @@ import 'files_waiting_view.dart';
 import 'health_view.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
+import 'providers/peer_messaging.dart';
 import 'providers/settings.dart';
 import 'providers/theme.dart';
 import 'utils/logger.dart';
@@ -35,6 +36,7 @@ class MainView extends ConsumerStatefulWidget {
   final Function(Node) onNavigateToPeerDetails;
   final Function() onNavigateToExitNodes;
   final Function() onNavigateToHealth;
+  final Function() onNavigateToPeerMessaging;
   final Function() onNavigateToAbout;
 
   const MainView({
@@ -45,6 +47,7 @@ class MainView extends ConsumerStatefulWidget {
     required this.onNavigateToPeerDetails,
     required this.onNavigateToExitNodes,
     required this.onNavigateToHealth,
+    required this.onNavigateToPeerMessaging,
     required this.onNavigateToAbout,
   }) : super(key: key);
 
@@ -385,6 +388,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final common = [
       _buildExpiryNotification(context, netmap, ref),
       _buildFilesWaitingSummary(context, ref),
+      _buildPeerMessagingSummary(context, ref),
       ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
     ];
     final isLargeDisplay = MediaQuery.of(context).size.width > 1200.0;
@@ -564,6 +568,47 @@ class _MainViewState extends ConsumerState<MainView> {
     );
   }
 
+  Widget _buildPeerMessagingSummary(BuildContext context, WidgetRef ref) {
+    final conversations = ref.watch(peerMessagingConversationsProvider);
+    final unread = ref.watch(peerMessagingUnreadCountProvider);
+    if (conversations.isEmpty) return const SizedBox.shrink();
+
+    final latest = conversations.first;
+    final preview = latest.preview.isEmpty ? 'No messages yet' : latest.preview;
+    final title =
+        unread > 0 ? 'Peer Messages: $unread unread' : 'Peer Messages';
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      margin: const EdgeInsets.all(16),
+      child: AdaptiveListTile(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 4,
+        ),
+        backgroundColor: isApple()
+            ? CupertinoColors.systemBlue
+                .resolveFrom(context)
+                .withValues(alpha: 0.1)
+            : Theme.of(context).colorScheme.secondaryContainer,
+        leading: Icon(
+          isApple()
+              ? CupertinoIcons.chat_bubble_2
+              : Icons.mark_chat_unread_outlined,
+        ),
+        title: Text(title),
+        subtitle: Text(
+          '${latest.title}: $preview',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onTap: widget.onNavigateToPeerMessaging,
+        trailing: const AdaptiveListTileChevron(),
+      ),
+    );
+  }
+
   void _showMaterialMenu(
       BuildContext context, WidgetRef ref, UserProfile? user) {
     final healthSeverity = ref.watch(healthSeverityProvider);
@@ -610,6 +655,14 @@ class _MainViewState extends ConsumerState<MainView> {
                     widget.onNavigateToSendFiles();
                   },
                 ),
+              ListTile(
+                leading: const Icon(Icons.mark_chat_unread_outlined, size: 24),
+                title: const Text('Peer Messages'),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.onNavigateToPeerMessaging();
+                },
+              ),
               ListTile(
                 leading: (healthSeverity == null)
                     ? AdaptiveHealthyIcon(size: 24)
@@ -678,6 +731,20 @@ class _MainViewState extends ConsumerState<MainView> {
               children: [
                 const Text('Settings'),
                 AdaptiveSettingsIcon(size: 16),
+              ],
+            ),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              widget.onNavigateToPeerMessaging();
+            },
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              spacing: 8,
+              children: [
+                Text('Peer Messages'),
+                Icon(CupertinoIcons.chat_bubble_2, size: 16),
               ],
             ),
           ),
@@ -910,7 +977,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final health = ref.watch(healthProvider);
     final loginURL = ref.read(ipnStateProvider)?.browseToURL;
     if (health != null && health.warnings?['login-state'] != null) {
-      print("Login state warning: ${health.warnings!['login-state']}");
+      _logger.d("Login state warning: ${health.warnings!['login-state']}");
       return _buildLoginRequiredView(context, ref, loginURL);
     }
     return ConstrainedBox(
@@ -975,7 +1042,7 @@ class _MainViewState extends ConsumerState<MainView> {
     }
     if (state.browseToURL != null ||
         state.backendState == BackendState.needsLogin) {
-      print("Build LoginRequiredView Browse to URL: ${state.browseToURL}");
+      _logger.d("Build LoginRequiredView browse URL: ${state.browseToURL}");
       return _buildLoginRequiredView(context, ref, state.browseToURL);
     }
     if (state.loggedInUser != null) {
@@ -1546,7 +1613,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final profiles = ref.watch(loginProfilesProvider);
     var urlLaunched = ref.watch(urlBrowsedProvider);
     final isAndroidTV = ref.watch(isAndroidTVProvider);
-    print("urlLaunched1: $urlLaunched, loginURL: $loginURL");
+    _logger.d("urlLaunched1: $urlLaunched, loginURL: $loginURL");
     urlLaunched = ref.read(ipnStateNotifierProvider.notifier).urlBrowsed;
     _logger.d("urlLaunched2: $urlLaunched, loginURL: $loginURL");
     return Padding(

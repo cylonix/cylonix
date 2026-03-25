@@ -41,7 +41,6 @@ bool usingNavigationRail(BuildContext context) {
 }
 
 bool isCurrentRouteHomePage(BuildContext context) {
-  print('Current route: ${ModalRoute.of(context)?.settings.name}');
   return (ModalRoute.of(context)?.settings.name ?? '/') == '/';
 }
 

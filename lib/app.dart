@@ -14,8 +14,11 @@ import 'exit_node_picker.dart';
 import 'health_view.dart';
 import 'home_page.dart';
 import 'l2_relay_settings_view.dart';
+import 'peer_messaging_inbox_view.dart';
+import 'peer_messaging_thread_view.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
+import 'providers/peer_messaging.dart';
 import 'providers/theme.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
@@ -31,6 +34,7 @@ class App extends ConsumerWidget {
   const App({super.key, this.sharedFiles = const []});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(peerMessagingBootstrapProvider);
     return Shortcuts(
       shortcuts: {
         LogicalKeySet(LogicalKeyboardKey.select): const ActivateIntent(),
@@ -87,16 +91,19 @@ class App extends ConsumerWidget {
     switch (settings.name) {
       case '/':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => const HomePage(),
         );
       case '/about':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => AboutView(
             onNavigateBack: () => Navigator.pop(_),
           ),
         );
       case '/custom-control':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => CustomLoginView(
             onNavigateToHome: () => Navigator.popUntil(_, (r) => r.isFirst),
             onNavigateBackToSettings: () => Navigator.pushNamed(_, "/settings"),
@@ -105,6 +112,7 @@ class App extends ConsumerWidget {
         );
       case '/custom-login':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => CustomLoginView(
             onNavigateToHome: () => Navigator.popUntil(_, (r) => r.isFirst),
             onNavigateBackToSettings: () => Navigator.pushNamed(_, "/settings"),
@@ -113,18 +121,21 @@ class App extends ConsumerWidget {
         );
       case '/dns-settings':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => DNSSettingsView(
             onBackToSettings: () => Navigator.pop(_),
           ),
         );
       case '/l2-relay-settings':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => L2RelaySettingsView(
             onBackToSettings: () => Navigator.pop(_),
           ),
         );
       case '/exit-nodes':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => ExitNodePicker(
             onNavigateBackHome: () => Navigator.popUntil(_, (r) => r.isFirst),
             onNavigateToMullvad: () => Navigator.pushNamed(_, '/mullvad'),
@@ -134,7 +145,27 @@ class App extends ConsumerWidget {
         );
       case '/health':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => HealthView(
+            onNavigateBack: () => Navigator.pop(_),
+          ),
+        );
+      case '/peer-messaging':
+      case '/openclaw':
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => PeerMessagingInboxView(
+            onNavigateBack: () => Navigator.pop(_),
+          ),
+        );
+      case '/peer-messaging/thread':
+      case '/openclaw/thread':
+        final args = settings.arguments as Map<String, dynamic>;
+        final conversationId = args['conversationId'] as String;
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => PeerMessagingThreadView(
+            conversationId: conversationId,
             onNavigateBack: () => Navigator.pop(_),
           ),
         );
@@ -143,6 +174,7 @@ class App extends ConsumerWidget {
         final args = settings.arguments as Map<String, dynamic>;
         final nodeID = args['node'] as int;
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => PeerDetailsView(
             node: nodeID,
             onNavigateBack: () => Navigator.pop(_),
@@ -151,6 +183,7 @@ class App extends ConsumerWidget {
 
       case '/permissions':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => PermissionsView(
             onNavigateBack: () => Navigator.pop(_),
           ),
@@ -158,6 +191,7 @@ class App extends ConsumerWidget {
 
       case '/run-as-exit-node':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => RunExitNodeView(
             onNavigateBackToExitNodes: () => Navigator.pop(_),
           ),
@@ -201,6 +235,7 @@ class App extends ConsumerWidget {
 
       case '/split-tunneling':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => SplitTunnelAppPickerView(
             onBackToSettings: () => Navigator.pop(_),
           ),
@@ -208,6 +243,7 @@ class App extends ConsumerWidget {
 
       case '/subnet-routing':
         return MaterialPageRoute(
+          settings: settings,
           builder: (_) => SubnetRoutingView(
             onBackToSettings: () => Navigator.pop(_),
           ),
@@ -215,6 +251,7 @@ class App extends ConsumerWidget {
 
       case '/user-switcher':
         return MaterialPageRoute(
+          settings: settings,
           builder: (context) => UserSwitcherView(
             onNavigateToHome: () =>
                 Navigator.popUntil(context, (r) => r.isFirst),
