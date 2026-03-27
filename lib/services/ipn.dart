@@ -953,6 +953,38 @@ class IpnService {
     return result;
   }
 
+  Future<String?> getSharedFolderPath() async {
+    if (!isApple()) {
+      return null;
+    }
+    final result = await _channel.invokeMethod<String>('getSharedFolderPath');
+    if (result == null || result.isEmpty) {
+      return null;
+    }
+    return result;
+  }
+
+  Future<Map<String, String>> consumeAutoSavedFilePaths() async {
+    if (!isApple()) {
+      return const {};
+    }
+    final result = await _channel.invokeMethod<dynamic>(
+      'consumeAutoSavedFilePaths',
+    );
+    if (result is! Map) {
+      _logger.d('consumeAutoSavedFilePaths returned non-map: $result');
+      return const {};
+    }
+    final mapped = result.map(
+      (key, value) => MapEntry(
+        key?.toString() ?? '',
+        value?.toString() ?? '',
+      ),
+    )..removeWhere((key, value) => key.isEmpty || value.isEmpty);
+    _logger.d('consumeAutoSavedFilePaths returned ${mapped.length} entries: $mapped');
+    return mapped;
+  }
+
   Future<String> _saveFileOverHttp(String file, String path) async {
     HttpClient? client;
     IOSink? sink;

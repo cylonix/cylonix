@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 import 'dart:io';
+import 'package:collection/collection.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:downloadsfolder/downloadsfolder.dart' as dlf;
@@ -112,9 +113,10 @@ class FilesWaitingView extends ConsumerWidget {
         );
         showPath = 'the "Download" folder';
       } else if (Platform.isMacOS) {
-        final srcPath = await ref
-            .read(ipnStateNotifierProvider.notifier)
-            .getFilePath(fileName);
+        final waitingFile = ref
+            .read(filesWaitingProvider)
+            .where((file) => file.name == fileName)
+            .firstOrNull;
         final toPath = await FilePicker.platform.saveFile(
           dialogTitle: "Choose the file to be saved",
           fileName: fileName,
@@ -122,6 +124,10 @@ class FilesWaitingView extends ConsumerWidget {
         if (toPath == null) {
           return null; // User canceled the picker
         }
+        final srcPath = waitingFile?.path ??
+            await ref
+                .read(ipnStateNotifierProvider.notifier)
+                .getFilePath(fileName);
         await File(srcPath).copy(toPath);
         showPath = toPath;
       } else {

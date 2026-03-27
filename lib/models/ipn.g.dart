@@ -762,14 +762,18 @@ Map<String, dynamic> _$$ServiceImplToJson(_$ServiceImpl instance) =>
 
 _$AwaitingFileImpl _$$AwaitingFileImplFromJson(Map<String, dynamic> json) =>
     _$AwaitingFileImpl(
+      id: json['ID'] as String?,
       name: json['Name'] as String,
       size: (json['Size'] as num).toInt(),
+      path: json['path'] as String?,
     );
 
 Map<String, dynamic> _$$AwaitingFileImplToJson(_$AwaitingFileImpl instance) =>
     <String, dynamic>{
+      'ID': instance.id,
       'Name': instance.name,
       'Size': instance.size,
+      'path': instance.path,
     };
 
 _$PingResultImpl _$$PingResultImplFromJson(Map<String, dynamic> json) =>

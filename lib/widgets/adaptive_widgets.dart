@@ -1231,10 +1231,7 @@ class AdaptiveSwitchListTile extends StatelessWidget {
         leading: leading,
         title: title,
         subtitle: subtitle,
-        trailing: Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: NativeSwitch(value: value, onChanged: onChanged),
-        ),
+        trailing: NativeSwitch(value: value, onChanged: onChanged),
       );
     }
 
@@ -1253,20 +1250,38 @@ class AdaptiveScaffold extends StatelessWidget {
   final Widget title;
   final Widget body;
   final VoidCallback? onGoBack;
+  final Object? heroTag;
 
   const AdaptiveScaffold({
     super.key,
     required this.title,
     required this.body,
     this.onGoBack,
+    this.heroTag,
   });
 
   @override
   Widget build(BuildContext context) {
     if (isApple()) {
+      if (heroTag == null) {
+        return CupertinoPageScaffold(
+          navigationBar: CupertinoNavigationBar(
+            transitionBetweenRoutes: false,
+            middle: title,
+            leading: onGoBack != null
+                ? AppleBackButton(
+                    onPressed: onGoBack,
+                  )
+                : null,
+          ),
+          child: body,
+        );
+      }
       return CupertinoPageScaffold(
         navigationBar: CupertinoNavigationBar(
+          transitionBetweenRoutes: false,
           middle: title,
+          heroTag: heroTag!,
           leading: onGoBack != null
               ? AppleBackButton(
                   onPressed: onGoBack,

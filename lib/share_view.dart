@@ -12,8 +12,8 @@ import 'models/shared_file.dart';
 import 'providers/share_file.dart';
 import 'services/ipn.dart';
 import 'utils/logger.dart';
-import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
+import 'widgets/share_peer_device_list.dart';
 
 class ShareView extends ConsumerStatefulWidget {
   final List<String> paths;
@@ -30,8 +30,6 @@ class ShareView extends ConsumerStatefulWidget {
 }
 
 class _ShareViewState extends ConsumerState<ShareView> {
-  final _searchController = TextEditingController();
-  bool _showOnlineOnly = false;
   final _ipn = IpnService();
   var _sharedFiles = <SharedFile>[];
   static final _logger = Logger(tag: 'ShareView');
@@ -93,9 +91,6 @@ class _ShareViewState extends ConsumerState<ShareView> {
 
   @override
   Widget build(BuildContext context) {
-    final filters =
-        (onlineOnly: _showOnlineOnly, searchQuery: _searchController.text);
-    final peers = ref.watch(filteredPeersProvider(filters));
     final transfers = ref.watch(transfersProvider);
 
     return Scaffold(
@@ -108,9 +103,14 @@ class _ShareViewState extends ConsumerState<ShareView> {
             )
           else ...[
             _FileHeaderView(files: _sharedFiles),
-            _buildSearchFilter(),
             Expanded(
-              child: _buildPeersList(peers, transfers),
+              child: SharePeerDeviceList(
+                emptyMessage: 'No devices available to share with',
+                searchHintText: 'Search name or OS…',
+                androidTvTitle: 'Select a device to send files to',
+                trailingBuilder: (context, peer) =>
+                    _buildPeerTrailing(context, peer, transfers[peer.stableID]),
+              ),
             ),
           ],
         ],
@@ -139,62 +139,6 @@ class _ShareViewState extends ConsumerState<ShareView> {
         ),
         const SizedBox(width: 20),
       ],
-    );
-  }
-
-  Widget _buildSearchFilter() {
-    final isAndroidTV = ref.watch(isAndroidTVProvider);
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: isAndroidTV
-                ? const Text("Select a device to send files to")
-                : TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      hintText: 'Search name or OS…',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
-          ),
-          const SizedBox(width: 16),
-          Row(
-            children: [
-              Checkbox(
-                value: _showOnlineOnly,
-                onChanged: (value) =>
-                    setState(() => _showOnlineOnly = value ?? false),
-              ),
-              const Text('Online Only'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPeersList(
-      List<Node> peers, Map<String, PeerTransferState> transfers) {
-    if (peers.isEmpty) {
-      return const Center(
-        child: Text('No devices available to share with'),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: peers.length,
-      itemBuilder: (context, index) {
-        final peer = peers[index];
-        return _PeerRow(
-          peer: peer,
-          transfer: transfers[peer.stableID],
-          onSend: () => _sendFiles(peer),
-          onRetry: () => _sendFiles(peer),
-        );
-      },
     );
   }
 
@@ -227,6 +171,59 @@ class _ShareViewState extends ConsumerState<ShareView> {
           );
     }
   }
+
+  Widget _buildPeerTrailing(
+    BuildContext context,
+    Node peer,
+    PeerTransferState? transfer,
+  ) {
+    if (transfer == null) {
+      if (!(peer.online ?? false)) {
+        return const SizedBox.shrink();
+      }
+      return AdaptiveButton(
+        onPressed: () => _sendFiles(peer),
+        child: const Text('Send'),
+      );
+    }
+
+    switch (transfer.status) {
+      case TransferStatus.sending:
+        return SizedBox(
+          width: 100,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(value: transfer.progress),
+              Text('${(transfer.progress * 100).round()}%'),
+            ],
+          ),
+        );
+
+      case TransferStatus.failed:
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: () => _sendFiles(peer),
+              child: const Text('Retry'),
+            ),
+            TextButton(
+              onPressed: () => showAlertDialog(
+                context,
+                'Transfer Error',
+                transfer.errorMessage ?? 'Unknown error occurred',
+              ),
+              child: const Text('View Error'),
+            ),
+            const Icon(Icons.error, color: Colors.red),
+          ],
+        );
+
+      case TransferStatus.complete:
+        return const Icon(Icons.check_circle, color: Colors.green);
+    }
+  }
 }
 
 class _FileHeaderView extends StatelessWidget {
@@ -240,7 +237,6 @@ class _FileHeaderView extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          // Show thumbnail or icon
           if (files.length == 1 && _isImageFile(files.first.path))
             Image.file(
               File(files.first.path),
@@ -291,104 +287,5 @@ class _FileHeaderView extends StatelessWidget {
       i++;
     }
     return '${size.toStringAsFixed(1)} ${suffixes[i]}';
-  }
-}
-
-class _PeerRow extends StatelessWidget {
-  final Node peer;
-  final PeerTransferState? transfer;
-  final VoidCallback onSend;
-  final VoidCallback onRetry;
-
-  const _PeerRow({
-    required this.peer,
-    this.transfer,
-    required this.onSend,
-    required this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        radius: 4,
-        backgroundColor: peer.online ?? false ? Colors.green : Colors.grey,
-      ),
-      title: Text(
-        peer.displayName.split('.').first,
-        style: TextStyle(
-          fontWeight:
-              peer.online ?? false ? FontWeight.bold : FontWeight.normal,
-        ),
-      ),
-      subtitle: Row(
-        children: [
-          Icon(_getOSIcon(peer.hostinfo?.os), size: 16),
-          const SizedBox(width: 4),
-          if (peer.hostinfo?.os != null) Text(peer.hostinfo!.os!),
-        ],
-      ),
-      trailing: _buildTrailing(context),
-    );
-  }
-
-  IconData _getOSIcon(String? os) {
-    if (os == null) return Icons.devices;
-    final osLower = os.toLowerCase();
-    if (osLower.contains('mac')) return Icons.desktop_mac_outlined;
-    if (osLower.contains('windows')) return Icons.desktop_windows;
-    if (osLower.contains('linux')) return Icons.computer;
-    if (osLower.contains('ios')) return Icons.phone_iphone;
-    if (osLower.contains('android')) return Icons.phone_android;
-    return Icons.devices;
-  }
-
-  Widget? _buildTrailing(BuildContext context) {
-    if (transfer == null) {
-      if (!(peer.online ?? false)) {
-        return null;
-      }
-      return AdaptiveButton(
-        onPressed: onSend,
-        child: const Text('Send'),
-      );
-    }
-
-    switch (transfer!.status) {
-      case TransferStatus.sending:
-        return SizedBox(
-          width: 100,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LinearProgressIndicator(value: transfer!.progress),
-              Text('${(transfer!.progress * 100).round()}%'),
-            ],
-          ),
-        );
-
-      case TransferStatus.failed:
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextButton(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
-            TextButton(
-              onPressed: () => showAlertDialog(
-                context,
-                'Transfer Error',
-                transfer!.errorMessage ?? 'Unknown error occurred',
-              ),
-              child: const Text('View Error'),
-            ),
-            const Icon(Icons.error, color: Colors.red),
-          ],
-        );
-
-      case TransferStatus.complete:
-        return const Icon(Icons.check_circle, color: Colors.green);
-    }
   }
 }

@@ -5,9 +5,11 @@ import 'dart:convert';
 
 enum PeerMessagingEventType {
   conversationUpsert('conversation_upsert'),
+  conversationDeleted('conversation_deleted'),
   messageReceived('message_received'),
   messageSent('message_sent'),
   messageDeliveryUpdate('message_delivery_update'),
+  messageDeleted('message_deleted'),
   approvalRequested('approval_requested'),
   approvalSubmitted('approval_submitted'),
   menuRequested('menu_requested'),
@@ -45,6 +47,7 @@ enum PeerMessagingMessageRole {
 
 enum PeerMessagingMessageKind {
   text('text'),
+  file('file'),
   taskSummary('task_summary'),
   approvalRequest('approval_request'),
   approvalResponse('approval_response'),
@@ -139,6 +142,46 @@ class PeerMessagingMenuOption {
   }
 }
 
+class PeerMessagingAttachment {
+  final String id;
+  final String? transferId;
+  final String name;
+  final int size;
+  final String? mimeType;
+  final String? path;
+
+  const PeerMessagingAttachment({
+    required this.id,
+    this.transferId,
+    required this.name,
+    required this.size,
+    this.mimeType,
+    this.path,
+  });
+
+  factory PeerMessagingAttachment.fromJson(Map<String, dynamic> json) {
+    return PeerMessagingAttachment(
+      id: json['id'] as String? ?? '',
+      transferId: json['transfer_id'] as String?,
+      name: json['name'] as String? ?? '',
+      size: json['size'] as int? ?? 0,
+      mimeType: json['mime_type'] as String?,
+      path: json['path'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      if (transferId != null) 'transfer_id': transferId,
+      'name': name,
+      'size': size,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (path != null) 'path': path,
+    };
+  }
+}
+
 class PeerMessagingMessage {
   final String id;
   final String conversationId;
@@ -150,6 +193,7 @@ class PeerMessagingMessage {
   final String? approvalId;
   final List<PeerMessagingApprovalAction> approvalActions;
   final List<PeerMessagingMenuOption> menuOptions;
+  final List<PeerMessagingAttachment> attachments;
   final Map<String, dynamic> metadata;
 
   const PeerMessagingMessage({
@@ -163,10 +207,18 @@ class PeerMessagingMessage {
     this.approvalId,
     this.approvalActions = const [],
     this.menuOptions = const [],
+    this.attachments = const [],
     this.metadata = const {},
   });
 
   factory PeerMessagingMessage.fromJson(Map<String, dynamic> json) {
+    final metadata = Map<String, dynamic>.from(
+      (json['metadata'] as Map<dynamic, dynamic>?) ?? const {},
+    );
+    final attachmentJson = ((json['attachments'] as List<dynamic>?) ??
+            (metadata['attachments'] as List<dynamic>?) ??
+            const [])
+        .whereType<Map<String, dynamic>>();
     return PeerMessagingMessage(
       id: json['id'] as String? ?? '',
       conversationId: json['conversation_id'] as String? ?? '',
@@ -187,9 +239,9 @@ class PeerMessagingMessage {
           .whereType<Map<String, dynamic>>()
           .map(PeerMessagingMenuOption.fromJson)
           .toList(),
-      metadata: Map<String, dynamic>.from(
-        (json['metadata'] as Map<dynamic, dynamic>?) ?? const {},
-      ),
+      attachments:
+          attachmentJson.map(PeerMessagingAttachment.fromJson).toList(),
+      metadata: metadata,
     );
   }
 
@@ -207,6 +259,8 @@ class PeerMessagingMessage {
         'approval_actions': approvalActions.map((e) => e.toJson()).toList(),
       if (menuOptions.isNotEmpty)
         'menu_options': menuOptions.map((e) => e.toJson()).toList(),
+      if (attachments.isNotEmpty)
+        'attachments': attachments.map((e) => e.toJson()).toList(),
       if (metadata.isNotEmpty) 'metadata': metadata,
     };
   }
@@ -216,6 +270,7 @@ class PeerMessagingMessage {
     String? text,
     List<PeerMessagingApprovalAction>? approvalActions,
     List<PeerMessagingMenuOption>? menuOptions,
+    List<PeerMessagingAttachment>? attachments,
     Map<String, dynamic>? metadata,
   }) {
     return PeerMessagingMessage(
@@ -229,9 +284,15 @@ class PeerMessagingMessage {
       approvalId: approvalId,
       approvalActions: approvalActions ?? this.approvalActions,
       menuOptions: menuOptions ?? this.menuOptions,
+      attachments: attachments ?? this.attachments,
       metadata: metadata ?? this.metadata,
     );
   }
+
+  bool get hasAttachments => attachments.isNotEmpty;
+
+  bool get isFileMessage =>
+      kind == PeerMessagingMessageKind.file || attachments.isNotEmpty;
 }
 
 class PeerMessagingConversation {
@@ -240,6 +301,7 @@ class PeerMessagingConversation {
   final String subtitle;
   final DateTime updatedAt;
   final int unreadCount;
+  final bool hidden;
   final List<PeerMessagingMessage> messages;
 
   const PeerMessagingConversation({
@@ -248,6 +310,7 @@ class PeerMessagingConversation {
     required this.subtitle,
     required this.updatedAt,
     required this.unreadCount,
+    this.hidden = false,
     required this.messages,
   });
 
@@ -264,6 +327,7 @@ class PeerMessagingConversation {
       updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? '') ??
           (messages.isNotEmpty ? messages.last.createdAt : DateTime.now()),
       unreadCount: json['unread_count'] as int? ?? 0,
+      hidden: json['hidden'] as bool? ?? false,
       messages: messages,
     );
   }
@@ -275,13 +339,22 @@ class PeerMessagingConversation {
       'subtitle': subtitle,
       'updated_at': updatedAt.toIso8601String(),
       'unread_count': unreadCount,
+      'hidden': hidden,
       'messages': messages.map((e) => e.toJson()).toList(),
     };
   }
 
   String get preview {
     if (messages.isEmpty) return subtitle;
-    return messages.last.text;
+    final last = messages.last;
+    if (last.text.isNotEmpty) return last.text;
+    if (last.attachments.isNotEmpty) {
+      if (last.attachments.length == 1) {
+        return 'Attachment: ${last.attachments.first.name}';
+      }
+      return '${last.attachments.length} attachments';
+    }
+    return subtitle;
   }
 
   PeerMessagingConversation copyWith({
@@ -289,6 +362,7 @@ class PeerMessagingConversation {
     String? subtitle,
     DateTime? updatedAt,
     int? unreadCount,
+    bool? hidden,
     List<PeerMessagingMessage>? messages,
   }) {
     return PeerMessagingConversation(
@@ -297,6 +371,7 @@ class PeerMessagingConversation {
       subtitle: subtitle ?? this.subtitle,
       updatedAt: updatedAt ?? this.updatedAt,
       unreadCount: unreadCount ?? this.unreadCount,
+      hidden: hidden ?? this.hidden,
       messages: messages ?? this.messages,
     );
   }

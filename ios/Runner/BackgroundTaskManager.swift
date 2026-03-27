@@ -8,6 +8,7 @@ import UserNotifications
 #endif
 
 struct WaitingFile: Codable {
+    let ID: String?
     let Name: String
     let Size: Int64
 }
@@ -19,6 +20,7 @@ struct FilesWaiting: Codable {
 
 class BackgroundTaskManager {
     static let shared = BackgroundTaskManager()
+    private static let transferIDSidecarSuffix = ".cylonix-transfer-id"
  
     func processFilesFromSharedContainer(completion: @escaping (Bool) -> Void) {
         wg_log(.info, message: "Processing files from shared container")
@@ -74,7 +76,19 @@ class BackgroundTaskManager {
                 if let uniqueName = getUniqueFileName(originalName: file.Name, at: destinationURL) {
                     let destinationFileURL = destinationURL.appendingPathComponent(uniqueName)
                     do {
+                        let transferID = resolvedTransferID(for: file, in: sourceDir)
                         try FileManager.default.moveItem(at: sourceURL, to: destinationFileURL)
+                        if let transferID, !transferID.isEmpty {
+                            wg_log(.info, message: "Peer attachment auto-saved: transferID=\(transferID) source=\(sourceURL.path) destination=\(destinationFileURL.path)")
+                            saveAutoSavedFilePath(
+                                destinationFileURL.path,
+                                forTransferID: transferID,
+                                defaults: groupDefaults
+                            )
+                        } else {
+                            wg_log(.debug, message: "Auto-saved file without transferID: name=\(file.Name) destination=\(destinationFileURL.path)")
+                        }
+                        cleanupTransferIDSidecar(for: file, in: sourceDir)
                         processedFiles.append(uniqueName)
                     } catch {
                         wg_log(.error, message: "Failed to move file: \(error)")
@@ -157,9 +171,79 @@ class BackgroundTaskManager {
             }
         }
     }
+
 }
 
 extension BackgroundTaskManager {
+    private func resolvedTransferID(for file: WaitingFile, in sourceDir: URL) -> String? {
+        if let id = file.ID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
+            return id
+        }
+        let sidecarURL = sourceDir.appendingPathComponent(file.Name + Self.transferIDSidecarSuffix)
+        guard let data = try? Data(contentsOf: sidecarURL),
+              let id = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !id.isEmpty
+        else {
+            wg_log(.debug, message: "No transferID sidecar found for \(file.Name) at \(sidecarURL.path)")
+            return nil
+        }
+        wg_log(.info, message: "Recovered transferID from sidecar for \(file.Name): \(id)")
+        return id
+    }
+
+    private func cleanupTransferIDSidecar(for file: WaitingFile, in sourceDir: URL) {
+        let sidecarURL = sourceDir.appendingPathComponent(file.Name + Self.transferIDSidecarSuffix)
+        if FileManager.default.fileExists(atPath: sidecarURL.path) {
+            do {
+                try FileManager.default.removeItem(at: sidecarURL)
+            } catch {
+                wg_log(.error, message: "Failed to remove transferID sidecar at \(sidecarURL.path): \(error)")
+            }
+        }
+    }
+
+    private func autoSavedFilePaths(defaults: UserDefaults) -> [String: String] {
+        defaults.dictionary(forKey: PacketTunnelUserDefaultsKey.autoSavedFilesByTransferID) as? [String: String] ?? [:]
+    }
+
+    private func saveAutoSavedFilePath(
+        _ path: String,
+        forTransferID transferID: String,
+        defaults: UserDefaults
+    ) {
+        guard !transferID.isEmpty else { return }
+        var mapping = autoSavedFilePaths(defaults: defaults)
+        mapping[transferID] = path
+        defaults.set(mapping, forKey: PacketTunnelUserDefaultsKey.autoSavedFilesByTransferID)
+        defaults.synchronize()
+    }
+
+    private func pruneMissingAutoSavedFilePaths(defaults: UserDefaults) {
+        let fileManager = FileManager.default
+        let mapping = autoSavedFilePaths(defaults: defaults)
+        let pruned = mapping.filter { fileManager.fileExists(atPath: $0.value) }
+        if pruned.count != mapping.count {
+            defaults.set(pruned, forKey: PacketTunnelUserDefaultsKey.autoSavedFilesByTransferID)
+            defaults.synchronize()
+        }
+    }
+
+    func consumeAutoSavedFilePaths() -> [String: String] {
+        guard let appGroupId = FileManager.appGroupId,
+              let groupDefaults = UserDefaults(suiteName: appGroupId)
+        else {
+            wg_log(.debug, message: "consumeAutoSavedFilePaths: no app group defaults available")
+            return [:]
+        }
+
+        pruneMissingAutoSavedFilePaths(defaults: groupDefaults)
+        let mapping = autoSavedFilePaths(defaults: groupDefaults)
+        wg_log(.info, message: "consumeAutoSavedFilePaths: count=\(mapping.count) entries=\(mapping)")
+        groupDefaults.removeObject(forKey: PacketTunnelUserDefaultsKey.autoSavedFilesByTransferID)
+        groupDefaults.synchronize()
+        return mapping
+    }
+
     private func getUniqueFileName(originalName: String, at directory: URL) -> String? {
         let fileManager = FileManager.default
         let ext = (originalName as NSString).pathExtension

@@ -335,6 +335,9 @@ import UserNotifications
                     let sharedFolderURL = FileManager.sharedFolderURL
                     wg_log(.debug, message: "Shared folder URL: \(String(describing: sharedFolderURL?.path))")
                     result(sharedFolderURL?.path)
+                case "consumeAutoSavedFilePaths":
+                    wg_log(.debug, message: "Method channel consumeAutoSavedFilePaths invoked")
+                    result(BackgroundTaskManager.shared.consumeAutoSavedFilePaths())
                 case "sendCommand":
                     // "sendCommand" is used to send command to the tunnel
                     // provider. The command is sent to the tunnel provider

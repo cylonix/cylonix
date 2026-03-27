@@ -938,8 +938,10 @@ class Service with _$Service {
 @freezed
 class AwaitingFile with _$AwaitingFile {
   const factory AwaitingFile({
+    @JsonKey(name: 'ID') String? id,
     @JsonKey(name: 'Name') required String name,
     @JsonKey(name: 'Size') required int size,
+    String? path,
   }) = _AwaitingFile;
 
   factory AwaitingFile.fromJson(Map<String, dynamic> json) =>

@@ -4,6 +4,7 @@
 import 'dart:collection';
 import 'dart:io';
 import 'dart:async';
+import 'package:path/path.dart' as p;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -267,6 +268,26 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           _checkedFilesWaiting = true;
         }
       }
+    } else if (notification.filesWaiting != null) {
+      final filesWaitingMap = notification.filesWaiting!;
+      final dir = filesWaitingMap['Dir'] as String? ?? '';
+      final files =
+          (filesWaitingMap['Files'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map(
+                (file) => AwaitingFile(
+                  id: file['ID'] as String?,
+                  name: file['Name'] as String? ?? '',
+                  size: (file['Size'] as num?)?.toInt() ?? 0,
+                  path: dir.isEmpty
+                      ? null
+                      : p.join(dir, file['Name'] as String? ?? ''),
+                ),
+              )
+              .where((file) => file.name.isNotEmpty)
+              .toList();
+      awaitingFiles = files;
+      _checkedFilesWaiting = true;
     }
 
     // Create new state or update existing one

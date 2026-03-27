@@ -20,6 +20,15 @@ final peerMessagingBootstrapProvider = FutureProvider<void>((ref) async {
 
 final peerMessagingConversationsProvider =
     Provider<List<PeerMessagingConversation>>(
+  (ref) => ref
+      .watch(peerMessagingServiceProvider)
+      .conversations
+      .where((conversation) => !conversation.hidden)
+      .toList(),
+);
+
+final peerMessagingAllConversationsProvider =
+    Provider<List<PeerMessagingConversation>>(
   (ref) => ref.watch(peerMessagingServiceProvider).conversations,
 );
 
@@ -35,7 +44,7 @@ final peerMessagingProxyProvider = Provider<PeerMessagingProxyInfo>(
 
 final peerMessagingConversationProvider =
     Provider.family<PeerMessagingConversation?, String>((ref, conversationId) {
-  for (final conversation in ref.watch(peerMessagingConversationsProvider)) {
+  for (final conversation in ref.watch(peerMessagingAllConversationsProvider)) {
     if (conversation.id == conversationId) {
       return conversation;
     }

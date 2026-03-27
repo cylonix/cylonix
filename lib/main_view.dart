@@ -401,7 +401,7 @@ class _MainViewState extends ConsumerState<MainView> {
             constraints: BoxConstraints(
               maxWidth: isLargeDisplay || isAndroidTV ? 800 : double.infinity,
             ),
-            child: Column(spacing: 16, children: [
+            child: Column(children: [
               ...common,
               if (!showDevices && isAndroidTV) ...[
                 const HealthStateWidget(),
@@ -542,7 +542,7 @@ class _MainViewState extends ConsumerState<MainView> {
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: AdaptiveListTile(
           backgroundColor: isApple()
               ? CupertinoColors.systemBrown
@@ -581,7 +581,7 @@ class _MainViewState extends ConsumerState<MainView> {
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: AdaptiveListTile(
         padding: const EdgeInsets.symmetric(
           horizontal: 16,

@@ -9181,10 +9181,13 @@ AwaitingFile _$AwaitingFileFromJson(Map<String, dynamic> json) {
 
 /// @nodoc
 mixin _$AwaitingFile {
+  @JsonKey(name: 'ID')
+  String? get id => throw _privateConstructorUsedError;
   @JsonKey(name: 'Name')
   String get name => throw _privateConstructorUsedError;
   @JsonKey(name: 'Size')
   int get size => throw _privateConstructorUsedError;
+  String? get path => throw _privateConstructorUsedError;
 
   /// Serializes this AwaitingFile to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -9203,7 +9206,10 @@ abstract class $AwaitingFileCopyWith<$Res> {
       _$AwaitingFileCopyWithImpl<$Res, AwaitingFile>;
   @useResult
   $Res call(
-      {@JsonKey(name: 'Name') String name, @JsonKey(name: 'Size') int size});
+      {@JsonKey(name: 'ID') String? id,
+      @JsonKey(name: 'Name') String name,
+      @JsonKey(name: 'Size') int size,
+      String? path});
 }
 
 /// @nodoc
@@ -9221,10 +9227,16 @@ class _$AwaitingFileCopyWithImpl<$Res, $Val extends AwaitingFile>
   @pragma('vm:prefer-inline')
   @override
   $Res call({
+    Object? id = freezed,
     Object? name = null,
     Object? size = null,
+    Object? path = freezed,
   }) {
     return _then(_value.copyWith(
+      id: freezed == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String?,
       name: null == name
           ? _value.name
           : name // ignore: cast_nullable_to_non_nullable
@@ -9233,6 +9245,10 @@ class _$AwaitingFileCopyWithImpl<$Res, $Val extends AwaitingFile>
           ? _value.size
           : size // ignore: cast_nullable_to_non_nullable
               as int,
+      path: freezed == path
+          ? _value.path
+          : path // ignore: cast_nullable_to_non_nullable
+              as String?,
     ) as $Val);
   }
 }
@@ -9246,7 +9262,10 @@ abstract class _$$AwaitingFileImplCopyWith<$Res>
   @override
   @useResult
   $Res call(
-      {@JsonKey(name: 'Name') String name, @JsonKey(name: 'Size') int size});
+      {@JsonKey(name: 'ID') String? id,
+      @JsonKey(name: 'Name') String name,
+      @JsonKey(name: 'Size') int size,
+      String? path});
 }
 
 /// @nodoc
@@ -9262,10 +9281,16 @@ class __$$AwaitingFileImplCopyWithImpl<$Res>
   @pragma('vm:prefer-inline')
   @override
   $Res call({
+    Object? id = freezed,
     Object? name = null,
     Object? size = null,
+    Object? path = freezed,
   }) {
     return _then(_$AwaitingFileImpl(
+      id: freezed == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String?,
       name: null == name
           ? _value.name
           : name // ignore: cast_nullable_to_non_nullable
@@ -9274,6 +9299,10 @@ class __$$AwaitingFileImplCopyWithImpl<$Res>
           ? _value.size
           : size // ignore: cast_nullable_to_non_nullable
               as int,
+      path: freezed == path
+          ? _value.path
+          : path // ignore: cast_nullable_to_non_nullable
+              as String?,
     ));
   }
 }
@@ -9282,22 +9311,29 @@ class __$$AwaitingFileImplCopyWithImpl<$Res>
 @JsonSerializable()
 class _$AwaitingFileImpl implements _AwaitingFile {
   const _$AwaitingFileImpl(
-      {@JsonKey(name: 'Name') required this.name,
-      @JsonKey(name: 'Size') required this.size});
+      {@JsonKey(name: 'ID') this.id,
+      @JsonKey(name: 'Name') required this.name,
+      @JsonKey(name: 'Size') required this.size,
+      this.path});
 
   factory _$AwaitingFileImpl.fromJson(Map<String, dynamic> json) =>
       _$$AwaitingFileImplFromJson(json);
 
+  @override
+  @JsonKey(name: 'ID')
+  final String? id;
   @override
   @JsonKey(name: 'Name')
   final String name;
   @override
   @JsonKey(name: 'Size')
   final int size;
+  @override
+  final String? path;
 
   @override
   String toString() {
-    return 'AwaitingFile(name: $name, size: $size)';
+    return 'AwaitingFile(id: $id, name: $name, size: $size, path: $path)';
   }
 
   @override
@@ -9305,13 +9341,15 @@ class _$AwaitingFileImpl implements _AwaitingFile {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
             other is _$AwaitingFileImpl &&
+            (identical(other.id, id) || other.id == id) &&
             (identical(other.name, name) || other.name == name) &&
-            (identical(other.size, size) || other.size == size));
+            (identical(other.size, size) || other.size == size) &&
+            (identical(other.path, path) || other.path == path));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, name, size);
+  int get hashCode => Object.hash(runtimeType, id, name, size, path);
 
   /// Create a copy of AwaitingFile
   /// with the given fields replaced by the non-null parameter values.
@@ -9331,18 +9369,25 @@ class _$AwaitingFileImpl implements _AwaitingFile {
 
 abstract class _AwaitingFile implements AwaitingFile {
   const factory _AwaitingFile(
-      {@JsonKey(name: 'Name') required final String name,
-      @JsonKey(name: 'Size') required final int size}) = _$AwaitingFileImpl;
+      {@JsonKey(name: 'ID') final String? id,
+      @JsonKey(name: 'Name') required final String name,
+      @JsonKey(name: 'Size') required final int size,
+      final String? path}) = _$AwaitingFileImpl;
 
   factory _AwaitingFile.fromJson(Map<String, dynamic> json) =
       _$AwaitingFileImpl.fromJson;
 
+  @override
+  @JsonKey(name: 'ID')
+  String? get id;
   @override
   @JsonKey(name: 'Name')
   String get name;
   @override
   @JsonKey(name: 'Size')
   int get size;
+  @override
+  String? get path;
 
   /// Create a copy of AwaitingFile
   /// with the given fields replaced by the non-null parameter values.

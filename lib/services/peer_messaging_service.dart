@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/ipn.dart';
 import '../models/peer_messaging.dart';
 import '../utils/logger.dart';
 import 'ipn.dart';
@@ -29,9 +30,12 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   final _clients = <WebSocket>{};
 
   StreamSubscription<PeerMessagingBridgeEvent>? _bridgeSubscription;
+  StreamSubscription<IpnNotification>? _notificationSubscription;
   HttpServer? _server;
   File? _stateFile;
   bool _initialized = false;
+  List<AwaitingFile> _lastWaitingFiles = const [];
+  final Map<String, String> _pendingAutoSavedPaths = {};
 
   bool get _supportsLocalProxy =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -53,13 +57,17 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     _bridgeSubscription = IpnService.eventBus
         .on<PeerMessagingBridgeEvent>()
         .listen((event) => handleBridgeEvent(event.event));
+    _notificationSubscription =
+        _ipnService.notificationStream.listen(_handleIpnNotification);
 
+    await _consumeAutoSavedAttachmentPaths();
     await _startProxyServer();
     await _persistState();
   }
 
   Future<void> disposeService() async {
     await _bridgeSubscription?.cancel();
+    await _notificationSubscription?.cancel();
     for (final client in _clients.toList()) {
       await client.close();
     }
@@ -87,20 +95,41 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String text, {
     String? conversationTitle,
     List<PeerMessagingMenuOption> menuOptions = const [],
+    List<PeerMessagingAttachment> attachments = const [],
   }) async {
     final now = DateTime.now().toUtc();
     final messageId = const Uuid().v4();
+    final normalizedText = text.trim();
+    final messageAttachments = attachments
+        .map(
+          (item) => PeerMessagingAttachment(
+            id: item.id,
+            transferId: item.transferId ?? item.id,
+            name: item.name,
+            size: item.size,
+            mimeType: item.mimeType,
+          ),
+        )
+        .toList();
+    final attachmentMetadata =
+        messageAttachments.map((item) => item.toJson()).toList();
     final message = PeerMessagingMessage(
       id: messageId,
       conversationId: conversationId,
       role: PeerMessagingMessageRole.user,
       kind: menuOptions.isNotEmpty
           ? PeerMessagingMessageKind.menuRequest
-          : PeerMessagingMessageKind.text,
+          : messageAttachments.isNotEmpty && normalizedText.isEmpty
+              ? PeerMessagingMessageKind.file
+              : PeerMessagingMessageKind.text,
       deliveryStatus: PeerMessagingDeliveryStatus.pending,
-      text: text,
+      text: normalizedText,
       createdAt: now,
       menuOptions: menuOptions,
+      attachments: messageAttachments,
+      metadata: {
+        if (attachmentMetadata.isNotEmpty) 'attachments': attachmentMetadata,
+      },
     );
     _upsertConversationMessage(
       conversationId,
@@ -117,21 +146,26 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     };
 
     try {
+      final filePayloads = attachments
+          .where((item) => (item.path ?? '').isNotEmpty)
+          .map(
+            (item) => OutgoingFile(
+              id: item.transferId ?? item.id,
+              name: item.name,
+              peerID: conversationId,
+              declaredSize: item.size,
+              path: item.path,
+            ),
+          )
+          .toList();
+      if (filePayloads.isNotEmpty) {
+        await _ipnService.sendPeerFiles(conversationId, filePayloads);
+      }
       await _ipnService.sendPeerMessagingMessage(payload);
       await _applyDeliveryStatus(
         conversationId,
         messageId,
         PeerMessagingDeliveryStatus.sent,
-      );
-      await _broadcast(
-        PeerMessagingEvent(
-          version: _protocolVersion,
-          type: PeerMessagingEventType.messageSent,
-          conversationId: conversationId,
-          messageId: messageId,
-          timestamp: now,
-          payload: payload,
-        ),
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -150,6 +184,97 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         ),
       );
       rethrow;
+    }
+  }
+
+  Future<void> ensureConversation({
+    required String conversationId,
+    required String title,
+    String subtitle = '',
+  }) async {
+    _upsertConversation(
+      conversationId,
+      title: title,
+      subtitle: subtitle,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await _persistState();
+  }
+
+  Future<void> hideConversation(String conversationId) async {
+    final nextConversations = state.conversations.map((conversation) {
+      if (conversation.id != conversationId) {
+        return conversation;
+      }
+      return conversation.copyWith(hidden: true);
+    }).toList();
+    state =
+        state.copyWith(conversations: _sortConversations(nextConversations));
+    await _persistState();
+  }
+
+  Future<void> deleteConversation(
+    String conversationId, {
+    bool broadcast = true,
+  }) async {
+    final nextConversations = state.conversations
+        .where((conversation) => conversation.id != conversationId)
+        .toList();
+    state =
+        state.copyWith(conversations: _sortConversations(nextConversations));
+    await _persistState();
+    if (broadcast) {
+      await _broadcast(
+        PeerMessagingEvent(
+          version: _protocolVersion,
+          type: PeerMessagingEventType.conversationDeleted,
+          conversationId: conversationId,
+          timestamp: DateTime.now().toUtc(),
+          payload: const {},
+        ),
+      );
+    }
+  }
+
+  Future<void> deleteMessage({
+    required String conversationId,
+    required String messageId,
+    bool broadcast = true,
+  }) async {
+    final conversations = state.conversations.map((conversation) {
+      if (conversation.id != conversationId) {
+        return conversation;
+      }
+
+      final messages = conversation.messages
+          .where((message) => message.id != messageId)
+          .toList();
+      final updatedAt = messages.isNotEmpty
+          ? messages.last.createdAt
+          : conversation.updatedAt;
+      final nextUnread = conversation.unreadCount > messages.length
+          ? messages.length
+          : conversation.unreadCount;
+      return conversation.copyWith(
+        messages: messages,
+        updatedAt: updatedAt,
+        unreadCount: nextUnread,
+      );
+    }).toList();
+
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    await _persistState();
+    if (broadcast) {
+      await _broadcast(
+        PeerMessagingEvent(
+          version: _protocolVersion,
+          type: PeerMessagingEventType.messageDeleted,
+          conversationId: conversationId,
+          messageId: messageId,
+          timestamp: DateTime.now().toUtc(),
+          payload: {'message_id': messageId},
+        ),
+      );
     }
   }
 
@@ -202,16 +327,6 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         conversationId,
         message.id,
         PeerMessagingDeliveryStatus.sent,
-      );
-      await _broadcast(
-        PeerMessagingEvent(
-          version: _protocolVersion,
-          type: PeerMessagingEventType.approvalSubmitted,
-          conversationId: conversationId,
-          messageId: message.id,
-          timestamp: DateTime.now().toUtc(),
-          payload: payload,
-        ),
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -267,16 +382,6 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         message.id,
         PeerMessagingDeliveryStatus.sent,
       );
-      await _broadcast(
-        PeerMessagingEvent(
-          version: _protocolVersion,
-          type: PeerMessagingEventType.menuSubmitted,
-          conversationId: conversationId,
-          messageId: message.id,
-          timestamp: now,
-          payload: payload,
-        ),
-      );
     } catch (e) {
       await _applyDeliveryStatus(
         conversationId,
@@ -297,39 +402,85 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           updatedAt: event.timestamp,
         );
         break;
+      case PeerMessagingEventType.conversationDeleted:
+        await deleteConversation(event.conversationId, broadcast: false);
+        break;
       case PeerMessagingEventType.messageReceived:
       case PeerMessagingEventType.approvalRequested:
       case PeerMessagingEventType.messageSent:
+      case PeerMessagingEventType.messageDeleted:
       case PeerMessagingEventType.approvalSubmitted:
       case PeerMessagingEventType.menuRequested:
       case PeerMessagingEventType.menuSubmitted:
+        if (event.type == PeerMessagingEventType.messageDeleted) {
+          final targetMessageId =
+              event.messageId ?? event.payload['message_id'] as String?;
+          if (targetMessageId != null && targetMessageId.isNotEmpty) {
+            await deleteMessage(
+              conversationId: event.conversationId,
+              messageId: targetMessageId,
+              broadcast: false,
+            );
+          }
+          break;
+        }
         final messageJson =
             Map<String, dynamic>.from(event.payload['message'] as Map? ?? {});
         if (messageJson.isNotEmpty) {
+          final isInboundEvent =
+              event.type == PeerMessagingEventType.messageReceived ||
+                  event.type == PeerMessagingEventType.approvalRequested ||
+                  event.type == PeerMessagingEventType.menuRequested;
+          final inboundPeerId = isInboundEvent
+              ? event.payload['from_peer_id'] as String?
+              : null;
+          final localConversationId = inboundPeerId?.isNotEmpty == true
+              ? inboundPeerId!
+              : event.conversationId;
           final mergedMetadata = <String, dynamic>{
             ...Map<String, dynamic>.from(
               messageJson['metadata'] as Map? ?? const {},
             ),
-            if (event.payload['from_peer_id'] != null)
+            if (isInboundEvent) 'is_inbound': true,
+            if (isInboundEvent && event.payload['from_peer_id'] != null)
               'from_peer_id': event.payload['from_peer_id'],
-            if (event.payload['from_peer_name'] != null)
+            if (isInboundEvent && event.payload['from_peer_name'] != null)
               'from_peer_name': event.payload['from_peer_name'],
           };
           final message = PeerMessagingMessage.fromJson({
             ...messageJson,
+            'conversation_id': localConversationId,
             if (mergedMetadata.isNotEmpty) 'metadata': mergedMetadata,
           });
+          final incomingPeerName =
+              isInboundEvent ? event.payload['from_peer_name'] as String? : null;
+          final conversationTitle = incomingPeerName?.isNotEmpty == true
+              ? incomingPeerName!
+              : event.payload['conversation_title'] as String? ??
+                  'Peer Conversation';
           _upsertConversationMessage(
-            event.conversationId,
+            localConversationId,
             message,
-            title: event.payload['conversation_title'] as String? ??
-                'Peer Conversation',
+            title: conversationTitle,
             subtitle: event.payload['subtitle'] as String? ?? '',
             incrementUnread:
                 event.type == PeerMessagingEventType.messageReceived ||
                     event.type == PeerMessagingEventType.approvalRequested ||
                     event.type == PeerMessagingEventType.menuRequested,
           );
+          if ((Platform.isMacOS || Platform.isIOS) &&
+              message.attachments.isNotEmpty) {
+            await _consumeAutoSavedAttachmentPaths();
+            await _applyPendingAutoSavedPaths(
+              conversationId: localConversationId,
+              messageId: message.id,
+            );
+          }
+          if (Platform.isIOS &&
+              isInboundEvent &&
+              message.attachments.isNotEmpty) {
+            await _consumePendingAttachmentFiles();
+          }
         }
         break;
       case PeerMessagingEventType.messageDeliveryUpdate:
@@ -359,7 +510,381 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
 
     await _persistState();
-    await _broadcast(event);
+    await _consumeAutoSavedAttachmentPaths();
+    if (_shouldBroadcastEvent(event)) {
+      await _broadcast(event);
+    }
+  }
+
+  Future<void> _handleIpnNotification(IpnNotification notification) async {
+    if (!(Platform.isIOS || Platform.isMacOS) ||
+        notification.filesWaiting == null) {
+      return;
+    }
+    _lastWaitingFiles = _parseAwaitingFiles(notification.filesWaiting!);
+    if (Platform.isMacOS || Platform.isIOS) {
+      await _consumeAutoSavedAttachmentPaths();
+    }
+    if (Platform.isIOS) {
+      await _consumePendingAttachmentFiles();
+    }
+  }
+
+  Future<void> _consumeAutoSavedAttachmentPaths() async {
+    if (!(Platform.isMacOS || Platform.isIOS)) {
+      return;
+    }
+
+    final autoSavedPaths = await _ipnService.consumeAutoSavedFilePaths();
+    if (autoSavedPaths.isNotEmpty) {
+      _pendingAutoSavedPaths.addAll(autoSavedPaths);
+      _logger.d(
+        'Merged auto-saved attachment paths into pending cache: $_pendingAutoSavedPaths',
+      );
+    }
+    if (_pendingAutoSavedPaths.isEmpty) {
+      _logger.d('No auto-saved attachment paths available to consume');
+      return;
+    }
+    _logger.d(
+      'Consuming auto-saved attachment paths from pending cache: $_pendingAutoSavedPaths',
+    );
+
+    var changed = false;
+    final consumedTransferIds = <String>{};
+    final conversations = <PeerMessagingConversation>[];
+    for (final conversation in state.conversations) {
+      final messages = <PeerMessagingMessage>[];
+      for (final message in conversation.messages) {
+        if (message.attachments.isEmpty) {
+          messages.add(message);
+          continue;
+        }
+
+        var messageChanged = false;
+        final nextAttachments = <PeerMessagingAttachment>[];
+        for (final attachment in message.attachments) {
+          final transferId = attachment.transferId ?? attachment.id;
+          final autoSavedPath = _pendingAutoSavedPaths[transferId];
+          if (autoSavedPath == null || autoSavedPath.isEmpty) {
+            nextAttachments.add(attachment);
+            continue;
+          }
+          _logger.d(
+            'Matched attachment to auto-saved path: conversation=${conversation.id} message=${message.id} transferId=$transferId name=${attachment.name} path=$autoSavedPath',
+          );
+
+          final existingPath = attachment.path;
+          if ((existingPath ?? '').isNotEmpty && existingPath == autoSavedPath) {
+            nextAttachments.add(attachment);
+            continue;
+          }
+
+          nextAttachments.add(
+            PeerMessagingAttachment(
+              id: attachment.id,
+              transferId: attachment.transferId,
+              name: attachment.name,
+              size: attachment.size,
+              mimeType: attachment.mimeType,
+              path: autoSavedPath,
+            ),
+          );
+          consumedTransferIds.add(transferId);
+          messageChanged = true;
+        }
+
+        if (messageChanged) {
+          changed = true;
+          messages.add(message.copyWith(attachments: nextAttachments));
+        } else {
+          messages.add(message);
+        }
+      }
+      conversations.add(conversation.copyWith(messages: messages));
+    }
+
+    if (!changed) {
+      _logger.d(
+        'Auto-saved attachment paths were available but no message attachments were updated; keeping pending cache for direct message insertion matching: $_pendingAutoSavedPaths',
+      );
+      return;
+    }
+
+    for (final transferId in consumedTransferIds) {
+      _pendingAutoSavedPaths.remove(transferId);
+    }
+    _logger.d(
+      'Consumed auto-saved attachment paths for transfer IDs: $consumedTransferIds; remaining pending cache: $_pendingAutoSavedPaths',
+    );
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    _logger.d('Persisting updated message attachment paths after auto-save consume');
+    await _persistState();
+  }
+
+  Future<void> _applyPendingAutoSavedPaths({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    if (!Platform.isMacOS || _pendingAutoSavedPaths.isEmpty) {
+      return;
+    }
+
+    var changed = false;
+    final consumedTransferIds = <String>{};
+    final conversations = state.conversations.map((conversation) {
+      if (conversation.id != conversationId) {
+        return conversation;
+      }
+
+      final messages = conversation.messages.map((message) {
+        if (message.id != messageId || message.attachments.isEmpty) {
+          return message;
+        }
+
+        var messageChanged = false;
+        final nextAttachments = message.attachments.map((attachment) {
+          final transferId = attachment.transferId ?? attachment.id;
+          final resolvedPath = _pendingAutoSavedPaths[transferId];
+          if ((resolvedPath ?? '').isEmpty) {
+            return attachment;
+          }
+          consumedTransferIds.add(transferId);
+          messageChanged = true;
+          changed = true;
+          _logger.d(
+            'Applied pending auto-saved path directly during message insert: conversation=$conversationId message=$messageId transferId=$transferId path=$resolvedPath',
+          );
+          return PeerMessagingAttachment(
+            id: attachment.id,
+            transferId: attachment.transferId,
+            name: attachment.name,
+            size: attachment.size,
+            mimeType: attachment.mimeType,
+            path: resolvedPath,
+          );
+        }).toList();
+
+        if (!messageChanged) {
+          return message;
+        }
+        return message.copyWith(attachments: nextAttachments);
+      }).toList();
+
+      return conversation.copyWith(messages: messages);
+    }).toList();
+
+    if (!changed) {
+      return;
+    }
+
+    for (final transferId in consumedTransferIds) {
+      _pendingAutoSavedPaths.remove(transferId);
+    }
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    await _persistState();
+  }
+
+  List<AwaitingFile> _parseAwaitingFiles(Map<String, dynamic> filesWaiting) {
+    final dir = filesWaiting['Dir'] as String? ?? '';
+    final files =
+        (filesWaiting['Files'] as List<dynamic>? ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .map(
+              (file) => AwaitingFile(
+                id: file['ID'] as String?,
+                name: file['Name'] as String? ?? '',
+                size: (file['Size'] as num?)?.toInt() ?? 0,
+                path: dir.isEmpty
+                    ? null
+                    : p.join(dir, file['Name'] as String? ?? ''),
+              ),
+            )
+            .where((file) => file.name.isNotEmpty)
+            .toList();
+    return files;
+  }
+
+  Future<void> _consumePendingAttachmentFiles() async {
+    if (_lastWaitingFiles.isEmpty) {
+      return;
+    }
+
+    var changed = false;
+    final consumedFileNames = <String>{};
+    final conversations = <PeerMessagingConversation>[];
+    final attachmentsDir = await _attachmentStorageDir();
+
+    for (final conversation in state.conversations) {
+      final messages = <PeerMessagingMessage>[];
+      for (final message in conversation.messages) {
+        if (message.attachments.isEmpty) {
+          messages.add(message);
+          continue;
+        }
+
+        var messageChanged = false;
+        final nextAttachments = <PeerMessagingAttachment>[];
+        for (final attachment in message.attachments) {
+          if ((attachment.path ?? '').isNotEmpty &&
+              await File(attachment.path!).exists()) {
+            nextAttachments.add(attachment);
+            continue;
+          }
+
+          final waitingFile = _matchWaitingFileForAttachment(
+            attachment,
+            excludeNames: consumedFileNames,
+          );
+          if (waitingFile == null) {
+            nextAttachments.add(attachment);
+            continue;
+          }
+
+          final transferId = attachment.transferId ?? attachment.id;
+          final destinationPath = p.join(
+            attachmentsDir.path,
+            '${transferId}_${attachment.name}',
+          );
+          final sourcePath = waitingFile.path;
+          if (sourcePath == null || sourcePath.isEmpty) {
+            nextAttachments.add(attachment);
+            continue;
+          }
+
+          try {
+            await File(sourcePath).copy(destinationPath);
+            await _ipnService.deleteFile(waitingFile.name);
+            consumedFileNames.add(waitingFile.name);
+            nextAttachments.add(
+              PeerMessagingAttachment(
+                id: attachment.id,
+                transferId: transferId,
+                name: attachment.name,
+                size: attachment.size,
+                mimeType: attachment.mimeType,
+                path: destinationPath,
+              ),
+            );
+            messageChanged = true;
+          } catch (e) {
+            _logger.e(
+              'Failed to consume waiting attachment ${waitingFile.name}: $e',
+            );
+            nextAttachments.add(attachment);
+          }
+        }
+
+        if (messageChanged) {
+          changed = true;
+          messages.add(message.copyWith(attachments: nextAttachments));
+        } else {
+          messages.add(message);
+        }
+      }
+      conversations.add(conversation.copyWith(messages: messages));
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    _lastWaitingFiles = _lastWaitingFiles
+        .where((file) => !consumedFileNames.contains(file.name))
+        .toList();
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    await _persistState();
+  }
+
+  AwaitingFile? _matchWaitingFileForAttachment(
+    PeerMessagingAttachment attachment, {
+    Set<String> excludeNames = const {},
+  }) {
+    final candidates = _lastWaitingFiles
+        .where((file) => !excludeNames.contains(file.name))
+        .toList();
+    final transferId = attachment.transferId ?? attachment.id;
+    final transferIdMatch = candidates.firstWhere(
+      (file) => file.id == transferId,
+      orElse: () => const AwaitingFile(name: '', size: 0),
+    );
+    if (transferIdMatch.name.isNotEmpty) {
+      return transferIdMatch;
+    }
+
+    final exactMatch = candidates.firstWhere(
+      (file) => file.name == attachment.name,
+      orElse: () => const AwaitingFile(name: '', size: 0),
+    );
+    if (exactMatch.name.isNotEmpty) {
+      return exactMatch;
+    }
+
+    final normalizedAttachmentName = _normalizeWaitingFileName(attachment.name);
+    final normalizedNameMatches = candidates
+        .where(
+          (file) =>
+              _normalizeWaitingFileName(file.name) == normalizedAttachmentName,
+        )
+        .toList();
+    if (normalizedNameMatches.length == 1) {
+      return normalizedNameMatches.first;
+    }
+
+    final sizeMatches = candidates
+        .where((file) => file.size == attachment.size)
+        .toList();
+    if (sizeMatches.length == 1) {
+      return sizeMatches.first;
+    }
+
+    final normalizedNameAndSizeMatches = candidates
+        .where(
+          (file) =>
+              file.size == attachment.size &&
+              _normalizeWaitingFileName(file.name) == normalizedAttachmentName,
+        )
+        .toList();
+    if (normalizedNameAndSizeMatches.isNotEmpty) {
+      return normalizedNameAndSizeMatches.first;
+    }
+    return null;
+  }
+
+  String _normalizeWaitingFileName(String value) {
+    final extension = p.extension(value);
+    final baseName = p.basenameWithoutExtension(value);
+    final normalizedBaseName =
+        baseName.replaceFirst(RegExp(r' \(\d+\)$'), '');
+    return '$normalizedBaseName$extension';
+  }
+
+  Future<Directory> _attachmentStorageDir() async {
+    final supportDir = await getApplicationSupportDirectory();
+    final attachmentsDir = Directory(
+      p.join(supportDir.path, _storageFolderName, 'attachments'),
+    );
+    await attachmentsDir.create(recursive: true);
+    return attachmentsDir;
+  }
+
+  bool _shouldBroadcastEvent(PeerMessagingEvent event) {
+    final messageJson = Map<String, dynamic>.from(
+      event.payload['message'] as Map? ?? const {},
+    );
+    final role = PeerMessagingMessageRole.fromValue(messageJson['role'] as String?);
+    switch (event.type) {
+      case PeerMessagingEventType.messageSent:
+      case PeerMessagingEventType.approvalSubmitted:
+      case PeerMessagingEventType.menuSubmitted:
+        return false;
+      case PeerMessagingEventType.messageReceived:
+      case PeerMessagingEventType.approvalRequested:
+      case PeerMessagingEventType.menuRequested:
+        return role != PeerMessagingMessageRole.user;
+      default:
+        return true;
+    }
   }
 
   Future<void> _startProxyServer() async {
@@ -497,6 +1022,19 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             await markConversationRead(
                 payload['conversation_id'] as String? ?? '');
             break;
+          case 'delete_message':
+            await deleteMessage(
+              conversationId: payload['conversation_id'] as String? ?? '',
+              messageId: payload['message_id'] as String? ?? '',
+              broadcast: false,
+            );
+            break;
+          case 'delete_conversation':
+            await deleteConversation(
+              payload['conversation_id'] as String? ?? '',
+              broadcast: false,
+            );
+            break;
           default:
             socket.add(jsonEncode({
               'version': _protocolVersion,
@@ -562,10 +1100,13 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         state.conversations.indexWhere((c) => c.id == conversationId);
     final nextConversation = existingIndex >= 0
         ? state.conversations[existingIndex].copyWith(
-            title: title,
+            title: title.isEmpty
+                ? state.conversations[existingIndex].title
+                : title,
             subtitle: subtitle.isEmpty
                 ? state.conversations[existingIndex].subtitle
                 : subtitle,
+            hidden: false,
             updatedAt: updatedAt ?? DateTime.now().toUtc(),
           )
         : PeerMessagingConversation(
@@ -574,6 +1115,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             subtitle: subtitle,
             updatedAt: updatedAt ?? DateTime.now().toUtc(),
             unreadCount: 0,
+            hidden: false,
             messages: const [],
           );
 
@@ -605,6 +1147,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         subtitle: subtitle,
         updatedAt: message.createdAt,
         unreadCount: 0,
+        hidden: false,
         messages: const [],
       );
     }
@@ -622,6 +1165,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       title: title.isEmpty ? conversation.title : title,
       subtitle: subtitle.isEmpty ? conversation.subtitle : subtitle,
       updatedAt: message.createdAt,
+      hidden: false,
       unreadCount: incrementUnread
           ? conversation.unreadCount + (existingMessageIndex >= 0 ? 0 : 1)
           : conversation.unreadCount,
