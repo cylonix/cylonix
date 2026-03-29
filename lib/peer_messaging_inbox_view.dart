@@ -3,6 +3,7 @@
 
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import 'models/ipn.dart';
 import 'models/peer_messaging.dart';
 import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
+import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/share_peer_device_list.dart';
 
@@ -39,8 +41,10 @@ class PeerMessagingInboxView extends ConsumerWidget {
             children: [
               const SizedBox(height: 32),
               const _ComposeCard(),
-              const SizedBox(height: 16),
-              _ProxyCard(proxy: proxy),
+              if (isDesktop()) ...[
+                const SizedBox(height: 16),
+                _ProxyCard(proxy: proxy),
+              ],
               const SizedBox(height: 16),
               if (conversations.isEmpty)
                 const _EmptyState()
@@ -128,9 +132,22 @@ class _ComposeCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Choose a peer',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Choose a peer',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(
+                        isApple() ? CupertinoIcons.xmark : Icons.close,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 Expanded(

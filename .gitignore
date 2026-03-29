@@ -71,3 +71,14 @@ windows/installer/bin
 windows/installer/FlutterDataFiles.wxs
 windows/installer/FlutterRuntimeFiles.wxs
 windows/share_extension/build
+
+# Local build caches
+.build-cache/
+.derivedData/
+.gocache/
+.gocache-android/
+.gocache-linux/
+.gomodcache/
+.gomodcache-android/
+.tmp/
+.tools-cache/

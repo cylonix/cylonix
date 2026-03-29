@@ -180,6 +180,23 @@ class PeerMessagingAttachment {
       if (path != null) 'path': path,
     };
   }
+
+  PeerMessagingAttachment copyWith({
+    String? transferId,
+    String? name,
+    int? size,
+    String? mimeType,
+    String? path,
+  }) {
+    return PeerMessagingAttachment(
+      id: id,
+      transferId: transferId ?? this.transferId,
+      name: name ?? this.name,
+      size: size ?? this.size,
+      mimeType: mimeType ?? this.mimeType,
+      path: path ?? this.path,
+    );
+  }
 }
 
 class PeerMessagingMessage {
@@ -191,6 +208,8 @@ class PeerMessagingMessage {
   final String text;
   final DateTime createdAt;
   final String? approvalId;
+  final String? replyToMessageId;
+  final String? failureMessage;
   final List<PeerMessagingApprovalAction> approvalActions;
   final List<PeerMessagingMenuOption> menuOptions;
   final List<PeerMessagingAttachment> attachments;
@@ -205,6 +224,8 @@ class PeerMessagingMessage {
     required this.text,
     required this.createdAt,
     this.approvalId,
+    this.replyToMessageId,
+    this.failureMessage,
     this.approvalActions = const [],
     this.menuOptions = const [],
     this.attachments = const [],
@@ -231,6 +252,10 @@ class PeerMessagingMessage {
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
       approvalId: json['approval_id'] as String?,
+      replyToMessageId: json['reply_to_message_id'] as String? ??
+          metadata['reply_to_message_id'] as String?,
+      failureMessage: json['failure_message'] as String? ??
+          metadata['failure_message'] as String?,
       approvalActions: ((json['approval_actions'] as List<dynamic>?) ?? [])
           .whereType<Map<String, dynamic>>()
           .map(PeerMessagingApprovalAction.fromJson)
@@ -255,6 +280,8 @@ class PeerMessagingMessage {
       'text': text,
       'created_at': createdAt.toIso8601String(),
       if (approvalId != null) 'approval_id': approvalId,
+      if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
+      if (failureMessage != null) 'failure_message': failureMessage,
       if (approvalActions.isNotEmpty)
         'approval_actions': approvalActions.map((e) => e.toJson()).toList(),
       if (menuOptions.isNotEmpty)
@@ -268,6 +295,8 @@ class PeerMessagingMessage {
   PeerMessagingMessage copyWith({
     PeerMessagingDeliveryStatus? deliveryStatus,
     String? text,
+    String? replyToMessageId,
+    String? failureMessage,
     List<PeerMessagingApprovalAction>? approvalActions,
     List<PeerMessagingMenuOption>? menuOptions,
     List<PeerMessagingAttachment>? attachments,
@@ -282,6 +311,8 @@ class PeerMessagingMessage {
       text: text ?? this.text,
       createdAt: createdAt,
       approvalId: approvalId,
+      replyToMessageId: replyToMessageId ?? this.replyToMessageId,
+      failureMessage: failureMessage ?? this.failureMessage,
       approvalActions: approvalActions ?? this.approvalActions,
       menuOptions: menuOptions ?? this.menuOptions,
       attachments: attachments ?? this.attachments,

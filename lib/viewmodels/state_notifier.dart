@@ -233,6 +233,16 @@ final hideMinimizeToTrayDialogProvider =
   );
 });
 
+final notificationPreviewEnabledProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'notification_preview_enabled',
+    defaultValue: true,
+    prefs: prefs,
+  );
+});
+
 final exitNodeIDToNameMapProvider = StateNotifierProvider<
     PreferenceNotifier<Map<String, String>>, Map<String, String>>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider).value;

@@ -21,6 +21,7 @@ struct FilesWaiting: Codable {
 class BackgroundTaskManager {
     static let shared = BackgroundTaskManager()
     private static let transferIDSidecarSuffix = ".cylonix-transfer-id"
+    private static let peerMessageNotificationLedgerKey = "PeerMessageNotifiedTransferIDs"
  
     func processFilesFromSharedContainer(completion: @escaping (Bool) -> Void) {
         wg_log(.info, message: "Processing files from shared container")
@@ -64,6 +65,8 @@ class BackgroundTaskManager {
 
             let sourceDir = URL(fileURLWithPath: filesWaiting.Dir)
             var processedFiles: [String] = []
+            var peerMessagingTransferIDs: [String] = []
+            var nonPeerMessagingFiles: [String] = []
 
             for file in filesWaiting.Files {
                 let sourceURL = sourceDir.appendingPathComponent(file.Name)
@@ -85,8 +88,10 @@ class BackgroundTaskManager {
                                 forTransferID: transferID,
                                 defaults: groupDefaults
                             )
+                            peerMessagingTransferIDs.append(transferID)
                         } else {
                             wg_log(.debug, message: "Auto-saved file without transferID: name=\(file.Name) destination=\(destinationFileURL.path)")
+                            nonPeerMessagingFiles.append(uniqueName)
                         }
                         cleanupTransferIDSidecar(for: file, in: sourceDir)
                         processedFiles.append(uniqueName)
@@ -99,7 +104,12 @@ class BackgroundTaskManager {
             }
 
             if !processedFiles.isEmpty {
-                notifyUserAirDropStyle(files: processedFiles)
+                markPeerMessagingTransfersNotified(peerMessagingTransferIDs, defaults: groupDefaults)
+                if !nonPeerMessagingFiles.isEmpty {
+                    notifyUserAirDropStyle(files: nonPeerMessagingFiles)
+                } else if !peerMessagingTransferIDs.isEmpty {
+                    wg_log(.info, message: "Suppressing auto-save notification for peer messaging transfers: \(peerMessagingTransferIDs)")
+                }
                 wg_log(.info, message: "Processed files: \(processedFiles.joined(separator: ", "))")
                 groupDefaults.atomicUpdate(forKey: "FilesWaiting") { currentValue in
                     if currentValue as? String == filesWaitingJson {
@@ -117,13 +127,19 @@ class BackgroundTaskManager {
 
     private func notifyUserAirDropStyle(files: [String]) {
         let content = UNMutableNotificationContent()
+        let previewsEnabled = currentNotificationPreviewEnabled()
 
-        if files.count == 1 {
-            content.title = "File received and saved"
-            content.body = files[0]
+        if previewsEnabled {
+            if files.count == 1 {
+                content.title = "File received and saved"
+                content.body = files[0]
+            } else {
+                content.title = "\(files.count) Files received and saved"
+                content.body = files.joined(separator: ", ")
+            }
         } else {
-            content.title = "\(files.count) Files received and saved"
-            content.body = files.joined(separator: ", ")
+            content.title = files.count == 1 ? "File received and saved" : "Files received and saved"
+            content.body = "Open Cylonix to view file details."
         }
 
         content.sound = .default
@@ -175,6 +191,36 @@ class BackgroundTaskManager {
 }
 
 extension BackgroundTaskManager {
+    private func peerMessagingNotificationLedger(defaults: UserDefaults) -> [String: Double] {
+        defaults.dictionary(forKey: Self.peerMessageNotificationLedgerKey) as? [String: Double] ?? [:]
+    }
+
+    private func currentNotificationPreviewEnabled() -> Bool {
+        guard let appGroupId = FileManager.appGroupId,
+              let defaults = UserDefaults(suiteName: appGroupId)
+        else {
+            return true
+        }
+        if defaults.object(forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled) == nil {
+            return true
+        }
+        return defaults.bool(forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled)
+    }
+
+    private func markPeerMessagingTransfersNotified(
+        _ transferIDs: [String],
+        defaults: UserDefaults
+    ) {
+        guard !transferIDs.isEmpty else { return }
+        var ledger = peerMessagingNotificationLedger(defaults: defaults)
+        let now = Date().timeIntervalSince1970
+        for transferID in transferIDs where !transferID.isEmpty {
+            ledger[transferID] = now
+        }
+        defaults.set(ledger, forKey: Self.peerMessageNotificationLedgerKey)
+        defaults.synchronize()
+    }
+
     private func resolvedTransferID(for file: WaitingFile, in sourceDir: URL) -> String? {
         if let id = file.ID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
             return id

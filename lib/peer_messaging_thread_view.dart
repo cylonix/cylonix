@@ -46,6 +46,10 @@ class _PeerMessagingThreadViewState
   final _controller = TextEditingController();
   final _messagesScrollController = ScrollController();
   final List<PeerMessagingAttachment> _pendingAttachments = [];
+  final Map<String, GlobalKey> _messageKeys = {};
+  final Map<String, String> _resolvedAttachmentPaths = {};
+  final Set<String> _persistingResolvedAttachmentPaths = {};
+  PeerMessagingMessage? _replyToMessage;
   bool _sending = false;
   int _lastRenderedMessageCount = 0;
 
@@ -194,20 +198,20 @@ class _PeerMessagingThreadViewState
             conversationTitle: conversation.title,
             attachments:
                 List<PeerMessagingAttachment>.from(_pendingAttachments),
+            replyToMessageId: _replyToMessage?.id,
           );
       _controller.clear();
       if (mounted) {
         setState(() {
           _pendingAttachments.clear();
+          _replyToMessage = null;
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollToBottom(animated: true);
         });
       }
     } catch (e) {
-      if (mounted) {
-        await showAlertDialog(context, 'Send Failed', '$e');
-      }
+      _logger.w('Send failed and was stored on the message: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -215,6 +219,73 @@ class _PeerMessagingThreadViewState
         });
       }
     }
+  }
+
+  Future<void> _showFailedMessageDialog(PeerMessagingMessage message) async {
+    final failureMessage = message.failureMessage ??
+        message.metadata['failure_message'] as String? ??
+        'This message could not be delivered.';
+    if (!mounted) {
+      return;
+    }
+
+    final shouldRetry = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog.adaptive(
+            title: const Text('Message Not Delivered'),
+            content: Text(failureMessage),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Send Again'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldRetry) {
+      return;
+    }
+    await _retryMessage(message);
+  }
+
+  Future<void> _retryMessage(PeerMessagingMessage message) async {
+    try {
+      await ref.read(peerMessagingServiceProvider.notifier).resendFailedMessage(
+            conversationId: widget.conversationId,
+            messageId: message.id,
+          );
+    } catch (e) {
+      if (mounted) {
+        await showAlertDialog(context, 'Retry Failed', '$e');
+      }
+    }
+  }
+
+  void _beginReply(PeerMessagingMessage message) {
+    setState(() {
+      _replyToMessage = message;
+    });
+  }
+
+  void _clearReply() {
+    if (_replyToMessage == null) {
+      return;
+    }
+    setState(() {
+      _replyToMessage = null;
+    });
+  }
+
+  GlobalKey _messageKeyFor(String messageId) {
+    return _messageKeys.putIfAbsent(
+      messageId,
+      () => GlobalObjectKey('peer-message-$messageId'),
+    );
   }
 
   Future<void> _deleteMessage(PeerMessagingMessage message) async {
@@ -257,9 +328,50 @@ class _PeerMessagingThreadViewState
     }
   }
 
-  Future<void> _saveAttachment(PeerMessagingAttachment attachment) async {
+  String _attachmentCacheKey(
+      String messageId, PeerMessagingAttachment attachment) {
+    return '$messageId:${attachment.id}';
+  }
+
+  Future<void> _persistResolvedAttachmentPath({
+    required String messageId,
+    required PeerMessagingAttachment attachment,
+    required String resolvedPath,
+  }) async {
+    if (resolvedPath.isEmpty) {
+      return;
+    }
+    final cacheKey = _attachmentCacheKey(messageId, attachment);
+    _resolvedAttachmentPaths[cacheKey] = resolvedPath;
+    if (attachment.path == resolvedPath ||
+        _persistingResolvedAttachmentPaths.contains(cacheKey)) {
+      return;
+    }
+
+    _persistingResolvedAttachmentPaths.add(cacheKey);
     try {
-      final managedPath = await _resolveManagedAttachmentPath(attachment);
+      await ref
+          .read(peerMessagingServiceProvider.notifier)
+          .updateAttachmentPath(
+            conversationId: widget.conversationId,
+            messageId: messageId,
+            attachmentId: attachment.id,
+            resolvedPath: resolvedPath,
+          );
+    } finally {
+      _persistingResolvedAttachmentPaths.remove(cacheKey);
+    }
+  }
+
+  Future<void> _saveAttachment(
+    String messageId,
+    PeerMessagingAttachment attachment,
+  ) async {
+    try {
+      final managedPath = await _resolveManagedAttachmentPath(
+        messageId,
+        attachment,
+      );
       final waitingFile = await _resolveCurrentWaitingFileForAttachment(
         attachment,
       );
@@ -346,9 +458,16 @@ class _PeerMessagingThreadViewState
     }
   }
 
-  Future<void> _openAttachment(PeerMessagingAttachment attachment) async {
+  Future<void> _openAttachment(
+    String messageId,
+    PeerMessagingAttachment attachment,
+  ) async {
     try {
-      final resolvedPath = await _resolveAttachmentOpenPath(attachment);
+      final resolvedPath = await _resolveAttachmentOpenPath(
+        messageId,
+        attachment,
+        refreshWaitingFiles: true,
+      );
       if (resolvedPath == null || resolvedPath.isEmpty) {
         throw Exception('Attachment file is not available yet on this device');
       }
@@ -441,12 +560,22 @@ class _PeerMessagingThreadViewState
   }
 
   Future<String?> _resolveAttachmentOpenPath(
-    PeerMessagingAttachment attachment,
-  ) async {
+    String messageId,
+    PeerMessagingAttachment attachment, {
+    bool refreshWaitingFiles = false,
+  }) async {
+    final cacheKey = _attachmentCacheKey(messageId, attachment);
+    final cachedPath = _resolvedAttachmentPaths[cacheKey];
+    if ((cachedPath ?? '').isNotEmpty && await File(cachedPath!).exists()) {
+      return cachedPath;
+    }
+
     final waitingFile = await _resolveCurrentWaitingFileForAttachment(
       attachment,
+      refreshWaitingFiles: refreshWaitingFiles,
     );
     final sourcePath = await _resolveAttachmentSourcePath(
+      messageId,
       attachment,
       waitingFile: waitingFile,
     );
@@ -468,10 +597,14 @@ class _PeerMessagingThreadViewState
   }
 
   Future<String?> _resolveAttachmentSourcePath(
+    String messageId,
     PeerMessagingAttachment attachment, {
     AwaitingFile? waitingFile,
   }) async {
-    final managedPath = await _resolveManagedAttachmentPath(attachment);
+    final managedPath = await _resolveManagedAttachmentPath(
+      messageId,
+      attachment,
+    );
     if ((managedPath ?? '').isNotEmpty) {
       return managedPath;
     }
@@ -526,14 +659,19 @@ class _PeerMessagingThreadViewState
   }
 
   Future<String?> _resolveManagedAttachmentPath(
+    String messageId,
     PeerMessagingAttachment attachment,
   ) async {
+    final cacheKey = _attachmentCacheKey(messageId, attachment);
+    final cachedPath = _resolvedAttachmentPaths[cacheKey];
+    if ((cachedPath ?? '').isNotEmpty && await File(cachedPath!).exists()) {
+      return cachedPath;
+    }
+
     final attachmentPath = attachment.path;
     if ((attachmentPath ?? '').isNotEmpty &&
         await File(attachmentPath!).exists()) {
-      _logger.d(
-        'Using attachment.path as managed attachment path: ${attachment.path}',
-      );
+      _resolvedAttachmentPaths[cacheKey] = attachmentPath;
       return attachmentPath;
     }
 
@@ -544,8 +682,10 @@ class _PeerMessagingThreadViewState
 
     final remappedIosPath = await _resolveCurrentIosAttachmentPath(attachment);
     if ((remappedIosPath ?? '').isNotEmpty) {
-      _logger.d(
-        'Using current iOS Downloads attachment path: $remappedIosPath',
+      await _persistResolvedAttachmentPath(
+        messageId: messageId,
+        attachment: attachment,
+        resolvedPath: remappedIosPath!,
       );
       return remappedIosPath;
     }
@@ -556,15 +696,14 @@ class _PeerMessagingThreadViewState
       '${transferId}_${attachment.name}',
     );
     if (await File(deterministicPath).exists()) {
-      _logger.d(
-        'Using deterministic managed attachment path: $deterministicPath',
+      await _persistResolvedAttachmentPath(
+        messageId: messageId,
+        attachment: attachment,
+        resolvedPath: deterministicPath,
       );
       return deterministicPath;
     }
 
-    _logger.d(
-      'No managed attachment path found for transferId=$transferId name=${attachment.name}; deterministicPath=$deterministicPath attachment.path=${attachment.path}',
-    );
     return null;
   }
 
@@ -593,9 +732,6 @@ class _PeerMessagingThreadViewState
     for (final fileName in candidates) {
       final candidatePath = p.join(downloadsDir.path, fileName);
       if (await File(candidatePath).exists()) {
-        _logger.d(
-          'Recovered current iOS Downloads path for attachment: $candidatePath',
-        );
         return candidatePath;
       }
     }
@@ -638,26 +774,49 @@ class _PeerMessagingThreadViewState
   }
 
   Future<AwaitingFile?> _resolveCurrentWaitingFileForAttachment(
-    PeerMessagingAttachment attachment,
-  ) async {
+      PeerMessagingAttachment attachment,
+      {bool refreshWaitingFiles = false}) async {
     final notifier = ref.read(ipnStateNotifierProvider.notifier);
-    try {
-      final refreshedWaitingFiles = await notifier.getWaitingFiles(
-        timeoutMilliseconds: 1000,
-        ignoreErrors: true,
-      );
-      final refreshedMatch = _matchWaitingFileForAttachment(
-        attachment,
-        refreshedWaitingFiles ?? const [],
-      );
-      if (refreshedMatch != null) {
-        return refreshedMatch;
-      }
-    } catch (_) {}
+    if (refreshWaitingFiles) {
+      try {
+        final refreshedWaitingFiles = await notifier.getWaitingFiles(
+          timeoutMilliseconds: 1000,
+          ignoreErrors: true,
+        );
+        final refreshedMatch = _matchWaitingFileForAttachment(
+          attachment,
+          refreshedWaitingFiles ?? const [],
+        );
+        if (refreshedMatch != null) {
+          return refreshedMatch;
+        }
+      } catch (_) {}
+    }
 
     return _matchWaitingFileForAttachment(
       attachment,
       ref.read(filesWaitingProvider),
+    );
+  }
+
+  Future<String?> _resolveAttachmentPreviewPath(
+    String messageId,
+    PeerMessagingAttachment attachment,
+  ) async {
+    final cacheKey = _attachmentCacheKey(messageId, attachment);
+    final cachedPath = _resolvedAttachmentPaths[cacheKey];
+    if ((cachedPath ?? '').isNotEmpty && await File(cachedPath!).exists()) {
+      return cachedPath;
+    }
+
+    final waitingFile = _matchWaitingFileForAttachment(
+      attachment,
+      ref.read(filesWaitingProvider),
+    );
+    return _resolveAttachmentSourcePath(
+      messageId,
+      attachment,
+      waitingFile: waitingFile,
     );
   }
 
@@ -722,6 +881,24 @@ class _PeerMessagingThreadViewState
         value.metadata['from_peer_id'] != null);
   }
 
+  static bool _messagesBelongToSameRun(
+    PeerMessagingMessage first,
+    PeerMessagingMessage second,
+  ) {
+    final firstIsLocal = _isLocalMessage(first);
+    final secondIsLocal = _isLocalMessage(second);
+    if (firstIsLocal != secondIsLocal) {
+      return false;
+    }
+    if (!firstIsLocal &&
+        (first.metadata['from_peer_name'] as String? ?? 'Peer') !=
+            (second.metadata['from_peer_name'] as String? ?? 'Peer')) {
+      return false;
+    }
+    final gap = second.createdAt.difference(first.createdAt).inSeconds.abs();
+    return gap <= 300;
+  }
+
   void _scheduleInitialOrNewMessageScroll(int messageCount) {
     if (_lastRenderedMessageCount == messageCount) {
       return;
@@ -765,6 +942,9 @@ class _PeerMessagingThreadViewState
     }
 
     _scheduleInitialOrNewMessageScroll(conversation.messages.length);
+    final messagesById = {
+      for (final message in conversation.messages) message.id: message,
+    };
 
     return AdaptiveScaffold(
       title: Text(conversation.title),
@@ -786,64 +966,96 @@ class _PeerMessagingThreadViewState
                     final message = conversation.messages[index];
                     final previous =
                         index > 0 ? conversation.messages[index - 1] : null;
+                    final next = index + 1 < conversation.messages.length
+                        ? conversation.messages[index + 1]
+                        : null;
                     final laterMessages = conversation.messages.sublist(
                       index + 1,
                     );
-                    return _MessageBubble(
-                      message: message,
-                      previousMessage: previous,
-                      waitingFiles: waitingFiles,
-                      filesSaved: filesSaved,
-                      hasLaterDeliveredMessage: laterMessages.any(
-                        (item) =>
-                            _isLocalMessage(item) &&
-                            item.deliveryStatus ==
-                                PeerMessagingDeliveryStatus.delivered,
+                    return KeyedSubtree(
+                      key: _messageKeyFor(message.id),
+                      child: _MessageBubble(
+                        message: message,
+                        previousMessage: previous,
+                        nextMessage: next,
+                        replyTarget: message.replyToMessageId == null
+                            ? null
+                            : messagesById[message.replyToMessageId!],
+                        waitingFiles: waitingFiles,
+                        filesSaved: filesSaved,
+                        hasLaterDeliveredMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.delivered,
+                        ),
+                        hasLaterSentMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.sent,
+                        ),
+                        hasLaterPendingMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.pending,
+                        ),
+                        hasLaterFailedMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.failed,
+                        ),
+                        onDelete: () => _deleteMessage(message),
+                        onReply: () => _beginReply(message),
+                        onSendAgain: _isLocalMessage(message) &&
+                                message.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.failed
+                            ? () => _retryMessage(message)
+                            : null,
+                        onShowFailureDetails: _isLocalMessage(message) &&
+                                message.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.failed
+                            ? () => _showFailedMessageDialog(message)
+                            : null,
+                        onSaveAttachment: (attachment) =>
+                            _saveAttachment(message.id, attachment),
+                        onOpenAttachment: (attachment) =>
+                            _openAttachment(message.id, attachment),
+                        resolveAttachmentPath: (attachment) =>
+                            _resolveAttachmentPreviewPath(
+                          message.id,
+                          attachment,
+                        ),
+                        onApproval: (approved) async {
+                          await ref
+                              .read(peerMessagingServiceProvider.notifier)
+                              .submitApproval(
+                                conversationId: conversation.id,
+                                approvalId: message.approvalId ?? '',
+                                approved: approved,
+                              );
+                        },
+                        onMenuSelection: (action, title) async {
+                          await ref
+                              .read(peerMessagingServiceProvider.notifier)
+                              .submitMenuSelection(
+                                conversationId: conversation.id,
+                                messageId: message.id,
+                                action: action,
+                                title: title,
+                              );
+                        },
                       ),
-                      hasLaterSentMessage: laterMessages.any(
-                        (item) =>
-                            _isLocalMessage(item) &&
-                            item.deliveryStatus ==
-                                PeerMessagingDeliveryStatus.sent,
-                      ),
-                      hasLaterPendingMessage: laterMessages.any(
-                        (item) =>
-                            _isLocalMessage(item) &&
-                            item.deliveryStatus ==
-                                PeerMessagingDeliveryStatus.pending,
-                      ),
-                      hasLaterFailedMessage: laterMessages.any(
-                        (item) =>
-                            _isLocalMessage(item) &&
-                            item.deliveryStatus ==
-                                PeerMessagingDeliveryStatus.failed,
-                      ),
-                      onDelete: () => _deleteMessage(message),
-                      onSaveAttachment: _saveAttachment,
-                      onOpenAttachment: _openAttachment,
-                      resolveAttachmentPath: _resolveAttachmentOpenPath,
-                      onApproval: (approved) async {
-                        await ref
-                            .read(peerMessagingServiceProvider.notifier)
-                            .submitApproval(
-                              conversationId: conversation.id,
-                              approvalId: message.approvalId ?? '',
-                              approved: approved,
-                            );
-                      },
-                      onMenuSelection: (action, title) async {
-                        await ref
-                            .read(peerMessagingServiceProvider.notifier)
-                            .submitMenuSelection(
-                              conversationId: conversation.id,
-                              messageId: message.id,
-                              action: action,
-                              title: title,
-                            );
-                      },
                     );
                   },
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  separatorBuilder: (_, index) {
+                    final current = conversation.messages[index];
+                    final next = conversation.messages[index + 1];
+                    final sameRun = _messagesBelongToSameRun(current, next);
+                    return SizedBox(height: sameRun ? 3 : 14);
+                  },
                   itemCount: conversation.messages.length,
                 ),
               ),
@@ -910,6 +1122,18 @@ class _PeerMessagingThreadViewState
                                         CrossAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      if (_replyToMessage != null) ...[
+                                        _ReplyComposerPreview(
+                                          message: _replyToMessage!,
+                                          resolveAttachmentPath: (attachment) =>
+                                              _resolveAttachmentPreviewPath(
+                                            _replyToMessage!.id,
+                                            attachment,
+                                          ),
+                                          onCancel: _clearReply,
+                                        ),
+                                        const SizedBox(height: 10),
+                                      ],
                                       if (_pendingAttachments.isNotEmpty) ...[
                                         Text(
                                           _pendingAttachments.length == 1
@@ -1027,6 +1251,8 @@ class _PeerMessagingThreadViewState
 class _MessageBubble extends StatelessWidget {
   final PeerMessagingMessage message;
   final PeerMessagingMessage? previousMessage;
+  final PeerMessagingMessage? nextMessage;
+  final PeerMessagingMessage? replyTarget;
   final List<AwaitingFile> waitingFiles;
   final List<String> filesSaved;
   final bool hasLaterDeliveredMessage;
@@ -1034,6 +1260,9 @@ class _MessageBubble extends StatelessWidget {
   final bool hasLaterPendingMessage;
   final bool hasLaterFailedMessage;
   final VoidCallback onDelete;
+  final VoidCallback onReply;
+  final VoidCallback? onSendAgain;
+  final VoidCallback? onShowFailureDetails;
   final Future<void> Function(PeerMessagingAttachment attachment)
       onSaveAttachment;
   final Future<void> Function(PeerMessagingAttachment attachment)
@@ -1046,6 +1275,8 @@ class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
     required this.previousMessage,
+    required this.nextMessage,
+    required this.replyTarget,
     required this.waitingFiles,
     required this.filesSaved,
     required this.hasLaterDeliveredMessage,
@@ -1053,6 +1284,9 @@ class _MessageBubble extends StatelessWidget {
     required this.hasLaterPendingMessage,
     required this.hasLaterFailedMessage,
     required this.onDelete,
+    required this.onReply,
+    required this.onSendAgain,
+    required this.onShowFailureDetails,
     required this.onSaveAttachment,
     required this.onOpenAttachment,
     required this.resolveAttachmentPath,
@@ -1073,12 +1307,11 @@ class _MessageBubble extends StatelessWidget {
     final secondaryForegroundColor = isLocal
         ? Colors.white.withValues(alpha: 0.8)
         : theme.colorScheme.onSurfaceVariant;
-    final borderRadius = BorderRadius.only(
-      topLeft: const Radius.circular(22),
-      topRight: const Radius.circular(22),
-      bottomLeft: Radius.circular(isLocal ? 22 : 8),
-      bottomRight: Radius.circular(isLocal ? 8 : 22),
-    );
+    final borderRadius = _bubbleBorderRadius(isLocal);
+    final replyTargetIsLocal =
+        replyTarget != null ? !_isInbound(replyTarget!) : false;
+    final showReplyLink =
+        message.replyToMessageId != null && replyTarget != null;
     final isMediaOnlyMessage = message.text.isEmpty &&
         message.attachments.isNotEmpty &&
         message.attachments.every(_attachmentHasStandalonePreview) &&
@@ -1105,138 +1338,253 @@ class _MessageBubble extends StatelessWidget {
       children: [
         if (_shouldShowHeader) ...[
           Padding(
-            padding: EdgeInsets.only(
-              left: isLocal ? 0 : 4,
-              right: isLocal ? 4 : 0,
-              bottom: 6,
-            ),
-            child: Text(
-              _headerText,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            padding: const EdgeInsets.only(bottom: 8, top: 2),
+            child: Center(
+              child: Text(
+                _headerText,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -0.1,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: isLocal ? TextAlign.right : TextAlign.left,
             ),
           ),
         ],
         Align(
           alignment: alignment,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onLongPress: _supportsLongPressAction(context)
-                ? () => _showMessageActions(context)
-                : null,
-            onSecondaryTapDown: _supportsSecondaryClickAction(context)
-                ? (details) => _showMessageActions(
-                      context,
-                      globalPosition: details.globalPosition,
-                    )
-                : null,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 620),
-              child: IntrinsicWidth(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color:
-                        isMediaOnlyMessage ? Colors.transparent : bubbleColor,
-                    borderRadius: isMediaOnlyMessage ? null : borderRadius,
-                  ),
-                  child: DefaultTextStyle.merge(
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                          color: foregroundColor,
-                          height: 1.35,
-                        ) ??
-                        TextStyle(color: foregroundColor, height: 1.35),
-                    child: IconTheme.merge(
-                      data: IconThemeData(color: foregroundColor),
-                      child: Padding(
-                        padding: isMediaOnlyMessage
-                            ? EdgeInsets.zero
-                            : const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isCrossSideReply =
+                  showReplyLink && replyTargetIsLocal != isLocal;
+              final availableWidth = constraints.maxWidth;
+              const defaultMaxBubbleWidth = 460.0;
+              double bubbleMaxWidth = defaultMaxBubbleWidth;
+              if (isCrossSideReply) {
+                final mediaOnlyPreview = replyTarget!.attachments.isNotEmpty &&
+                    replyTarget!.text.isEmpty;
+                final previewWidth = mediaOnlyPreview ? 88.0 : 246.0;
+                const elbowRoom = 48.0; // 2 * cornerRadius + margin
+                final previewCenter = replyTargetIsLocal
+                    ? availableWidth - (previewWidth / 2)
+                    : previewWidth / 2;
+                if (isLocal) {
+                  // target bubble on right — needs left edge right of
+                  // previewCenter + elbowRoom
+                  final maxWidth = availableWidth - previewCenter - elbowRoom;
+                  if (maxWidth < defaultMaxBubbleWidth) {
+                    bubbleMaxWidth =
+                        maxWidth.clamp(120.0, defaultMaxBubbleWidth);
+                  }
+                } else {
+                  // target bubble on left — needs right edge left of
+                  // previewCenter - elbowRoom
+                  final maxWidth = previewCenter - elbowRoom;
+                  if (maxWidth < defaultMaxBubbleWidth) {
+                    bubbleMaxWidth =
+                        maxWidth.clamp(120.0, defaultMaxBubbleWidth);
+                  }
+                }
+              }
+              return Column(
+                crossAxisAlignment: align,
+                children: [
+                  if (showReplyLink) ...[
+                    _ReplyLinkTrail(
+                      message: replyTarget!,
+                      targetMessage: message,
+                      isLocal: isLocal,
+                      replyTargetIsLocal: replyTargetIsLocal,
+                      resolveAttachmentPath: resolveAttachmentPath,
+                      maxBubbleWidth: bubbleMaxWidth,
+                    ),
+                  ],
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onLongPress: _supportsLongPressAction(context)
+                        ? () => _showMessageActions(context)
+                        : null,
+                    onSecondaryTapDown: _supportsSecondaryClickAction(context)
+                        ? (details) => _showMessageActions(
+                              context,
+                              globalPosition: details.globalPosition,
+                            )
+                        : null,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
+                      child: IntrinsicWidth(
+                        child: Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            if (message.text.isNotEmpty) Text(message.text),
-                            if (message.attachments.isNotEmpty) ...[
-                              if (message.text.isNotEmpty)
-                                const SizedBox(height: 10),
-                              for (final attachment in message.attachments)
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                    bottom:
-                                        attachment == message.attachments.last
-                                            ? 0
-                                            : 8,
-                                  ),
-                                  child: _AttachmentLine(
-                                    attachment: attachment,
-                                    isSaved: filesSaved.contains(
-                                      attachment.name,
+                            Padding(
+                              padding: EdgeInsets.only(
+                                left: isLocal ? 0 : (_showsTail ? 6 : 0),
+                                right: isLocal ? (_showsTail ? 6 : 0) : 0,
+                              ),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: isMediaOnlyMessage
+                                      ? Colors.transparent
+                                      : bubbleColor,
+                                  borderRadius:
+                                      isMediaOnlyMessage ? null : borderRadius,
+                                ),
+                                child: DefaultTextStyle.merge(
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                        color: foregroundColor,
+                                        height: 1.24,
+                                        fontSize: 16,
+                                        letterSpacing: -0.15,
+                                      ) ??
+                                      TextStyle(
+                                        color: foregroundColor,
+                                        height: 1.24,
+                                        fontSize: 16,
+                                      ),
+                                  child: IconTheme.merge(
+                                    data: IconThemeData(color: foregroundColor),
+                                    child: Padding(
+                                      padding: isMediaOnlyMessage
+                                          ? EdgeInsets.zero
+                                          : message.attachments.isNotEmpty
+                                              ? const EdgeInsetsGeometry.only(
+                                                  top: 8,
+                                                  left: 2,
+                                                  right: 2,
+                                                  bottom: 2,
+                                                )
+                                              : const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 9,
+                                                ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          if (message.text.isNotEmpty)
+                                            Padding(
+                                              padding: message
+                                                      .attachments.isNotEmpty
+                                                  ? const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                    )
+                                                  : EdgeInsets.zero,
+                                              child: Text(message.text),
+                                            ),
+                                          if (message
+                                              .attachments.isNotEmpty) ...[
+                                            if (message.text.isNotEmpty)
+                                              const SizedBox(height: 8),
+                                            for (final attachment
+                                                in message.attachments)
+                                              Padding(
+                                                padding: EdgeInsets.only(
+                                                  bottom: attachment ==
+                                                          message
+                                                              .attachments.last
+                                                      ? 0
+                                                      : 8,
+                                                ),
+                                                child: _AttachmentLine(
+                                                  attachment: attachment,
+                                                  isSaved: filesSaved.contains(
+                                                    attachment.name,
+                                                  ),
+                                                  onTap: () => onOpenAttachment(
+                                                      attachment),
+                                                  resolvePath: () =>
+                                                      resolveAttachmentPath(
+                                                    attachment,
+                                                  ),
+                                                  foregroundColor:
+                                                      foregroundColor,
+                                                  secondaryColor:
+                                                      secondaryForegroundColor,
+                                                  isLocal: isLocal,
+                                                ),
+                                              ),
+                                          ],
+                                          if (message.kind ==
+                                                  PeerMessagingMessageKind
+                                                      .approvalRequest &&
+                                              message.deliveryStatus !=
+                                                  PeerMessagingDeliveryStatus
+                                                      .failed &&
+                                              message.approvalId != null) ...[
+                                            const SizedBox(height: 12),
+                                            Wrap(
+                                              spacing: 8,
+                                              children: [
+                                                OutlinedButton(
+                                                  onPressed: () =>
+                                                      onApproval(true),
+                                                  style: actionStyle,
+                                                  child: const Text('Approve'),
+                                                ),
+                                                OutlinedButton(
+                                                  onPressed: () =>
+                                                      onApproval(false),
+                                                  style: actionStyle,
+                                                  child: const Text('Reject'),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                          if (message.kind ==
+                                                  PeerMessagingMessageKind
+                                                      .menuRequest &&
+                                              message.deliveryStatus !=
+                                                  PeerMessagingDeliveryStatus
+                                                      .failed &&
+                                              message
+                                                  .menuOptions.isNotEmpty) ...[
+                                            const SizedBox(height: 12),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                for (final option
+                                                    in message.menuOptions)
+                                                  OutlinedButton(
+                                                    onPressed: () =>
+                                                        onMenuSelection(
+                                                      option.action,
+                                                      option.title,
+                                                    ),
+                                                    style: actionStyle,
+                                                    child: Text(option.title),
+                                                  ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
-                                    onTap: () => onOpenAttachment(attachment),
-                                    resolvePath: () =>
-                                        resolveAttachmentPath(attachment),
-                                    foregroundColor: foregroundColor,
-                                    secondaryColor: secondaryForegroundColor,
                                   ),
                                 ),
-                            ],
-                            if (message.kind ==
-                                    PeerMessagingMessageKind.approvalRequest &&
-                                message.deliveryStatus !=
-                                    PeerMessagingDeliveryStatus.failed &&
-                                message.approvalId != null) ...[
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                children: [
-                                  OutlinedButton(
-                                    onPressed: () => onApproval(true),
-                                    style: actionStyle,
-                                    child: const Text('Approve'),
-                                  ),
-                                  OutlinedButton(
-                                    onPressed: () => onApproval(false),
-                                    style: actionStyle,
-                                    child: const Text('Reject'),
-                                  ),
-                                ],
                               ),
-                            ],
-                            if (message.kind ==
-                                    PeerMessagingMessageKind.menuRequest &&
-                                message.deliveryStatus !=
-                                    PeerMessagingDeliveryStatus.failed &&
-                                message.menuOptions.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (final option in message.menuOptions)
-                                    OutlinedButton(
-                                      onPressed: () => onMenuSelection(
-                                        option.action,
-                                        option.title,
-                                      ),
-                                      style: actionStyle,
-                                      child: Text(option.title),
-                                    ),
-                                ],
+                            ),
+                            if (_showsTail && !isMediaOnlyMessage)
+                              Positioned(
+                                bottom: 0,
+                                right: isLocal ? 0 : null,
+                                left: isLocal ? null : 0,
+                                child: _BubbleTail(
+                                  color: bubbleColor,
+                                  isLocal: isLocal,
+                                ),
                               ),
-                            ],
                           ],
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            ),
+                ],
+              );
+            },
           ),
         ),
         if (_buildStatusIndicator(theme) case final statusIndicator?) ...[
@@ -1251,6 +1599,78 @@ class _MessageBubble extends StatelessWidget {
   }
 
   bool get _isLocal => !_isInbound(message);
+
+  bool get _showsTail =>
+      _groupPosition == _BubbleGroupPosition.single ||
+      _groupPosition == _BubbleGroupPosition.bottom;
+
+  BorderRadius _bubbleBorderRadius(bool isLocal) {
+    const outer = Radius.circular(19);
+    const inner = Radius.circular(5);
+    final position = _groupPosition;
+    if (isLocal) {
+      switch (position) {
+        case _BubbleGroupPosition.single:
+          return const BorderRadius.only(
+            topLeft: outer,
+            topRight: outer,
+            bottomLeft: outer,
+            bottomRight: inner,
+          );
+        case _BubbleGroupPosition.top:
+          return const BorderRadius.only(
+            topLeft: outer,
+            topRight: outer,
+            bottomLeft: outer,
+            bottomRight: inner,
+          );
+        case _BubbleGroupPosition.middle:
+          return const BorderRadius.only(
+            topLeft: outer,
+            topRight: inner,
+            bottomLeft: outer,
+            bottomRight: inner,
+          );
+        case _BubbleGroupPosition.bottom:
+          return const BorderRadius.only(
+            topLeft: outer,
+            topRight: inner,
+            bottomLeft: outer,
+            bottomRight: inner,
+          );
+      }
+    }
+    switch (position) {
+      case _BubbleGroupPosition.single:
+        return const BorderRadius.only(
+          topLeft: outer,
+          topRight: outer,
+          bottomLeft: inner,
+          bottomRight: outer,
+        );
+      case _BubbleGroupPosition.top:
+        return const BorderRadius.only(
+          topLeft: outer,
+          topRight: outer,
+          bottomLeft: inner,
+          bottomRight: outer,
+        );
+      case _BubbleGroupPosition.middle:
+        return const BorderRadius.only(
+          topLeft: inner,
+          topRight: outer,
+          bottomLeft: inner,
+          bottomRight: outer,
+        );
+      case _BubbleGroupPosition.bottom:
+        return const BorderRadius.only(
+          topLeft: inner,
+          topRight: outer,
+          bottomLeft: inner,
+          bottomRight: outer,
+        );
+    }
+  }
 
   Widget? _buildStatusIndicator(ThemeData theme) {
     if (!_isLocal) {
@@ -1285,35 +1705,23 @@ class _MessageBubble extends StatelessWidget {
         );
       case PeerMessagingDeliveryStatus.failed:
         if (hasLaterFailedMessage) {
-          return const _DeliveryFailureIcon();
+          return _DeliveryFailureIcon(onTap: onShowFailureDetails);
         }
-        return _DeliveryStatusText(
-          label: 'Not delivered',
+        return _DeliveryFailureSummary(
           color: theme.colorScheme.error,
-          isEmphasized: true,
+          onTap: onShowFailureDetails,
         );
     }
   }
 
   bool get _shouldShowHeader {
     if (previousMessage == null) return true;
-    final previousIsLocal = !_isInbound(previousMessage!);
-    final senderChanged = previousIsLocal != _isLocal ||
-        (!_isLocal && _senderName != _senderNameFor(previousMessage!));
-    final gap = message.createdAt.difference(previousMessage!.createdAt);
-    return senderChanged || gap.inSeconds > 5;
+    return !_belongsToSameRun(previousMessage!, message);
   }
 
   String get _headerText {
-    final timestamp = _timestamp(message.createdAt);
-    if (_isLocal) {
-      return timestamp;
-    }
-    return '$_senderName · $timestamp';
+    return _timestamp(message.createdAt);
   }
-
-  String get _senderName =>
-      (message.metadata['from_peer_name'] as String?) ?? 'Peer';
 
   String _senderNameFor(PeerMessagingMessage value) {
     return (value.metadata['from_peer_name'] as String?) ?? 'Peer';
@@ -1322,6 +1730,39 @@ class _MessageBubble extends StatelessWidget {
   bool _isInbound(PeerMessagingMessage value) {
     return value.metadata['is_inbound'] == true ||
         value.metadata['from_peer_id'] != null;
+  }
+
+  bool _belongsToSameRun(
+    PeerMessagingMessage first,
+    PeerMessagingMessage second,
+  ) {
+    final firstIsLocal = !_isInbound(first);
+    final secondIsLocal = !_isInbound(second);
+    if (firstIsLocal != secondIsLocal) {
+      return false;
+    }
+    if (!firstIsLocal && _senderNameFor(first) != _senderNameFor(second)) {
+      return false;
+    }
+    final gap = second.createdAt.difference(first.createdAt).inSeconds.abs();
+    return gap <= 300;
+  }
+
+  _BubbleGroupPosition get _groupPosition {
+    final hasPrevious =
+        previousMessage != null && _belongsToSameRun(previousMessage!, message);
+    final hasNext =
+        nextMessage != null && _belongsToSameRun(message, nextMessage!);
+    if (hasPrevious && hasNext) {
+      return _BubbleGroupPosition.middle;
+    }
+    if (hasPrevious) {
+      return _BubbleGroupPosition.bottom;
+    }
+    if (hasNext) {
+      return _BubbleGroupPosition.top;
+    }
+    return _BubbleGroupPosition.single;
   }
 
   bool _attachmentHasStandalonePreview(PeerMessagingAttachment attachment) {
@@ -1377,6 +1818,16 @@ class _MessageBubble extends StatelessWidget {
               globalPosition.dy,
             ),
             items: [
+              const PopupMenuItem<String>(
+                value: 'reply',
+                child: Text('Reply/Quote'),
+              ),
+              if (onSendAgain != null)
+                const PopupMenuItem<String>(
+                  value: 'send_again',
+                  child: Text('Send Again'),
+                ),
+              if (savableAttachments.isNotEmpty) const PopupMenuDivider(),
               for (final attachment in savableAttachments)
                 PopupMenuItem<String>(
                   value: 'save:${attachment.id}',
@@ -1402,6 +1853,21 @@ class _MessageBubble extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  ListTile(
+                    leading: Icon(
+                      isApple() ? CupertinoIcons.reply : Icons.reply_outlined,
+                    ),
+                    title: const Text('Reply/Quote'),
+                    onTap: () => Navigator.pop(context, 'reply'),
+                  ),
+                  if (onSendAgain != null)
+                    ListTile(
+                      leading: Icon(
+                        isApple() ? CupertinoIcons.refresh : Icons.refresh,
+                      ),
+                      title: const Text('Send Again'),
+                      onTap: () => Navigator.pop(context, 'send_again'),
+                    ),
                   for (final attachment in savableAttachments)
                     ListTile(
                       leading: Icon(
@@ -1429,6 +1895,14 @@ class _MessageBubble extends StatelessWidget {
             ),
           );
     if (selected == null) {
+      return;
+    }
+    if (selected == 'reply') {
+      onReply();
+      return;
+    }
+    if (selected == 'send_again') {
+      onSendAgain?.call();
       return;
     }
     if (selected == 'delete') {
@@ -1464,6 +1938,7 @@ class _AttachmentLine extends StatelessWidget {
   final Future<String?> Function() resolvePath;
   final Color foregroundColor;
   final Color secondaryColor;
+  final bool isLocal;
 
   const _AttachmentLine({
     required this.attachment,
@@ -1472,6 +1947,7 @@ class _AttachmentLine extends StatelessWidget {
     required this.resolvePath,
     required this.foregroundColor,
     required this.secondaryColor,
+    required this.isLocal,
   });
 
   @override
@@ -1497,40 +1973,35 @@ class _AttachmentLine extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Icon(
-                    _leadingIcon,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          attachment.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: foregroundColor),
-                        ),
-                        Text(
-                          isSaved
-                              ? '${formatBytes(attachment.size)} · Saved'
-                              : formatBytes(attachment.size),
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: secondaryColor,
-                                  ),
-                        ),
-                      ],
+              Icon(
+                _leadingIcon,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      attachment.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: foregroundColor),
                     ),
-                  ),
-                ],
+                    Text(
+                      isSaved
+                          ? '${formatBytes(attachment.size)} · Saved'
+                          : formatBytes(attachment.size),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: secondaryColor,
+                            height: 1.15,
+                          ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1605,12 +2076,10 @@ class _AttachmentLine extends StatelessWidget {
 class _DeliveryStatusText extends StatelessWidget {
   final String label;
   final Color color;
-  final bool isEmphasized;
 
   const _DeliveryStatusText({
     required this.label,
     required this.color,
-    this.isEmphasized = false,
   });
 
   @override
@@ -1619,7 +2088,7 @@ class _DeliveryStatusText extends StatelessWidget {
       label,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: color,
-            fontWeight: isEmphasized ? FontWeight.w600 : FontWeight.w500,
+            fontWeight: FontWeight.w500,
           ),
     );
   }
@@ -1744,13 +2213,9 @@ class _MediaPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: 180,
       height: 120,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: color.withValues(alpha: 0.14),
-      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1769,14 +2234,755 @@ class _MediaPlaceholder extends StatelessWidget {
 }
 
 class _DeliveryFailureIcon extends StatelessWidget {
-  const _DeliveryFailureIcon();
+  final VoidCallback? onTap;
+
+  const _DeliveryFailureIcon({this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Icon(
-      Icons.error,
-      size: 16,
-      color: Theme.of(context).colorScheme.error,
+    return GestureDetector(
+      onTap: onTap,
+      child: Icon(
+        Icons.error,
+        size: 16,
+        color: Theme.of(context).colorScheme.error,
+      ),
     );
   }
+}
+
+class _DeliveryFailureSummary extends StatelessWidget {
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _DeliveryFailureSummary({
+    required this.color,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error, size: 16, color: color),
+          const SizedBox(width: 4),
+          Text(
+            'Not delivered',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BubbleTail extends StatelessWidget {
+  final Color color;
+  final bool isLocal;
+
+  const _BubbleTail({
+    required this.color,
+    required this.isLocal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(11, 12),
+      painter: _BubbleTailPainter(
+        color: color,
+        isLocal: isLocal,
+      ),
+    );
+  }
+}
+
+class _BubbleTailPainter extends CustomPainter {
+  final Color color;
+  final bool isLocal;
+
+  const _BubbleTailPainter({
+    required this.color,
+    required this.isLocal,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    final path = Path();
+    if (!isLocal) {
+      canvas.save();
+      canvas.translate(size.width, 0);
+      canvas.scale(-1, 1);
+    }
+    path
+      ..moveTo(0, 0)
+      ..cubicTo(0.6, 0.1, 3.9, 1.0, 7.2, 4.9)
+      ..cubicTo(9.6, 7.8, 10.2, 10.0, 10.3, 12.0)
+      ..cubicTo(7.5, 11.5, 5.0, 10.0, 3.4, 7.8)
+      ..cubicTo(2.1, 6.0, 1.5, 3.8, 0, 0)
+      ..close();
+    canvas.drawPath(path, paint);
+    if (!isLocal) {
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleTailPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.isLocal != isLocal;
+  }
+}
+
+enum _BubbleGroupPosition { single, top, middle, bottom }
+
+class _ReplyLinkTrail extends StatelessWidget {
+  final PeerMessagingMessage message;
+  final PeerMessagingMessage targetMessage;
+  final bool isLocal;
+  final bool replyTargetIsLocal;
+  final Future<String?> Function(PeerMessagingAttachment attachment)
+      resolveAttachmentPath;
+  final double maxBubbleWidth;
+
+  const _ReplyLinkTrail({
+    required this.message,
+    required this.targetMessage,
+    required this.isLocal,
+    required this.replyTargetIsLocal,
+    required this.resolveAttachmentPath,
+    required this.maxBubbleWidth,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.28);
+    final mediaOnlyPreview =
+        message.attachments.isNotEmpty && message.text.isEmpty;
+    final previewWidth = mediaOnlyPreview ? 88.0 : 246.0;
+    final previewHeight = mediaOnlyPreview ? 88.0 : 76.0;
+    const trailHeight = 62.0;
+
+    return SizedBox(
+      width: double.infinity,
+      height: previewHeight + trailHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: 0,
+            left: replyTargetIsLocal ? null : 0,
+            right: replyTargetIsLocal ? 0 : null,
+            child: SizedBox(
+              width: previewWidth,
+              child: _ReplyTrailPreviewCard(
+                message: message,
+                resolveAttachmentPath: resolveAttachmentPath,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _ReplyLinkIndicatorPainter(
+                color: color,
+                sourceOnRight: replyTargetIsLocal,
+                targetOnRight: isLocal,
+                targetBubbleWidth: _estimatedReplyBubbleWidth(targetMessage)
+                    .clamp(0.0, maxBubbleWidth),
+                targetBubbleHeight: _estimatedReplyBubbleHeight(targetMessage),
+                previewWidth: previewWidth,
+                previewHeight: previewHeight,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplyTrailPreviewCard extends StatelessWidget {
+  final PeerMessagingMessage message;
+  final Future<String?> Function(PeerMessagingAttachment attachment)
+      resolveAttachmentPath;
+
+  const _ReplyTrailPreviewCard({
+    required this.message,
+    required this.resolveAttachmentPath,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mediaOnly = message.attachments.isNotEmpty && message.text.isEmpty;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(mediaOnly ? 18 : 14),
+      ),
+      child: Padding(
+        padding: mediaOnly
+            ? const EdgeInsets.all(8)
+            : const EdgeInsets.fromLTRB(10, 9, 10, 9),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (message.attachments.isNotEmpty) ...[
+              _ReplyAttachmentThumbnail(
+                attachment: message.attachments.first,
+                resolvePath: () =>
+                    resolveAttachmentPath(message.attachments.first),
+                size: mediaOnly ? 72 : 36,
+                borderRadius: mediaOnly ? 14 : 10,
+                iconSize: mediaOnly ? 22 : 16,
+              ),
+              if (message.text.isNotEmpty) const SizedBox(width: 9),
+            ],
+            if (message.text.isNotEmpty || message.attachments.isEmpty)
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _replyTitle(message),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      _replySnippet(message),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplyLinkIndicatorPainter extends CustomPainter {
+  final Color color;
+  final bool sourceOnRight;
+  final bool targetOnRight;
+  final double targetBubbleWidth;
+  final double targetBubbleHeight;
+  final double previewWidth;
+  final double previewHeight;
+
+  const _ReplyLinkIndicatorPainter({
+    required this.color,
+    required this.sourceOnRight,
+    required this.targetOnRight,
+    required this.targetBubbleWidth,
+    required this.targetBubbleHeight,
+    required this.previewWidth,
+    required this.previewHeight,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.square;
+
+    final previewLeft = sourceOnRight ? size.width - previewWidth : 0.0;
+    final previewRight = previewLeft + previewWidth;
+    const cornerRadius = 12.0;
+    final path = Path();
+    final targetLeft = targetOnRight ? size.width - targetBubbleWidth : 0.0;
+    final targetRight = targetLeft + targetBubbleWidth;
+    final targetCenterY = size.height + (targetBubbleHeight * 0.5);
+
+    if (!sourceOnRight && !targetOnRight) {
+      final startX = previewRight;
+      final startY = previewHeight * 0.5;
+      final endX = targetRight;
+      final endY = targetCenterY;
+      final laneX = (startX > endX ? startX : endX) + 18.0;
+      path
+        ..moveTo(startX, startY)
+        ..lineTo(laneX - cornerRadius, startY)
+        ..arcToPoint(
+          Offset(laneX, startY + cornerRadius),
+          radius: const Radius.circular(cornerRadius),
+          clockwise: true,
+        )
+        ..lineTo(laneX, endY - cornerRadius)
+        ..arcToPoint(
+          Offset(laneX - cornerRadius, endY),
+          radius: const Radius.circular(cornerRadius),
+          clockwise: true,
+        )
+        ..lineTo(endX, endY);
+    } else if (sourceOnRight && targetOnRight) {
+      final startX = previewLeft;
+      final startY = previewHeight * 0.5;
+      final endX = targetLeft;
+      final endY = targetCenterY;
+      final laneX = (startX < endX ? startX : endX) - 18.0;
+      path
+        ..moveTo(startX, startY)
+        ..lineTo(laneX + cornerRadius, startY)
+        ..arcToPoint(
+          Offset(laneX, startY + cornerRadius),
+          radius: const Radius.circular(cornerRadius),
+          clockwise: false,
+        )
+        ..lineTo(laneX, endY - cornerRadius)
+        ..arcToPoint(
+          Offset(laneX + cornerRadius, endY),
+          radius: const Radius.circular(cornerRadius),
+          clockwise: false,
+        )
+        ..lineTo(endX, endY);
+    } else if (!sourceOnRight && targetOnRight) {
+      // Local replying to peer: elbow turns right, needs startX < endX.
+      final idealStartX = previewLeft + (previewWidth / 2);
+      final idealEndX = targetLeft;
+      final startY = previewHeight;
+      final endY = targetCenterY;
+      final gap = idealEndX - idealStartX;
+      final needed = 2 * cornerRadius;
+      double startX = idealStartX;
+      double endX = idealEndX;
+      if (gap < needed) {
+        // Split the deficit: move startX left and endX right equally.
+        final deficit = needed - gap;
+        final halfDeficit = deficit / 2;
+        startX = (idealStartX - halfDeficit).clamp(0.0, size.width);
+        endX = (idealEndX + halfDeficit).clamp(0.0, size.width);
+      }
+      final turnY = endY - cornerRadius;
+      path
+        ..moveTo(startX, startY)
+        ..lineTo(startX, turnY)
+        ..arcToPoint(
+          Offset(startX + cornerRadius, endY),
+          radius: const Radius.circular(cornerRadius),
+          clockwise: false,
+        )
+        ..lineTo(endX, endY);
+    } else {
+      // Peer replying to local: elbow turns left, needs startX > endX.
+      final idealStartX = previewLeft + (previewWidth / 2);
+      final idealEndX = targetRight;
+      final startY = previewHeight;
+      final endY = targetCenterY;
+      final gap = idealStartX - idealEndX;
+      final needed = 2 * cornerRadius;
+      double startX = idealStartX;
+      double endX = idealEndX;
+      if (gap < needed) {
+        // Split the deficit: move startX right and endX left equally.
+        final deficit = needed - gap;
+        final halfDeficit = deficit / 2;
+        startX = (idealStartX + halfDeficit).clamp(0.0, size.width);
+        endX = (idealEndX - halfDeficit).clamp(0.0, size.width);
+      }
+      final turnY = endY - cornerRadius;
+      path
+        ..moveTo(startX, startY)
+        ..lineTo(startX, turnY)
+        ..arcToPoint(
+          Offset(startX - cornerRadius, endY),
+          radius: const Radius.circular(cornerRadius),
+          clockwise: true,
+        )
+        ..lineTo(endX, endY);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReplyLinkIndicatorPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.sourceOnRight != sourceOnRight ||
+        oldDelegate.targetOnRight != targetOnRight ||
+        oldDelegate.targetBubbleWidth != targetBubbleWidth ||
+        oldDelegate.targetBubbleHeight != targetBubbleHeight ||
+        oldDelegate.previewWidth != previewWidth ||
+        oldDelegate.previewHeight != previewHeight;
+  }
+}
+
+class _ReplyComposerPreview extends StatelessWidget {
+  final PeerMessagingMessage message;
+  final Future<String?> Function(PeerMessagingAttachment attachment)
+      resolveAttachmentPath;
+  final VoidCallback onCancel;
+
+  const _ReplyComposerPreview({
+    required this.message,
+    required this.resolveAttachmentPath,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = _replyTitle(message);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 34,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary,
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                _ReplyPreviewBody(
+                  message: message,
+                  resolveAttachmentPath: resolveAttachmentPath,
+                  maxLines: 1,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Cancel reply',
+            onPressed: onCancel,
+            icon: Icon(
+              isApple() ? CupertinoIcons.xmark : Icons.close,
+              size: 18,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReplyPreviewBody extends StatelessWidget {
+  final PeerMessagingMessage? message;
+  final Future<String?> Function(PeerMessagingAttachment attachment)?
+      resolveAttachmentPath;
+  final int maxLines;
+
+  const _ReplyPreviewBody({
+    required this.message,
+    required this.resolveAttachmentPath,
+    required this.maxLines,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (message == null) {
+      return Text(
+        'Original message unavailable',
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.18),
+      );
+    }
+
+    final firstAttachment =
+        message!.attachments.isNotEmpty ? message!.attachments.first : null;
+    if (firstAttachment == null) {
+      return Text(
+        _replySnippet(message!),
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.18),
+      );
+    }
+
+    final previewText = _replySnippet(message!);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _ReplyAttachmentThumbnail(
+          attachment: firstAttachment,
+          resolvePath: resolveAttachmentPath == null
+              ? null
+              : () => resolveAttachmentPath!(firstAttachment),
+        ),
+        if (previewText.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              previewText,
+              maxLines: maxLines,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    height: 1.18,
+                  ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ReplyAttachmentThumbnail extends StatelessWidget {
+  final PeerMessagingAttachment attachment;
+  final Future<String?> Function()? resolvePath;
+  final double size;
+  final double borderRadius;
+  final double iconSize;
+
+  const _ReplyAttachmentThumbnail({
+    required this.attachment,
+    this.resolvePath,
+    this.size = 36,
+    this.borderRadius = 8,
+    this.iconSize = 16,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final extension =
+        p.extension(attachment.path ?? attachment.name).toLowerCase();
+    final lowerMime = (attachment.mimeType ?? '').toLowerCase();
+    final isImage = lowerMime.startsWith('image/') ||
+        {
+          '.png',
+          '.jpg',
+          '.jpeg',
+          '.gif',
+          '.webp',
+          '.bmp',
+          '.heic',
+          '.heif',
+        }.contains(extension);
+    final isVideo = lowerMime.startsWith('video/') ||
+        {
+          '.mp4',
+          '.mov',
+          '.m4v',
+          '.avi',
+          '.mkv',
+          '.webm',
+        }.contains(extension);
+    final isAudio = lowerMime.startsWith('audio/') ||
+        {
+          '.mp3',
+          '.wav',
+          '.m4a',
+          '.aac',
+          '.ogg',
+          '.flac',
+        }.contains(extension);
+
+    if (isImage && resolvePath != null) {
+      return FutureBuilder<String?>(
+        future: resolvePath!(),
+        builder: (context, snapshot) {
+          final path = snapshot.data;
+          if ((path ?? '').isNotEmpty) {
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(borderRadius),
+              child: Image.file(
+                File(path!),
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _ReplyAttachmentPlaceholder(
+                  icon: isApple() ? CupertinoIcons.photo : Icons.photo_outlined,
+                  size: size,
+                  borderRadius: borderRadius,
+                  iconSize: iconSize,
+                ),
+              ),
+            );
+          }
+          return _ReplyAttachmentPlaceholder(
+            icon: isApple() ? CupertinoIcons.photo : Icons.photo_outlined,
+            size: size,
+            borderRadius: borderRadius,
+            iconSize: iconSize,
+          );
+        },
+      );
+    }
+
+    return _ReplyAttachmentPlaceholder(
+      icon: isImage
+          ? (isApple() ? CupertinoIcons.photo : Icons.photo_outlined)
+          : isVideo
+              ? (isApple()
+                  ? CupertinoIcons.video_camera
+                  : Icons.videocam_outlined)
+              : isAudio
+                  ? (isApple()
+                      ? CupertinoIcons.music_note
+                      : Icons.audiotrack_outlined)
+                  : (isApple()
+                      ? CupertinoIcons.doc
+                      : Icons.insert_drive_file_outlined),
+      size: size,
+      borderRadius: borderRadius,
+      iconSize: iconSize,
+    );
+  }
+}
+
+class _ReplyAttachmentPlaceholder extends StatelessWidget {
+  final IconData icon;
+  final double size;
+  final double borderRadius;
+  final double iconSize;
+
+  const _ReplyAttachmentPlaceholder({
+    required this.icon,
+    required this.size,
+    required this.borderRadius,
+    required this.iconSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+      child: Icon(
+        icon,
+        size: iconSize,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+double _estimatedReplyBubbleWidth(PeerMessagingMessage message) {
+  final mediaOnly =
+      message.text.trim().isEmpty && message.attachments.isNotEmpty;
+  if (mediaOnly) {
+    return 108.0;
+  }
+  if (message.attachments.isNotEmpty) {
+    return 220.0;
+  }
+  final estimated = (message.text.trim().length * 7.2) + 28.0;
+  return estimated.clamp(64.0, 420.0);
+}
+
+double _estimatedReplyBubbleHeight(PeerMessagingMessage message) {
+  final mediaOnly =
+      message.text.trim().isEmpty && message.attachments.isNotEmpty;
+  if (mediaOnly) {
+    return 96.0;
+  }
+  if (message.attachments.isNotEmpty) {
+    return 72.0;
+  }
+  final lines = (message.text.trim().length / 28.0).ceil().clamp(1, 6);
+  return (lines * 22.0) + 18.0;
+}
+
+String _replyTitle(PeerMessagingMessage message) {
+  final isInbound = message.metadata['is_inbound'] == true ||
+      message.metadata['from_peer_id'] != null;
+  if (!isInbound) {
+    return 'You';
+  }
+  return (message.metadata['from_peer_name'] as String?) ?? 'Peer';
+}
+
+String _replySnippet(PeerMessagingMessage message) {
+  final text = message.text.trim();
+  if (text.isNotEmpty) {
+    return text;
+  }
+  if (message.attachments.isNotEmpty) {
+    final attachment = message.attachments.first;
+    final extension =
+        p.extension(attachment.path ?? attachment.name).toLowerCase();
+    final lowerMime = (attachment.mimeType ?? '').toLowerCase();
+    final isImage = lowerMime.startsWith('image/') ||
+        {
+          '.png',
+          '.jpg',
+          '.jpeg',
+          '.gif',
+          '.webp',
+          '.bmp',
+          '.heic',
+          '.heif',
+        }.contains(extension);
+    final isVideo = lowerMime.startsWith('video/') ||
+        {
+          '.mp4',
+          '.mov',
+          '.m4v',
+          '.avi',
+          '.mkv',
+          '.webm',
+        }.contains(extension);
+    final isAudio = lowerMime.startsWith('audio/') ||
+        {
+          '.mp3',
+          '.wav',
+          '.m4a',
+          '.aac',
+          '.ogg',
+          '.flac',
+        }.contains(extension);
+    if (message.attachments.length == 1 && text.isEmpty) {
+      if (isImage) {
+        return '';
+      }
+      if (isVideo) {
+        return 'Video';
+      }
+      if (isAudio) {
+        return 'Audio';
+      }
+      return 'Document';
+    }
+    return '${message.attachments.length} attachments';
+  }
+  return 'Message';
 }

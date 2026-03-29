@@ -964,6 +964,19 @@ class IpnService {
     return result;
   }
 
+  Future<void> setNotificationPreviewEnabled(bool enabled) async {
+    if (!isApple()) {
+      return;
+    }
+    final result = await _channel.invokeMethod<String>(
+      'setNotificationPreviewEnabled',
+      enabled,
+    );
+    if (result != null && result != 'Success') {
+      throw Exception('Failed to set notification preview preference: $result');
+    }
+  }
+
   Future<Map<String, String>> consumeAutoSavedFilePaths() async {
     if (!isApple()) {
       return const {};

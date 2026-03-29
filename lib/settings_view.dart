@@ -70,6 +70,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   bool _isTogglingTailchat = false;
   bool _isTogglingAlwaysUseDerp = false;
   bool _isTogglingAutoStart = false;
+  bool _isTogglingNotificationPreviews = false;
   final _dnsQueryFocusNode = FocusNode();
   final _dnsQueryButtonFocusNode = FocusNode();
 
@@ -207,6 +208,33 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     }
   }
 
+  Future<void> _toggleNotificationPreviews(bool value) async {
+    setState(() {
+      _isTogglingNotificationPreviews = true;
+    });
+    try {
+      await ref.read(ipnServiceProvider).setNotificationPreviewEnabled(value);
+      await ref
+          .read(notificationPreviewEnabledProvider.notifier)
+          .setValue(value);
+    } catch (e) {
+      _logger.e("$e");
+      if (mounted) {
+        await showAlertDialog(
+          context,
+          "Error",
+          "Failed to update notification preview setting: $e",
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTogglingNotificationPreviews = false;
+        });
+      }
+    }
+  }
+
   Future<void> _launchBugReport() async {
     final uri = Uri.parse('https://github.com/cylonix/cylonix/issues/new');
     if (!await launchUrl(uri)) {
@@ -262,6 +290,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   ) {
     final tailchatAutoStart = ref.watch(tailchatAutoStartProvider);
     final tailchatRunning = ref.watch(tailchatServiceStateProvider);
+    final notificationPreviewEnabled =
+        ref.watch(notificationPreviewEnabledProvider);
     return Container(
       alignment: Alignment.topCenter,
       child: Container(
@@ -322,6 +352,27 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   ),
               ],
             ),
+            if (isMobile() || Platform.isMacOS)
+              AdaptiveListSection.insetGrouped(
+                header: const AdaptiveGroupedHeader('Notifications'),
+                children: [
+                  AdaptiveListTile.notched(
+                    title: const Text('Show Notification Previews'),
+                    subtitle: const Text(
+                      'Include peer message and file details in notifications',
+                    ),
+                    trailing: _isTogglingNotificationPreviews
+                        ? const CupertinoActivityIndicator()
+                        : AdaptiveSwitch(
+                            value: notificationPreviewEnabled,
+                            onChanged: _toggleNotificationPreviews,
+                          ),
+                  ),
+                ],
+                footer: const AdaptiveGroupedFooter(
+                  'Turn this off to hide message text and file names from notifications.',
+                ),
+              ),
             if (isMobile() || Platform.isMacOS)
               AdaptiveListSection.insetGrouped(
                 header: const AdaptiveGroupedHeader('Permissions'),

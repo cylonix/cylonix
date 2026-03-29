@@ -359,6 +359,20 @@ import UserNotifications
                 case "consumeAutoSavedFilePaths":
                     wg_log(.debug, message: "Method channel consumeAutoSavedFilePaths invoked")
                     result(BackgroundTaskManager.shared.consumeAutoSavedFilePaths())
+                case "setNotificationPreviewEnabled":
+                    guard let enabled = call.arguments as? Bool else {
+                        result("Error: invalid notification preview value")
+                        return
+                    }
+                    guard let appGroupId = FileManager.appGroupId,
+                          let groupDefaults = UserDefaults(suiteName: appGroupId)
+                    else {
+                        result("Error: app group defaults unavailable")
+                        return
+                    }
+                    groupDefaults.set(enabled, forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled)
+                    groupDefaults.synchronize()
+                    result("Success")
                 case "sendCommand":
                     // "sendCommand" is used to send command to the tunnel
                     // provider. The command is sent to the tunnel provider

@@ -20,7 +20,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   PeerMessagingService(this._ipnService) : super(PeerMessagingState.initial());
 
   static const _protocolVersion = 'v1';
-  static const _listenPort = 50321;
+  static const _preferredListenPort = 50321;
   static const _storageFolderName = 'openclaw';
   static const _storageFileName = 'state.json';
   static const _authTokenKey = 'openclaw_proxy_auth_token';
@@ -96,6 +96,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String? conversationTitle,
     List<PeerMessagingMenuOption> menuOptions = const [],
     List<PeerMessagingAttachment> attachments = const [],
+    String? replyToMessageId,
   }) async {
     final now = DateTime.now().toUtc();
     final messageId = const Uuid().v4();
@@ -125,9 +126,11 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       deliveryStatus: PeerMessagingDeliveryStatus.pending,
       text: normalizedText,
       createdAt: now,
+      replyToMessageId: replyToMessageId,
       menuOptions: menuOptions,
       attachments: messageAttachments,
       metadata: {
+        if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
         if (attachmentMetadata.isNotEmpty) 'attachments': attachmentMetadata,
       },
     );
@@ -145,46 +148,103 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       if (conversationTitle != null) 'conversation_title': conversationTitle,
     };
 
-    try {
-      final filePayloads = attachments
-          .where((item) => (item.path ?? '').isNotEmpty)
-          .map(
-            (item) => OutgoingFile(
-              id: item.transferId ?? item.id,
-              name: item.name,
-              peerID: conversationId,
-              declaredSize: item.size,
-              path: item.path,
-            ),
-          )
-          .toList();
-      if (filePayloads.isNotEmpty) {
-        await _ipnService.sendPeerFiles(conversationId, filePayloads);
-      }
-      await _ipnService.sendPeerMessagingMessage(payload);
-      await _applyDeliveryStatus(
-        conversationId,
-        messageId,
-        PeerMessagingDeliveryStatus.delivered,
-      );
-    } catch (e) {
-      await _applyDeliveryStatus(
-        conversationId,
-        messageId,
-        PeerMessagingDeliveryStatus.failed,
-      );
-      await _broadcast(
-        PeerMessagingEvent(
-          version: _protocolVersion,
-          type: PeerMessagingEventType.error,
-          conversationId: conversationId,
-          messageId: messageId,
-          timestamp: DateTime.now().toUtc(),
-          payload: {'message': e.toString()},
-        ),
-      );
-      rethrow;
+    await _sendOutgoingMessage(
+      conversationId: conversationId,
+      messageId: messageId,
+      payload: payload,
+      attachments: attachments,
+    );
+  }
+
+  Future<void> resendFailedMessage({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final existingMessage = _findMessage(
+      conversationId: conversationId,
+      messageId: messageId,
+    );
+    if (existingMessage == null) {
+      throw Exception('Message not found');
     }
+    if (existingMessage.deliveryStatus != PeerMessagingDeliveryStatus.failed) {
+      throw Exception('Only failed messages can be sent again');
+    }
+    if (existingMessage.role != PeerMessagingMessageRole.user) {
+      throw Exception('Only outgoing messages can be sent again');
+    }
+
+    await _updateMessage(
+      conversationId: conversationId,
+      messageId: messageId,
+      transform: (current) => current.copyWith(
+        deliveryStatus: PeerMessagingDeliveryStatus.pending,
+        failureMessage: null,
+        metadata: {...current.metadata}..remove('failure_message'),
+      ),
+    );
+
+    final retryMessage = _findMessage(
+      conversationId: conversationId,
+      messageId: messageId,
+    );
+    if (retryMessage == null) {
+      throw Exception('Message not found after retry reset');
+    }
+
+    final payload = {
+      'peer_id': conversationId,
+      'conversation_id': conversationId,
+      'message': retryMessage.toJson(),
+      if ((_findConversationTitle(conversationId) ?? '').isNotEmpty)
+        'conversation_title': _findConversationTitle(conversationId),
+    };
+
+    await _sendOutgoingMessage(
+      conversationId: conversationId,
+      messageId: messageId,
+      payload: payload,
+      attachments: retryMessage.attachments,
+    );
+  }
+
+  Future<void> updateAttachmentPath({
+    required String conversationId,
+    required String messageId,
+    required String attachmentId,
+    required String resolvedPath,
+  }) async {
+    if (resolvedPath.isEmpty) {
+      return;
+    }
+
+    await _updateMessage(
+      conversationId: conversationId,
+      messageId: messageId,
+      transform: (current) {
+        var changed = false;
+        final attachments = current.attachments.map((attachment) {
+          if (attachment.id != attachmentId) {
+            return attachment;
+          }
+          if (attachment.path == resolvedPath) {
+            return attachment;
+          }
+          changed = true;
+          return attachment.copyWith(path: resolvedPath);
+        }).toList();
+        if (!changed) {
+          return current;
+        }
+        return current.copyWith(
+          attachments: attachments,
+          metadata: {
+            ...current.metadata,
+            'attachments': attachments.map((item) => item.toJson()).toList(),
+          },
+        );
+      },
+    );
   }
 
   Future<void> ensureConversation({
@@ -913,11 +973,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
 
     try {
-      _server = await HttpServer.bind(
-        InternetAddress.loopbackIPv4,
-        _listenPort,
-        shared: true,
-      );
+      _server = await _bindProxyServer();
       state = state.copyWith(
         proxy: state.proxy.copyWith(
           isRunning: true,
@@ -936,6 +992,39 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         ),
       );
     }
+  }
+
+  Future<HttpServer> _bindProxyServer() async {
+    try {
+      return await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        _preferredListenPort,
+        shared: true,
+      );
+    } on SocketException catch (e) {
+      if (!_isBindConflict(e)) {
+        rethrow;
+      }
+      _logger.w(
+        'Preferred peer messaging proxy port $_preferredListenPort unavailable; using an ephemeral loopback port instead: $e',
+      );
+      return HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+        shared: true,
+      );
+    }
+  }
+
+  bool _isBindConflict(SocketException error) {
+    final message = error.message.toLowerCase();
+    return message.contains('address already in use') ||
+        message.contains('cannot assign requested address') ||
+        message.contains('failed to create server socket') ||
+        message.contains('listen failed') ||
+        error.osError?.errorCode == 48 ||
+        error.osError?.errorCode == 98 ||
+        error.osError?.errorCode == 10048;
   }
 
   Future<void> _handleHttpRequest(HttpRequest request) async {
@@ -1014,6 +1103,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               payload['text'] as String? ?? '',
               conversationTitle: payload['conversation_title'] as String?,
               menuOptions: menuOptions,
+              replyToMessageId: payload['reply_to_message_id'] as String? ??
+                  (payload['message'] as Map?)?['reply_to_message_id']
+                      as String?,
             );
             break;
           case 'submit_approval':
@@ -1222,6 +1314,118 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     await _persistState();
   }
 
+  Future<void> _sendOutgoingMessage({
+    required String conversationId,
+    required String messageId,
+    required Map<String, dynamic> payload,
+    required List<PeerMessagingAttachment> attachments,
+  }) async {
+    try {
+      final filePayloads = attachments
+          .where((item) => (item.path ?? '').isNotEmpty)
+          .map(
+            (item) => OutgoingFile(
+              id: item.transferId ?? item.id,
+              name: item.name,
+              peerID: conversationId,
+              declaredSize: item.size,
+              path: item.path,
+            ),
+          )
+          .toList();
+      if (filePayloads.isNotEmpty) {
+        await _ipnService.sendPeerFiles(conversationId, filePayloads);
+      }
+      await _ipnService.sendPeerMessagingMessage(payload);
+      await _updateMessage(
+        conversationId: conversationId,
+        messageId: messageId,
+        transform: (current) => current.copyWith(
+          deliveryStatus: PeerMessagingDeliveryStatus.delivered,
+          failureMessage: null,
+          metadata: {...current.metadata}..remove('failure_message'),
+        ),
+      );
+    } catch (e) {
+      await _updateMessage(
+        conversationId: conversationId,
+        messageId: messageId,
+        transform: (current) => current.copyWith(
+          deliveryStatus: PeerMessagingDeliveryStatus.failed,
+          failureMessage: e.toString(),
+          metadata: {
+            ...current.metadata,
+            'failure_message': e.toString(),
+          },
+        ),
+      );
+      await _broadcast(
+        PeerMessagingEvent(
+          version: _protocolVersion,
+          type: PeerMessagingEventType.error,
+          conversationId: conversationId,
+          messageId: messageId,
+          timestamp: DateTime.now().toUtc(),
+          payload: {'message': e.toString()},
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  PeerMessagingMessage? _findMessage({
+    required String conversationId,
+    required String messageId,
+  }) {
+    for (final conversation in state.conversations) {
+      if (conversation.id != conversationId) {
+        continue;
+      }
+      for (final message in conversation.messages) {
+        if (message.id == messageId) {
+          return message;
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _findConversationTitle(String conversationId) {
+    for (final conversation in state.conversations) {
+      if (conversation.id == conversationId) {
+        return conversation.title;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _updateMessage({
+    required String conversationId,
+    required String messageId,
+    required PeerMessagingMessage Function(PeerMessagingMessage current)
+        transform,
+  }) async {
+    var changed = false;
+    final conversations = state.conversations.map((conversation) {
+      if (conversation.id != conversationId) {
+        return conversation;
+      }
+      final messages = conversation.messages.map((message) {
+        if (message.id != messageId) {
+          return message;
+        }
+        changed = true;
+        return transform(message);
+      }).toList();
+      return conversation.copyWith(messages: messages);
+    }).toList();
+    if (!changed) {
+      return;
+    }
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    await _persistState();
+  }
+
   List<PeerMessagingConversation> _sortConversations(
     List<PeerMessagingConversation> conversations,
   ) {
@@ -1282,5 +1486,6 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     return token;
   }
 
-  String get _proxyUrl => 'ws://127.0.0.1:$_listenPort/peer-messaging/v1';
+  String get _proxyUrl =>
+      'ws://127.0.0.1:${_server?.port ?? _preferredListenPort}/peer-messaging/v1';
 }
