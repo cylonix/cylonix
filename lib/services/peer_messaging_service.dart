@@ -165,7 +165,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       await _applyDeliveryStatus(
         conversationId,
         messageId,
-        PeerMessagingDeliveryStatus.sent,
+        PeerMessagingDeliveryStatus.delivered,
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -326,7 +326,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       await _applyDeliveryStatus(
         conversationId,
         message.id,
-        PeerMessagingDeliveryStatus.sent,
+        PeerMessagingDeliveryStatus.delivered,
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -380,7 +380,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       await _applyDeliveryStatus(
         conversationId,
         message.id,
-        PeerMessagingDeliveryStatus.sent,
+        PeerMessagingDeliveryStatus.delivered,
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -431,9 +431,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               event.type == PeerMessagingEventType.messageReceived ||
                   event.type == PeerMessagingEventType.approvalRequested ||
                   event.type == PeerMessagingEventType.menuRequested;
-          final inboundPeerId = isInboundEvent
-              ? event.payload['from_peer_id'] as String?
-              : null;
+          final inboundPeerId =
+              isInboundEvent ? event.payload['from_peer_id'] as String? : null;
           final localConversationId = inboundPeerId?.isNotEmpty == true
               ? inboundPeerId!
               : event.conversationId;
@@ -452,8 +451,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             'conversation_id': localConversationId,
             if (mergedMetadata.isNotEmpty) 'metadata': mergedMetadata,
           });
-          final incomingPeerName =
-              isInboundEvent ? event.payload['from_peer_name'] as String? : null;
+          final incomingPeerName = isInboundEvent
+              ? event.payload['from_peer_name'] as String?
+              : null;
           final conversationTitle = incomingPeerName?.isNotEmpty == true
               ? incomingPeerName!
               : event.payload['conversation_title'] as String? ??
@@ -487,10 +487,16 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         final status = PeerMessagingDeliveryStatus.fromValue(
           event.payload['delivery_status'] as String?,
         );
-        if (event.messageId != null) {
+        final targetConversationId = event.conversationId.isNotEmpty
+            ? event.conversationId
+            : (event.payload['conversation_id'] as String? ?? '');
+        final targetMessageId = event.messageId ??
+            event.payload['message_id'] as String? ??
+            (event.payload['message'] as Map?)?['id'] as String?;
+        if ((targetMessageId ?? '').isNotEmpty) {
           await _applyDeliveryStatus(
-            event.conversationId,
-            event.messageId!,
+            targetConversationId,
+            targetMessageId!,
             status,
           );
         }
@@ -575,7 +581,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           );
 
           final existingPath = attachment.path;
-          if ((existingPath ?? '').isNotEmpty && existingPath == autoSavedPath) {
+          if ((existingPath ?? '').isNotEmpty &&
+              existingPath == autoSavedPath) {
             nextAttachments.add(attachment);
             continue;
           }
@@ -618,7 +625,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       'Consumed auto-saved attachment paths for transfer IDs: $consumedTransferIds; remaining pending cache: $_pendingAutoSavedPaths',
     );
     state = state.copyWith(conversations: _sortConversations(conversations));
-    _logger.d('Persisting updated message attachment paths after auto-save consume');
+    _logger.d(
+        'Persisting updated message attachment paths after auto-save consume');
     await _persistState();
   }
 
@@ -632,22 +640,28 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
     var changed = false;
     final consumedTransferIds = <String>{};
-    final conversations = state.conversations.map((conversation) {
+    final conversations = <PeerMessagingConversation>[];
+    for (final conversation in state.conversations) {
       if (conversation.id != conversationId) {
-        return conversation;
+        conversations.add(conversation);
+        continue;
       }
 
-      final messages = conversation.messages.map((message) {
+      final messages = <PeerMessagingMessage>[];
+      for (final message in conversation.messages) {
         if (message.id != messageId || message.attachments.isEmpty) {
-          return message;
+          messages.add(message);
+          continue;
         }
 
         var messageChanged = false;
-        final nextAttachments = message.attachments.map((attachment) {
+        final nextAttachments = <PeerMessagingAttachment>[];
+        for (final attachment in message.attachments) {
           final transferId = attachment.transferId ?? attachment.id;
           final resolvedPath = _pendingAutoSavedPaths[transferId];
           if ((resolvedPath ?? '').isEmpty) {
-            return attachment;
+            nextAttachments.add(attachment);
+            continue;
           }
           consumedTransferIds.add(transferId);
           messageChanged = true;
@@ -655,24 +669,27 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           _logger.d(
             'Applied pending auto-saved path directly during message insert: conversation=$conversationId message=$messageId transferId=$transferId path=$resolvedPath',
           );
-          return PeerMessagingAttachment(
-            id: attachment.id,
-            transferId: attachment.transferId,
-            name: attachment.name,
-            size: attachment.size,
-            mimeType: attachment.mimeType,
-            path: resolvedPath,
+          nextAttachments.add(
+            PeerMessagingAttachment(
+              id: attachment.id,
+              transferId: attachment.transferId,
+              name: attachment.name,
+              size: attachment.size,
+              mimeType: attachment.mimeType,
+              path: resolvedPath,
+            ),
           );
-        }).toList();
+        }
 
         if (!messageChanged) {
-          return message;
+          messages.add(message);
+          continue;
         }
-        return message.copyWith(attachments: nextAttachments);
-      }).toList();
+        messages.add(message.copyWith(attachments: nextAttachments));
+      }
 
-      return conversation.copyWith(messages: messages);
-    }).toList();
+      conversations.add(conversation.copyWith(messages: messages));
+    }
 
     if (!changed) {
       return;
@@ -687,21 +704,19 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
   List<AwaitingFile> _parseAwaitingFiles(Map<String, dynamic> filesWaiting) {
     final dir = filesWaiting['Dir'] as String? ?? '';
-    final files =
-        (filesWaiting['Files'] as List<dynamic>? ?? const <dynamic>[])
-            .whereType<Map<String, dynamic>>()
-            .map(
-              (file) => AwaitingFile(
-                id: file['ID'] as String?,
-                name: file['Name'] as String? ?? '',
-                size: (file['Size'] as num?)?.toInt() ?? 0,
-                path: dir.isEmpty
-                    ? null
-                    : p.join(dir, file['Name'] as String? ?? ''),
-              ),
-            )
-            .where((file) => file.name.isNotEmpty)
-            .toList();
+    final files = (filesWaiting['Files'] as List<dynamic>? ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (file) => AwaitingFile(
+            id: file['ID'] as String?,
+            name: file['Name'] as String? ?? '',
+            size: (file['Size'] as num?)?.toInt() ?? 0,
+            path:
+                dir.isEmpty ? null : p.join(dir, file['Name'] as String? ?? ''),
+          ),
+        )
+        .where((file) => file.name.isNotEmpty)
+        .toList();
     return files;
   }
 
@@ -831,9 +846,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       return normalizedNameMatches.first;
     }
 
-    final sizeMatches = candidates
-        .where((file) => file.size == attachment.size)
-        .toList();
+    final sizeMatches =
+        candidates.where((file) => file.size == attachment.size).toList();
     if (sizeMatches.length == 1) {
       return sizeMatches.first;
     }
@@ -854,8 +868,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   String _normalizeWaitingFileName(String value) {
     final extension = p.extension(value);
     final baseName = p.basenameWithoutExtension(value);
-    final normalizedBaseName =
-        baseName.replaceFirst(RegExp(r' \(\d+\)$'), '');
+    final normalizedBaseName = baseName.replaceFirst(RegExp(r' \(\d+\)$'), '');
     return '$normalizedBaseName$extension';
   }
 
@@ -872,7 +885,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final messageJson = Map<String, dynamic>.from(
       event.payload['message'] as Map? ?? const {},
     );
-    final role = PeerMessagingMessageRole.fromValue(messageJson['role'] as String?);
+    final role =
+        PeerMessagingMessageRole.fromValue(messageJson['role'] as String?);
     switch (event.type) {
       case PeerMessagingEventType.messageSent:
       case PeerMessagingEventType.approvalSubmitted:
@@ -1186,14 +1200,24 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String messageId,
     PeerMessagingDeliveryStatus deliveryStatus,
   ) async {
+    var changed = false;
     final conversations = state.conversations.map((conversation) {
-      if (conversation.id != conversationId) return conversation;
       final messages = conversation.messages.map((message) {
         if (message.id != messageId) return message;
+        if (conversationId.isNotEmpty && conversation.id != conversationId) {
+          return message;
+        }
+        changed = true;
         return message.copyWith(deliveryStatus: deliveryStatus);
       }).toList();
       return conversation.copyWith(messages: messages);
     }).toList();
+    if (!changed) {
+      _logger.w(
+        'Delivery status update did not match any message: conversationId=$conversationId messageId=$messageId status=${deliveryStatus.value}',
+      );
+      return;
+    }
     state = state.copyWith(conversations: _sortConversations(conversations));
     await _persistState();
   }

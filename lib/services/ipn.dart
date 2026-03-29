@@ -981,8 +981,13 @@ class IpnService {
         value?.toString() ?? '',
       ),
     )..removeWhere((key, value) => key.isEmpty || value.isEmpty);
-    _logger.d('consumeAutoSavedFilePaths returned ${mapped.length} entries: $mapped');
+    _logger.d(
+        'consumeAutoSavedFilePaths returned ${mapped.length} entries: $mapped');
     return mapped;
+  }
+
+  Future<void> previewLocalFile(String path) async {
+    await _channel.invokeMethod('previewLocalFile', path);
   }
 
   Future<String> _saveFileOverHttp(String file, String path) async {

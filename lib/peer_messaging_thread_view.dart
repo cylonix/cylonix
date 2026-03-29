@@ -443,17 +443,15 @@ class _PeerMessagingThreadViewState
   Future<String?> _resolveAttachmentOpenPath(
     PeerMessagingAttachment attachment,
   ) async {
-    final managedPath = await _resolveManagedAttachmentPath(attachment);
-    if ((managedPath ?? '').isNotEmpty) {
-      return managedPath;
-    }
-
     final waitingFile = await _resolveCurrentWaitingFileForAttachment(
       attachment,
     );
-    if ((waitingFile?.path ?? '').isNotEmpty &&
-        await File(waitingFile!.path!).exists()) {
-      return waitingFile.path;
+    final sourcePath = await _resolveAttachmentSourcePath(
+      attachment,
+      waitingFile: waitingFile,
+    );
+    if ((sourcePath ?? '').isNotEmpty) {
+      return sourcePath;
     }
 
     if (!kIsWeb &&
@@ -464,6 +462,28 @@ class _PeerMessagingThreadViewState
             .read(ipnStateNotifierProvider.notifier)
             .getFilePath(waitingFile?.name ?? attachment.name);
       } catch (_) {}
+    }
+
+    return null;
+  }
+
+  Future<String?> _resolveAttachmentSourcePath(
+    PeerMessagingAttachment attachment, {
+    AwaitingFile? waitingFile,
+  }) async {
+    final managedPath = await _resolveManagedAttachmentPath(attachment);
+    if ((managedPath ?? '').isNotEmpty) {
+      return managedPath;
+    }
+
+    if ((attachment.path ?? '').isNotEmpty &&
+        await File(attachment.path!).exists()) {
+      return attachment.path;
+    }
+
+    if ((waitingFile?.path ?? '').isNotEmpty &&
+        await File(waitingFile!.path!).exists()) {
+      return waitingFile.path;
     }
 
     return null;
@@ -492,6 +512,10 @@ class _PeerMessagingThreadViewState
   }
 
   Future<void> _launchAttachmentExternally(String path) async {
+    if (Platform.isIOS) {
+      await ref.read(ipnServiceProvider).previewLocalFile(path);
+      return;
+    }
     final launched = await launchUrl(
       Uri.file(path),
       mode: LaunchMode.externalApplication,
@@ -518,6 +542,14 @@ class _PeerMessagingThreadViewState
       return null;
     }
 
+    final remappedIosPath = await _resolveCurrentIosAttachmentPath(attachment);
+    if ((remappedIosPath ?? '').isNotEmpty) {
+      _logger.d(
+        'Using current iOS Downloads attachment path: $remappedIosPath',
+      );
+      return remappedIosPath;
+    }
+
     final attachmentsDir = await _managedAttachmentDirectory();
     final deterministicPath = p.join(
       attachmentsDir.path,
@@ -529,9 +561,44 @@ class _PeerMessagingThreadViewState
       );
       return deterministicPath;
     }
+
     _logger.d(
       'No managed attachment path found for transferId=$transferId name=${attachment.name}; deterministicPath=$deterministicPath attachment.path=${attachment.path}',
     );
+    return null;
+  }
+
+  Future<String?> _resolveCurrentIosAttachmentPath(
+    PeerMessagingAttachment attachment,
+  ) async {
+    if (!Platform.isIOS) {
+      return null;
+    }
+
+    final docsDir = await getApplicationDocumentsDirectory();
+    final downloadsDir = Directory(p.join(docsDir.path, 'Downloads'));
+    if (!await downloadsDir.exists()) {
+      return null;
+    }
+
+    final candidates = <String>{};
+    final storedBaseName = p.basename(attachment.path ?? '');
+    if (storedBaseName.isNotEmpty && storedBaseName != '.') {
+      candidates.add(storedBaseName);
+    }
+    if (attachment.name.isNotEmpty) {
+      candidates.add(attachment.name);
+    }
+
+    for (final fileName in candidates) {
+      final candidatePath = p.join(downloadsDir.path, fileName);
+      if (await File(candidatePath).exists()) {
+        _logger.d(
+          'Recovered current iOS Downloads path for attachment: $candidatePath',
+        );
+        return candidatePath;
+      }
+    }
     return null;
   }
 
@@ -730,10 +797,14 @@ class _PeerMessagingThreadViewState
                       hasLaterDeliveredMessage: laterMessages.any(
                         (item) =>
                             _isLocalMessage(item) &&
-                            (item.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.sent ||
-                                item.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.delivered),
+                            item.deliveryStatus ==
+                                PeerMessagingDeliveryStatus.delivered,
+                      ),
+                      hasLaterSentMessage: laterMessages.any(
+                        (item) =>
+                            _isLocalMessage(item) &&
+                            item.deliveryStatus ==
+                                PeerMessagingDeliveryStatus.sent,
                       ),
                       hasLaterPendingMessage: laterMessages.any(
                         (item) =>
@@ -959,6 +1030,7 @@ class _MessageBubble extends StatelessWidget {
   final List<AwaitingFile> waitingFiles;
   final List<String> filesSaved;
   final bool hasLaterDeliveredMessage;
+  final bool hasLaterSentMessage;
   final bool hasLaterPendingMessage;
   final bool hasLaterFailedMessage;
   final VoidCallback onDelete;
@@ -977,6 +1049,7 @@ class _MessageBubble extends StatelessWidget {
     required this.waitingFiles,
     required this.filesSaved,
     required this.hasLaterDeliveredMessage,
+    required this.hasLaterSentMessage,
     required this.hasLaterPendingMessage,
     required this.hasLaterFailedMessage,
     required this.onDelete,
@@ -1195,6 +1268,13 @@ class _MessageBubble extends StatelessWidget {
           color: defaultColor,
         );
       case PeerMessagingDeliveryStatus.sent:
+        if (hasLaterSentMessage || hasLaterDeliveredMessage) {
+          return null;
+        }
+        return _DeliveryStatusText(
+          label: 'Processing',
+          color: defaultColor,
+        );
       case PeerMessagingDeliveryStatus.delivered:
         if (hasLaterDeliveredMessage) {
           return null;

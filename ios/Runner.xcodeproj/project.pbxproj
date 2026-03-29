@@ -77,19 +77,19 @@
 		251D846727F710A9004CBB56 /* ErrorNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251D846427F7109C004CBB56 /* ErrorNotifier.swift */; };
 		251D846827F71516004CBB56 /* DNSServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 251D838827F70D0B004CBB56 /* DNSServer.swift */; };
 		251D848827F71781004CBB56 /* MainInterface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 251D848627F71781004CBB56 /* MainInterface.storyboard */; };
-		251D848C27F71781004CBB56 /* shareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 251D848227F71781004CBB56 /* shareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		251D848C27F71781004CBB56 /* shareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 251D848227F71781004CBB56 /* shareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2553EFBE27F6DB5F00C25AE1 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2553EF7C27F6D48700C25AE1 /* NetworkExtension.framework */; };
-		2553EFC627F6DB5F00C25AE1 /* saseWgNetworkExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 2553EFBD27F6DB5F00C25AE1 /* saseWgNetworkExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2553EFC627F6DB5F00C25AE1 /* saseWgNetworkExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2553EFBD27F6DB5F00C25AE1 /* saseWgNetworkExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2553EFD927F6F09A00C25AE1 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2553EF7C27F6D48700C25AE1 /* NetworkExtension.framework */; };
 		2568B6E12DC72A9E00FA46E2 /* UserDefaults+AtomicUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2568B6E02DC72A9D00FA46E2 /* UserDefaults+AtomicUpdate.swift */; };
 		257520FF2F3BAFF3004C6003 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 257520FE2F3BAFF3004C6003 /* libresolv.9.tbd */; };
+		25CC000100000000000A0001 /* NativeSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000A0001 /* NativeSwitchView.swift */; };
+		25CC000100000000000B0001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000B0001 /* SceneDelegate.swift */; };
 		25DB94F0293F113400D64966 /* OVPFlutterViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 25DB94EF293F113400D64966 /* OVPFlutterViewController.m */; };
 		25FF4AEE2DC20CED00E47A96 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25FF4AED2DC20CED00E47A96 /* SystemConfiguration.framework */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		59AF802EA4301A3899DC7E33 /* Pods_shareExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3517A998C7DDE0E846E7A06B /* Pods_shareExtension.framework */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
-		25CC000100000000000A0001 /* NativeSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000A0001 /* NativeSwitchView.swift */; };
-		25CC000100000000000B0001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000B0001 /* SceneDelegate.swift */; };
 		7E0683B1B2F79EF140FA22B2 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4D34114C1C634398290D4DBE /* Pods_Runner.framework */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -111,26 +111,19 @@
 			remoteGlobalIDString = 2553EFBC27F6DB5F00C25AE1;
 			remoteInfo = saseWgNetworkExtension;
 		};
-		2553EFD127F6ED6400C25AE1 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 2553EFCB27F6DCDB00C25AE1;
-			remoteInfo = saseWgGo;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		2553EF8A27F6D48700C25AE1 /* Embed App Extensions */ = {
+		2553EF8A27F6D48700C25AE1 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				251D848C27F71781004CBB56 /* shareExtension.appex in Embed App Extensions */,
-				2553EFC627F6DB5F00C25AE1 /* saseWgNetworkExtension.appex in Embed App Extensions */,
+				251D848C27F71781004CBB56 /* shareExtension.appex in Embed Foundation Extensions */,
+				2553EFC627F6DB5F00C25AE1 /* saseWgNetworkExtension.appex in Embed Foundation Extensions */,
 			);
-			name = "Embed App Extensions";
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		9705A1C41CF9048500538489 /* Embed Frameworks */ = {
@@ -337,6 +330,8 @@
 		2553EFBD27F6DB5F00C25AE1 /* saseWgNetworkExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = saseWgNetworkExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2568B6E02DC72A9D00FA46E2 /* UserDefaults+AtomicUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "UserDefaults+AtomicUpdate.swift"; path = "Runner/UserDefaults+AtomicUpdate.swift"; sourceTree = "<group>"; };
 		257520FE2F3BAFF3004C6003 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
+		25CC000000000000000A0001 /* NativeSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSwitchView.swift; sourceTree = "<group>"; };
+		25CC000000000000000B0001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		25DB94EF293F113400D64966 /* OVPFlutterViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = OVPFlutterViewController.m; path = Runner/OVPFlutterViewController.m; sourceTree = "<group>"; };
 		25FF4AEB2DC1F71B00E47A96 /* DNSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DNSConfig.swift; path = "../wireguard-apple/Sources/WireGuardKit/DNSConfig.swift"; sourceTree = "<group>"; };
 		25FF4AED2DC20CED00E47A96 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
@@ -348,8 +343,6 @@
 		4D34114C1C634398290D4DBE /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		25CC000000000000000A0001 /* NativeSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSwitchView.swift; sourceTree = "<group>"; };
-		25CC000000000000000B0001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		81B5D33F7686E9EF30E3706C /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
@@ -882,6 +875,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 2553EFC727F6DB5F00C25AE1 /* Build configuration list for PBXNativeTarget "saseWgNetworkExtension" */;
 			buildPhases = (
+				A1B2C3D42F3C100100AABBCC /* Build wireguard-go Bridge */,
 				2553EFB927F6DB5F00C25AE1 /* Sources */,
 				2553EFBA27F6DB5F00C25AE1 /* Frameworks */,
 				2553EFBB27F6DB5F00C25AE1 /* Resources */,
@@ -889,7 +883,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				2553EFD227F6ED6400C25AE1 /* PBXTargetDependency */,
 			);
 			name = saseWgNetworkExtension;
 			productName = saseWgNetworkExtension;
@@ -907,7 +900,7 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
-				2553EF8A27F6D48700C25AE1 /* Embed App Extensions */,
+				2553EF8A27F6D48700C25AE1 /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				15FE8347986CEE38B0943CA9 /* [CP] Embed Pods Frameworks */,
 			);
@@ -928,8 +921,9 @@
 		97C146E61CF9000F007C117D /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				BuildIndependentTargetsInParallel = YES;
 				LastSwiftUpdateCheck = 1410;
-				LastUpgradeCheck = 1510;
+				LastUpgradeCheck = 2630;
 				ORGANIZATIONNAME = "";
 				TargetAttributes = {
 					251D848127F71781004CBB56 = {
@@ -1025,9 +1019,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1104,6 +1102,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build\n";
+		};
+		A1B2C3D42F3C100100AABBCC /* Build wireguard-go Bridge */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$PROJECT_DIR/../wireguard-apple/Sources/WireGuardKitGo/Makefile",
+				"$PROJECT_DIR/../wireguard-apple/Sources/WireGuardKitGo/go.mod",
+				"$PROJECT_DIR/../wireguard-apple/Sources/WireGuardKitGo/wireguard.h",
+			);
+			name = "Build wireguard-go Bridge";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(CONFIGURATION_BUILD_DIR)/libwg-go.a",
+				"$(CONFIGURATION_BUILD_DIR)/wireguard-go-version.h",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nexec make -C \"$PROJECT_DIR/../wireguard-apple/Sources/WireGuardKitGo\" build version-header\n";
 		};
 		CCFD57CF85751B373E480111 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1237,11 +1258,6 @@
 			target = 2553EFBC27F6DB5F00C25AE1 /* saseWgNetworkExtension */;
 			targetProxy = 2553EFC427F6DB5F00C25AE1 /* PBXContainerItemProxy */;
 		};
-		2553EFD227F6ED6400C25AE1 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 2553EFCB27F6DCDB00C25AE1 /* saseWgGo */;
-			targetProxy = 2553EFD127F6ED6400C25AE1 /* PBXContainerItemProxy */;
-		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
@@ -1318,6 +1334,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
@@ -1337,6 +1354,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -1345,8 +1363,10 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -1358,6 +1378,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
@@ -1372,7 +1393,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -1403,7 +1423,6 @@
 				CODE_SIGN_ENTITLEMENTS = shareExtension/shareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = shareExtension/Info.plist;
@@ -1441,7 +1460,6 @@
 				CODE_SIGN_ENTITLEMENTS = shareExtension/shareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = shareExtension/Info.plist;
@@ -1476,7 +1494,6 @@
 				CODE_SIGN_ENTITLEMENTS = shareExtension/shareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = shareExtension/Info.plist;
@@ -1510,7 +1527,6 @@
 				CODE_SIGN_ENTITLEMENTS = saseWgNetworkExtension/saseWgNetworkExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 30;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_BITCODE = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1551,7 +1567,6 @@
 				CODE_SIGN_ENTITLEMENTS = saseWgNetworkExtension/saseWgNetworkExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 30;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_BITCODE = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1589,7 +1604,6 @@
 				CODE_SIGN_ENTITLEMENTS = saseWgNetworkExtension/saseWgNetworkExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 30;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_BITCODE = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1628,7 +1642,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEBUGGING_SYMBOLS = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
@@ -1652,7 +1665,6 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_STYLE = Automatic;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				MTL_FAST_MATH = YES;
 				OTHER_CFLAGS = "";
@@ -1673,7 +1685,6 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_STYLE = Automatic;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				MTL_FAST_MATH = YES;
 				OTHER_CFLAGS = "";
@@ -1686,6 +1697,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
@@ -1705,6 +1717,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -1713,8 +1726,10 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -1733,6 +1748,7 @@
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -1741,6 +1757,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
@@ -1760,6 +1777,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -1768,8 +1786,10 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -1781,6 +1801,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
@@ -1797,7 +1818,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/RunnerDebug.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -1824,7 +1844,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Runner/RunnerRelease.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P7Y2NJ7JP3;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;

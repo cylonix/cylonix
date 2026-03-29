@@ -3,6 +3,7 @@
 
 #if os(iOS)
     import Flutter
+    import QuickLook
     import UIKit
 #elseif os(macOS)
     import AuthenticationServices
@@ -20,6 +21,10 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate {
     var methodChannel: FlutterMethodChannel?
     var tunnelsManager: TunnelsManager?
+    #if os(iOS)
+        private var previewFileURL: URL?
+        private var documentInteractionController: UIDocumentInteractionController?
+    #endif
 
     private let channel: String = "io.cylonix.sase/wg"
     private let tunnelName: String = "Cylonix Tunnel"
@@ -306,6 +311,22 @@ import UserNotifications
                     self.requestLocalNetworkPermission(result)
                     return
                 }
+                #if os(iOS)
+                if call.method == "previewLocalFile" {
+                    guard let path = call.arguments as? String, !path.isEmpty else {
+                        result(
+                            FlutterError(
+                                code: "invalid_path",
+                                message: "Invalid file path",
+                                details: nil
+                            )
+                        )
+                        return
+                    }
+                    self.previewLocalFile(path: path, result: result)
+                    return
+                }
+                #endif
                 #if os(macOS)
                 if call.method == "startWebAuth" {
                     guard let url = call.arguments as? String else {
@@ -420,6 +441,94 @@ import UserNotifications
         }
         return "Success"
     }
+
+    #if os(iOS)
+        private func previewLocalFile(path: String, result: @escaping FlutterResult) {
+            DispatchQueue.main.async {
+                let fileURL = URL(fileURLWithPath: path)
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    result(
+                        FlutterError(
+                            code: "file_missing",
+                            message: "File does not exist",
+                            details: path
+                        )
+                    )
+                    return
+                }
+                guard let controller = self.activePresenterViewController() else {
+                    result(
+                        FlutterError(
+                            code: "missing_presenter",
+                            message: "Active view controller unavailable",
+                            details: nil
+                        )
+                    )
+                    return
+                }
+
+                let presenter = controller.presentedViewController ?? controller
+
+                if QLPreviewController.canPreview(fileURL as NSURL) {
+                    self.previewFileURL = fileURL
+                    let previewController = QLPreviewController()
+                    previewController.dataSource = self
+                    previewController.modalPresentationStyle = .fullScreen
+                    presenter.present(previewController, animated: true) {
+                        result(nil)
+                    }
+                    return
+                }
+
+                let documentController = UIDocumentInteractionController(url: fileURL)
+                documentController.delegate = self
+                self.documentInteractionController = documentController
+                if documentController.presentOptionsMenu(from: presenter.view.bounds, in: presenter.view, animated: true) {
+                    result(nil)
+                    return
+                }
+
+                let activityController = UIActivityViewController(
+                    activityItems: [fileURL],
+                    applicationActivities: nil
+                )
+                if let popover = activityController.popoverPresentationController {
+                    popover.sourceView = presenter.view
+                    popover.sourceRect = presenter.view.bounds
+                }
+                presenter.present(activityController, animated: true) {
+                    result(nil)
+                }
+            }
+        }
+
+        private func activePresenterViewController() -> UIViewController? {
+            let activeScenes = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .filter { $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive }
+
+            let candidateWindows = activeScenes
+                .flatMap(\.windows)
+                .sorted { lhs, rhs in
+                    if lhs.isKeyWindow == rhs.isKeyWindow {
+                        return false
+                    }
+                    return lhs.isKeyWindow && !rhs.isKeyWindow
+                }
+
+            let rootController = candidateWindows
+                .compactMap(\.rootViewController)
+                .first ?? self.window?.rootViewController
+
+            guard var presenter = rootController else {
+                return nil
+            }
+            while let presented = presenter.presentedViewController {
+                presenter = presented
+            }
+            return presenter
+        }
+    #endif
 
     private func setupTunnelNotificationObserver() {
         // Register for Darwin notifications
@@ -914,6 +1023,27 @@ extension AppDelegate: FlutterImplicitEngineDelegate {
                 withId: "io.cylonix/uiswitch"
             )
         }
+    }
+}
+
+extension AppDelegate: QLPreviewControllerDataSource {
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+        return previewFileURL == nil ? 0 : 1
+    }
+
+    func previewController(
+        _ controller: QLPreviewController,
+        previewItemAt index: Int
+    ) -> QLPreviewItem {
+        return previewFileURL! as NSURL
+    }
+}
+
+extension AppDelegate: UIDocumentInteractionControllerDelegate {
+    func documentInteractionControllerViewControllerForPreview(
+        _ controller: UIDocumentInteractionController
+    ) -> UIViewController {
+        return activePresenterViewController() ?? UIViewController()
     }
 }
 #endif
