@@ -327,6 +327,11 @@ import UserNotifications
                     return
                 }
                 #endif
+                if call.method == "replayPendingPeerMessageEvents" {
+                    self.handlePeerMessagingNotification(source: "method_channel")
+                    result("Success")
+                    return
+                }
                 #if os(macOS)
                 if call.method == "startWebAuth" {
                     guard let url = call.arguments as? String else {
@@ -735,7 +740,7 @@ import UserNotifications
             observer,
             { _, observer, _, _, _ in
                 let appDelegate = Unmanaged<AppDelegate>.fromOpaque(observer!).takeUnretainedValue()
-                appDelegate.handlePeerMessagingNotification()
+                appDelegate.handlePeerMessagingNotification(source: "darwin_notification")
             },
             PacketTunnelNotification.peerMessageReceived as CFString,
             nil,
@@ -743,13 +748,13 @@ import UserNotifications
         )
     }
 
-    private func handlePeerMessagingNotification() {
+    func handlePeerMessagingNotification(source: String = "unknown") {
         notificationQueue.async {
-            self._handlePeerMessagingNotification()
+            self._handlePeerMessagingNotification(source: source)
         }
     }
 
-    private func _handlePeerMessagingNotification() {
+    private func _handlePeerMessagingNotification(source: String) {
         let coordinator = NSFileCoordinator()
         var error: NSError?
         let timeout = DispatchTime.now() + .seconds(5)
@@ -769,7 +774,7 @@ import UserNotifications
             guard let data = try? Data(contentsOf: queueFile),
                   let queue = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
             else {
-                wg_log(.error, message: "Failed to read peer messaging event queue")
+                wg_log(.error, message: "_handlePeerMessagingNotification: failed to read peer messaging event queue")
                 return
             }
 

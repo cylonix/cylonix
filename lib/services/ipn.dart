@@ -30,6 +30,9 @@ class IpnService {
       <String, Completer>{}; // key is command uuid
   static final _notificationController =
       StreamController<IpnNotification>.broadcast();
+  static final _peerMessagingController =
+      StreamController<PeerMessagingEvent>.broadcast();
+  static final _pendingPeerMessagingEvents = <PeerMessagingEvent>[];
 
   StreamSubscription<BackendNotifyEvent>? _startEngineBackendNotifySub;
   static const _localBaseURL = "http://local-tailscaled.sock/localapi/v0";
@@ -76,6 +79,18 @@ class IpnService {
 
   Stream<IpnNotification> get notificationStream =>
       _notificationController.stream;
+
+  Stream<PeerMessagingEvent> get peerMessagingEventStream =>
+      _peerMessagingController.stream;
+
+  List<PeerMessagingEvent> takePendingPeerMessagingEvents() {
+    if (_pendingPeerMessagingEvents.isEmpty) {
+      return const [];
+    }
+    final pending = List<PeerMessagingEvent>.from(_pendingPeerMessagingEvents);
+    _pendingPeerMessagingEvents.clear();
+    return pending;
+  }
 
   Future<void> initializeEngine(
     Function(Object error, StackTrace stack) onError,
@@ -161,6 +176,8 @@ class IpnService {
           try {
             final s = call.arguments as String;
             final event = PeerMessagingEvent.fromEncodedJson(s);
+            _pendingPeerMessagingEvents.add(event);
+            _peerMessagingController.add(event);
             eventBus.fire(PeerMessagingBridgeEvent(event));
           } catch (e, trace) {
             _logger.e("Failed to handle peer messaging event: $e: $trace");
@@ -997,6 +1014,18 @@ class IpnService {
     _logger.d(
         'consumeAutoSavedFilePaths returned ${mapped.length} entries: $mapped');
     return mapped;
+  }
+
+  Future<void> replayPendingPeerMessageEvents() async {
+    if (!isApple()) {
+      return;
+    }
+    final result = await _channel.invokeMethod<String>(
+      'replayPendingPeerMessageEvents',
+    );
+    if (result != null && result != 'Success') {
+      throw Exception('Failed to replay pending peer message events: $result');
+    }
   }
 
   Future<void> previewLocalFile(String path) async {

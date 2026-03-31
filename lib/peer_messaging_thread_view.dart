@@ -972,10 +972,13 @@ class _PeerMessagingThreadViewState
                     final laterMessages = conversation.messages.sublist(
                       index + 1,
                     );
+                    final outgoingFiles =
+                        ref.watch(ipnStateProvider)?.outgoingFiles ?? const [];
                     return KeyedSubtree(
                       key: _messageKeyFor(message.id),
                       child: _MessageBubble(
                         message: message,
+                        outgoingFiles: outgoingFiles,
                         previousMessage: previous,
                         nextMessage: next,
                         replyTarget: message.replyToMessageId == null
@@ -1250,6 +1253,7 @@ class _PeerMessagingThreadViewState
 
 class _MessageBubble extends StatelessWidget {
   final PeerMessagingMessage message;
+  final List<OutgoingFile> outgoingFiles;
   final PeerMessagingMessage? previousMessage;
   final PeerMessagingMessage? nextMessage;
   final PeerMessagingMessage? replyTarget;
@@ -1274,6 +1278,7 @@ class _MessageBubble extends StatelessWidget {
 
   const _MessageBubble({
     required this.message,
+    required this.outgoingFiles,
     required this.previousMessage,
     required this.nextMessage,
     required this.replyTarget,
@@ -1401,186 +1406,17 @@ class _MessageBubble extends StatelessWidget {
                       maxBubbleWidth: bubbleMaxWidth,
                     ),
                   ],
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onLongPress: _supportsLongPressAction(context)
-                        ? () => _showMessageActions(context)
-                        : null,
-                    onSecondaryTapDown: _supportsSecondaryClickAction(context)
-                        ? (details) => _showMessageActions(
-                              context,
-                              globalPosition: details.globalPosition,
-                            )
-                        : null,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
-                      child: IntrinsicWidth(
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.only(
-                                left: isLocal ? 0 : (_showsTail ? 6 : 0),
-                                right: isLocal ? (_showsTail ? 6 : 0) : 0,
-                              ),
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: isMediaOnlyMessage
-                                      ? Colors.transparent
-                                      : bubbleColor,
-                                  borderRadius:
-                                      isMediaOnlyMessage ? null : borderRadius,
-                                ),
-                                child: DefaultTextStyle.merge(
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                        color: foregroundColor,
-                                        height: 1.24,
-                                        fontSize: 16,
-                                        letterSpacing: -0.15,
-                                      ) ??
-                                      TextStyle(
-                                        color: foregroundColor,
-                                        height: 1.24,
-                                        fontSize: 16,
-                                      ),
-                                  child: IconTheme.merge(
-                                    data: IconThemeData(color: foregroundColor),
-                                    child: Padding(
-                                      padding: isMediaOnlyMessage
-                                          ? EdgeInsets.zero
-                                          : message.attachments.isNotEmpty
-                                              ? const EdgeInsetsGeometry.only(
-                                                  top: 8,
-                                                  left: 2,
-                                                  right: 2,
-                                                  bottom: 2,
-                                                )
-                                              : const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 9,
-                                                ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          if (message.text.isNotEmpty)
-                                            Padding(
-                                              padding: message
-                                                      .attachments.isNotEmpty
-                                                  ? const EdgeInsets.symmetric(
-                                                      horizontal: 14,
-                                                    )
-                                                  : EdgeInsets.zero,
-                                              child: Text(message.text),
-                                            ),
-                                          if (message
-                                              .attachments.isNotEmpty) ...[
-                                            if (message.text.isNotEmpty)
-                                              const SizedBox(height: 8),
-                                            for (final attachment
-                                                in message.attachments)
-                                              Padding(
-                                                padding: EdgeInsets.only(
-                                                  bottom: attachment ==
-                                                          message
-                                                              .attachments.last
-                                                      ? 0
-                                                      : 8,
-                                                ),
-                                                child: _AttachmentLine(
-                                                  attachment: attachment,
-                                                  isSaved: filesSaved.contains(
-                                                    attachment.name,
-                                                  ),
-                                                  onTap: () => onOpenAttachment(
-                                                      attachment),
-                                                  resolvePath: () =>
-                                                      resolveAttachmentPath(
-                                                    attachment,
-                                                  ),
-                                                  foregroundColor:
-                                                      foregroundColor,
-                                                  secondaryColor:
-                                                      secondaryForegroundColor,
-                                                  isLocal: isLocal,
-                                                ),
-                                              ),
-                                          ],
-                                          if (message.kind ==
-                                                  PeerMessagingMessageKind
-                                                      .approvalRequest &&
-                                              message.deliveryStatus !=
-                                                  PeerMessagingDeliveryStatus
-                                                      .failed &&
-                                              message.approvalId != null) ...[
-                                            const SizedBox(height: 12),
-                                            Wrap(
-                                              spacing: 8,
-                                              children: [
-                                                OutlinedButton(
-                                                  onPressed: () =>
-                                                      onApproval(true),
-                                                  style: actionStyle,
-                                                  child: const Text('Approve'),
-                                                ),
-                                                OutlinedButton(
-                                                  onPressed: () =>
-                                                      onApproval(false),
-                                                  style: actionStyle,
-                                                  child: const Text('Reject'),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                          if (message.kind ==
-                                                  PeerMessagingMessageKind
-                                                      .menuRequest &&
-                                              message.deliveryStatus !=
-                                                  PeerMessagingDeliveryStatus
-                                                      .failed &&
-                                              message
-                                                  .menuOptions.isNotEmpty) ...[
-                                            const SizedBox(height: 12),
-                                            Wrap(
-                                              spacing: 8,
-                                              runSpacing: 8,
-                                              children: [
-                                                for (final option
-                                                    in message.menuOptions)
-                                                  OutlinedButton(
-                                                    onPressed: () =>
-                                                        onMenuSelection(
-                                                      option.action,
-                                                      option.title,
-                                                    ),
-                                                    style: actionStyle,
-                                                    child: Text(option.title),
-                                                  ),
-                                              ],
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (_showsTail && !isMediaOnlyMessage)
-                              Positioned(
-                                bottom: 0,
-                                right: isLocal ? 0 : null,
-                                left: isLocal ? null : 0,
-                                child: _BubbleTail(
-                                  color: bubbleColor,
-                                  isLocal: isLocal,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  _buildBubble(
+                    context,
+                    isLocal: isLocal,
+                    isMediaOnlyMessage: isMediaOnlyMessage,
+                    bubbleColor: bubbleColor,
+                    borderRadius: borderRadius,
+                    foregroundColor: foregroundColor,
+                    secondaryForegroundColor: secondaryForegroundColor,
+                    theme: theme,
+                    actionStyle: actionStyle,
+                    bubbleMaxWidth: bubbleMaxWidth,
                   ),
                 ],
               );
@@ -1592,6 +1428,275 @@ class _MessageBubble extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: statusIndicator,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBubble(
+    BuildContext context, {
+    required bool isLocal,
+    required bool isMediaOnlyMessage,
+    required Color bubbleColor,
+    required BorderRadius borderRadius,
+    required Color foregroundColor,
+    required Color secondaryForegroundColor,
+    required ThemeData theme,
+    required ButtonStyle actionStyle,
+    required double bubbleMaxWidth,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: _supportsLongPressAction(context)
+          ? () => _showMessageActions(context)
+          : null,
+      onSecondaryTapDown:
+          _supportsSecondaryClickAction(context) && message.text.isEmpty
+              ? (details) => _showMessageActions(
+                    context,
+                    globalPosition: details.globalPosition,
+                  )
+              : null,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
+        child: IntrinsicWidth(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(
+                  left: isLocal ? 0 : (_showsTail ? 6 : 0),
+                  right: isLocal ? (_showsTail ? 6 : 0) : 0,
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color:
+                        isMediaOnlyMessage ? Colors.transparent : bubbleColor,
+                    borderRadius: isMediaOnlyMessage ? null : borderRadius,
+                  ),
+                  child: DefaultTextStyle.merge(
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                          color: foregroundColor,
+                          height: 1.24,
+                          fontSize: 16,
+                          letterSpacing: -0.15,
+                        ) ??
+                        TextStyle(
+                          color: foregroundColor,
+                          height: 1.24,
+                          fontSize: 16,
+                        ),
+                    child: IconTheme.merge(
+                      data: IconThemeData(color: foregroundColor),
+                      child: Padding(
+                        padding: isMediaOnlyMessage
+                            ? EdgeInsets.zero
+                            : message.attachments.isNotEmpty
+                                ? const EdgeInsetsGeometry.only(
+                                    top: 8,
+                                    left: 2,
+                                    right: 2,
+                                    bottom: 2,
+                                  )
+                                : const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 9,
+                                  ),
+                        child: _buildBubbleContent(
+                          context,
+                          isLocal: isLocal,
+                          isMediaOnlyMessage: isMediaOnlyMessage,
+                          foregroundColor: foregroundColor,
+                          secondaryForegroundColor: secondaryForegroundColor,
+                          actionStyle: actionStyle,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (_showsTail && !isMediaOnlyMessage)
+                Positioned(
+                  bottom: 0,
+                  right: isLocal ? 0 : null,
+                  left: isLocal ? null : 0,
+                  child: _BubbleTail(
+                    color: bubbleColor,
+                    isLocal: isLocal,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBubbleContent(
+    BuildContext context, {
+    required bool isLocal,
+    required bool isMediaOnlyMessage,
+    required Color foregroundColor,
+    required Color secondaryForegroundColor,
+    required ButtonStyle actionStyle,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (message.text.isNotEmpty)
+          Padding(
+            padding: message.attachments.isNotEmpty
+                ? const EdgeInsets.symmetric(horizontal: 14)
+                : EdgeInsets.zero,
+            child: Theme(
+              data: Theme.of(context).copyWith(
+                textSelectionTheme: TextSelectionThemeData(
+                  selectionColor: isLocal
+                      ? Colors.white.withValues(alpha: 0.35)
+                      : Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.28),
+                ),
+              ),
+              child: SelectableText(
+                message.text,
+                contextMenuBuilder: (menuContext, editableTextState) {
+                  final platformExtras =
+                      editableTextState.contextMenuButtonItems
+                          .where(
+                            (item) =>
+                                item.type != ContextMenuButtonType.copy &&
+                                item.type != ContextMenuButtonType.selectAll &&
+                                item.type != ContextMenuButtonType.cut &&
+                                item.type != ContextMenuButtonType.paste,
+                          )
+                          .toList();
+                  return AdaptiveTextSelectionToolbar.buttonItems(
+                    anchors: editableTextState.contextMenuAnchors,
+                    buttonItems: [
+                      ContextMenuButtonItem(
+                        label: editableTextState
+                                .textEditingValue.selection.isCollapsed
+                            ? 'Copy Text'
+                            : 'Copy',
+                        onPressed: () {
+                          ContextMenuController.removeAny();
+                          final sel =
+                              editableTextState.textEditingValue.selection;
+                          final text = sel.isCollapsed
+                              ? message.text
+                              : editableTextState.textEditingValue.text
+                                  .substring(sel.start, sel.end);
+                          Clipboard.setData(ClipboardData(text: text));
+                        },
+                      ),
+                      ContextMenuButtonItem(
+                        label: 'Select All',
+                        onPressed: () {
+                          editableTextState.selectAll(
+                            SelectionChangedCause.toolbar,
+                          );
+                        },
+                      ),
+                      for (final item in platformExtras)
+                        ContextMenuButtonItem(
+                          label: item.label ?? _platformItemLabel(item.type),
+                          onPressed: item.onPressed,
+                        ),
+                      ContextMenuButtonItem(
+                        label: 'Reply/Quote',
+                        onPressed: () {
+                          ContextMenuController.removeAny();
+                          onReply();
+                        },
+                      ),
+                      if (onSendAgain != null)
+                        ContextMenuButtonItem(
+                          label: 'Send Again',
+                          onPressed: () {
+                            ContextMenuController.removeAny();
+                            onSendAgain!();
+                          },
+                        ),
+                      for (final attachment in message.attachments)
+                        ContextMenuButtonItem(
+                          label: filesSaved.contains(attachment.name)
+                              ? 'Save Again'
+                              : 'Save',
+                          onPressed: () {
+                            ContextMenuController.removeAny();
+                            onSaveAttachment(attachment);
+                          },
+                        ),
+                      ContextMenuButtonItem(
+                        label: 'Delete Message',
+                        onPressed: () {
+                          ContextMenuController.removeAny();
+                          onDelete();
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        if (message.attachments.isNotEmpty) ...[
+          if (message.text.isNotEmpty) const SizedBox(height: 8),
+          for (final attachment in message.attachments)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: attachment == message.attachments.last ? 0 : 8,
+              ),
+              child: _AttachmentLine(
+                attachment: attachment,
+                isSaved: filesSaved.contains(attachment.name),
+                onTap: () => onOpenAttachment(attachment),
+                resolvePath: () => resolveAttachmentPath(attachment),
+                foregroundColor: foregroundColor,
+                secondaryColor: secondaryForegroundColor,
+                isLocal: isLocal,
+              ),
+            ),
+        ],
+        if (message.kind == PeerMessagingMessageKind.approvalRequest &&
+            message.deliveryStatus != PeerMessagingDeliveryStatus.failed &&
+            message.approvalId != null) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: () => onApproval(true),
+                style: actionStyle,
+                child: const Text('Approve'),
+              ),
+              OutlinedButton(
+                onPressed: () => onApproval(false),
+                style: actionStyle,
+                child: const Text('Reject'),
+              ),
+            ],
+          ),
+        ],
+        if (message.kind == PeerMessagingMessageKind.menuRequest &&
+            message.deliveryStatus != PeerMessagingDeliveryStatus.failed &&
+            message.menuOptions.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in message.menuOptions)
+                OutlinedButton(
+                  onPressed: () => onMenuSelection(option.action, option.title),
+                  style: actionStyle,
+                  child: Text(option.title),
+                ),
+            ],
           ),
         ],
       ],
@@ -1678,10 +1783,17 @@ class _MessageBubble extends StatelessWidget {
     }
 
     final defaultColor = theme.colorScheme.onSurfaceVariant;
+    final attachmentTransfer = _attachmentTransferProgress;
     switch (message.deliveryStatus) {
       case PeerMessagingDeliveryStatus.pending:
         if (hasLaterPendingMessage) {
           return null;
+        }
+        if (attachmentTransfer != null) {
+          return _DeliveryProgressIndicator(
+            progress: attachmentTransfer.progress,
+            color: defaultColor,
+          );
         }
         return _DeliveryStatusText(
           label: 'Sending',
@@ -1712,6 +1824,38 @@ class _MessageBubble extends StatelessWidget {
           onTap: onShowFailureDetails,
         );
     }
+  }
+
+  _AttachmentTransferProgress? get _attachmentTransferProgress {
+    if (message.attachments.isNotEmpty) {
+      final matched = <OutgoingFile>[];
+      for (final attachment in message.attachments) {
+        final transferId = attachment.transferId ?? attachment.id;
+        final file =
+            outgoingFiles.firstWhereOrNull((item) => item.id == transferId);
+        if (file != null) {
+          matched.add(file);
+        }
+      }
+      if (matched.isNotEmpty) {
+        final totalSize =
+            matched.fold<int>(0, (sum, file) => sum + file.declaredSize);
+        final totalSent = matched.fold<int>(0, (sum, file) => sum + file.sent);
+        final progress = totalSize > 0 ? totalSent / totalSize : 0.0;
+        return _AttachmentTransferProgress(
+          progress: progress.clamp(0.0, 1.0),
+        );
+      }
+    }
+
+    final cachedProgress =
+        (message.metadata['transfer_progress'] as num?)?.toDouble();
+    if (cachedProgress == null || cachedProgress <= 0) {
+      return null;
+    }
+    return _AttachmentTransferProgress(
+      progress: cachedProgress.clamp(0.0, 1.0),
+    );
   }
 
   bool get _shouldShowHeader {
@@ -1822,6 +1966,11 @@ class _MessageBubble extends StatelessWidget {
                 value: 'reply',
                 child: Text('Reply/Quote'),
               ),
+              if (message.text.isNotEmpty)
+                const PopupMenuItem<String>(
+                  value: 'copy_text',
+                  child: Text('Copy Text'),
+                ),
               if (onSendAgain != null)
                 const PopupMenuItem<String>(
                   value: 'send_again',
@@ -1860,6 +2009,16 @@ class _MessageBubble extends StatelessWidget {
                     title: const Text('Reply/Quote'),
                     onTap: () => Navigator.pop(context, 'reply'),
                   ),
+                  if (message.text.isNotEmpty)
+                    ListTile(
+                      leading: Icon(
+                        isApple()
+                            ? CupertinoIcons.doc_on_clipboard
+                            : Icons.copy_outlined,
+                      ),
+                      title: const Text('Copy Text'),
+                      onTap: () => Navigator.pop(context, 'copy_text'),
+                    ),
                   if (onSendAgain != null)
                     ListTile(
                       leading: Icon(
@@ -1899,6 +2058,10 @@ class _MessageBubble extends StatelessWidget {
     }
     if (selected == 'reply') {
       onReply();
+      return;
+    }
+    if (selected == 'copy_text') {
+      await Clipboard.setData(ClipboardData(text: message.text));
       return;
     }
     if (selected == 'send_again') {
@@ -2092,6 +2255,52 @@ class _DeliveryStatusText extends StatelessWidget {
           ),
     );
   }
+}
+
+class _DeliveryProgressIndicator extends StatelessWidget {
+  final double progress;
+  final Color color;
+
+  const _DeliveryProgressIndicator({
+    required this.progress,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = progress.clamp(0.0, 1.0);
+    return SizedBox(
+      width: 104,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LinearProgressIndicator(
+            value: clamped,
+            minHeight: 4,
+            backgroundColor: color.withValues(alpha: 0.18),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Sending ${(clamped * 100).round()}%',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AttachmentTransferProgress {
+  final double progress;
+
+  const _AttachmentTransferProgress({
+    required this.progress,
+  });
 }
 
 class _AttachmentThumbnail extends StatelessWidget {
@@ -2341,6 +2550,19 @@ class _BubbleTailPainter extends CustomPainter {
 }
 
 enum _BubbleGroupPosition { single, top, middle, bottom }
+
+String _platformItemLabel(ContextMenuButtonType type) {
+  switch (type) {
+    case ContextMenuButtonType.lookUp:
+      return 'Look Up';
+    case ContextMenuButtonType.searchWeb:
+      return 'Search Web';
+    case ContextMenuButtonType.share:
+      return 'Share';
+    default:
+      return 'More';
+  }
+}
 
 class _ReplyLinkTrail extends StatelessWidget {
   final PeerMessagingMessage message;

@@ -1,6 +1,7 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ import 'models/ipn.dart';
 import 'peer_messaging_inbox_view.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
+import 'providers/peer_messaging.dart';
 import 'providers/share_file.dart';
 import 'providers/theme.dart';
 import 'run_exit_node_view.dart';
@@ -43,7 +45,8 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> with WindowListener {
+class _HomePageState extends ConsumerState<HomePage>
+    with WindowListener, WidgetsBindingObserver {
   static final _logger = Logger(tag: "HomePage");
   Page _page = Page.mainView;
   int _previousPage = Page.mainView.value;
@@ -54,6 +57,7 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
   void initState() {
     super.initState();
     _initLogger();
+    WidgetsBinding.instance.addObserver(this);
     if (Platform.isWindows || Platform.isMacOS) {
       windowManager.addListener(this);
     }
@@ -68,10 +72,21 @@ class _HomePageState extends ConsumerState<HomePage> with WindowListener {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows || Platform.isMacOS) {
       windowManager.removeListener(this);
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+    unawaited(
+      ref.read(peerMessagingServiceProvider.notifier).replayPendingMessages(),
+    );
   }
 
   @override

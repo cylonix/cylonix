@@ -28,8 +28,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
   final IpnService _ipnService;
   final _clients = <WebSocket>{};
+  final _handledBridgeEventKeys = <String>{};
 
-  StreamSubscription<PeerMessagingBridgeEvent>? _bridgeSubscription;
+  StreamSubscription<PeerMessagingEvent>? _bridgeSubscription;
   StreamSubscription<IpnNotification>? _notificationSubscription;
   HttpServer? _server;
   File? _stateFile;
@@ -54,15 +55,27 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       ),
     );
 
-    _bridgeSubscription = IpnService.eventBus
-        .on<PeerMessagingBridgeEvent>()
-        .listen((event) => handleBridgeEvent(event.event));
+    _bridgeSubscription =
+        _ipnService.peerMessagingEventStream.listen(_handleBridgeEventFromStream);
     _notificationSubscription =
         _ipnService.notificationStream.listen(_handleIpnNotification);
+
+    for (final event in _ipnService.takePendingPeerMessagingEvents()) {
+      await _handleBridgeEventFromStream(event);
+    }
+
+    await _ipnService.replayPendingPeerMessageEvents();
 
     await _consumeAutoSavedAttachmentPaths();
     await _startProxyServer();
     await _persistState();
+  }
+
+  Future<void> replayPendingMessages() async {
+    if (!_initialized) {
+      return;
+    }
+    await _ipnService.replayPendingPeerMessageEvents();
   }
 
   Future<void> disposeService() async {
@@ -453,6 +466,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }
 
   Future<void> handleBridgeEvent(PeerMessagingEvent event) async {
+    _logger.i(
+      'handleBridgeEvent: type=${event.type.value} conversation=${event.conversationId} messageId=${event.messageId ?? ''} payloadKeys=${event.payload.keys.toList()}',
+    );
     switch (event.type) {
       case PeerMessagingEventType.conversationUpsert:
         _upsertConversation(
@@ -518,6 +534,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               ? incomingPeerName!
               : event.payload['conversation_title'] as String? ??
                   'Peer Conversation';
+          _logger.i(
+            'handleBridgeEvent: applying message id=${message.id} localConversation=$localConversationId inbound=$isInboundEvent attachments=${message.attachments.length}',
+          );
           _upsertConversationMessage(
             localConversationId,
             message,
@@ -582,7 +601,32 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
   }
 
+  Future<void> _handleBridgeEventFromStream(PeerMessagingEvent event) async {
+    final eventKey = _eventDedupKey(event);
+    if (_handledBridgeEventKeys.contains(eventKey)) {
+      _logger.d('Skipping duplicate peer messaging event: $eventKey');
+      return;
+    }
+    _handledBridgeEventKeys.add(eventKey);
+    if (_handledBridgeEventKeys.length > 500) {
+      _handledBridgeEventKeys.remove(_handledBridgeEventKeys.first);
+    }
+    await handleBridgeEvent(event);
+  }
+
+  String _eventDedupKey(PeerMessagingEvent event) {
+    return [
+      event.type.value,
+      event.conversationId,
+      event.messageId ?? '',
+      event.timestamp.toIso8601String(),
+    ].join('|');
+  }
+
   Future<void> _handleIpnNotification(IpnNotification notification) async {
+    if (notification.outgoingFiles != null && notification.outgoingFiles!.isNotEmpty) {
+      await _consumeOutgoingAttachmentProgress(notification.outgoingFiles!);
+    }
     if (!(Platform.isIOS || Platform.isMacOS) ||
         notification.filesWaiting == null) {
       return;
@@ -594,6 +638,75 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     if (Platform.isIOS) {
       await _consumePendingAttachmentFiles();
     }
+  }
+
+  Future<void> _consumeOutgoingAttachmentProgress(
+    List<OutgoingFile> outgoingFiles,
+  ) async {
+    final filesById = {
+      for (final file in outgoingFiles)
+        if (file.id.isNotEmpty) file.id: file,
+    };
+    if (filesById.isEmpty) {
+      return;
+    }
+
+    var changed = false;
+    final conversations = <PeerMessagingConversation>[];
+    for (final conversation in state.conversations) {
+      final messages = <PeerMessagingMessage>[];
+      for (final message in conversation.messages) {
+        if (message.role != PeerMessagingMessageRole.user ||
+            message.deliveryStatus != PeerMessagingDeliveryStatus.pending ||
+            message.attachments.isEmpty) {
+          messages.add(message);
+          continue;
+        }
+
+        final matched = <OutgoingFile>[];
+        for (final attachment in message.attachments) {
+          final transferId = attachment.transferId ?? attachment.id;
+          final file = filesById[transferId];
+          if (file != null) {
+            matched.add(file);
+          }
+        }
+        if (matched.isEmpty) {
+          messages.add(message);
+          continue;
+        }
+
+        final totalSize =
+            matched.fold<int>(0, (sum, file) => sum + file.declaredSize);
+        final totalSent = matched.fold<int>(0, (sum, file) => sum + file.sent);
+        final progress = totalSize > 0 ? totalSent / totalSize : 0.0;
+        final normalizedProgress = progress.clamp(0.0, 1.0);
+        final existingProgress =
+            (message.metadata['transfer_progress'] as num?)?.toDouble();
+        if (existingProgress != null &&
+            (existingProgress - normalizedProgress).abs() < 0.001) {
+          messages.add(message);
+          continue;
+        }
+
+        changed = true;
+        messages.add(
+          message.copyWith(
+            metadata: {
+              ...message.metadata,
+              'transfer_progress': normalizedProgress,
+            },
+          ),
+        );
+      }
+      conversations.add(conversation.copyWith(messages: messages));
+    }
+
+    if (!changed) {
+      return;
+    }
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    await _persistState();
   }
 
   Future<void> _consumeAutoSavedAttachmentPaths() async {
