@@ -44,6 +44,7 @@ class _PeerMessagingThreadViewState
     extends ConsumerState<PeerMessagingThreadView> {
   static final _logger = Logger(tag: 'PeerMessageThread');
   final _controller = TextEditingController();
+  final _composerFocusNode = FocusNode();
   final _messagesScrollController = ScrollController();
   final List<PeerMessagingAttachment> _pendingAttachments = [];
   final Map<String, GlobalKey> _messageKeys = {};
@@ -69,8 +70,14 @@ class _PeerMessagingThreadViewState
   @override
   void dispose() {
     _controller.dispose();
+    _composerFocusNode.dispose();
     _messagesScrollController.dispose();
     super.dispose();
+  }
+
+  void _dismissKeyboard() {
+    _composerFocusNode.unfocus();
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _pickAttachments() async {
@@ -958,108 +965,115 @@ class _PeerMessagingThreadViewState
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
-                child: ListView.separated(
-                  controller: _messagesScrollController,
-                  reverse: false,
-                  padding: const EdgeInsets.all(16),
-                  itemBuilder: (context, index) {
-                    final message = conversation.messages[index];
-                    final previous =
-                        index > 0 ? conversation.messages[index - 1] : null;
-                    final next = index + 1 < conversation.messages.length
-                        ? conversation.messages[index + 1]
-                        : null;
-                    final laterMessages = conversation.messages.sublist(
-                      index + 1,
-                    );
-                    final outgoingFiles =
-                        ref.watch(ipnStateProvider)?.outgoingFiles ?? const [];
-                    return KeyedSubtree(
-                      key: _messageKeyFor(message.id),
-                      child: _MessageBubble(
-                        message: message,
-                        outgoingFiles: outgoingFiles,
-                        previousMessage: previous,
-                        nextMessage: next,
-                        replyTarget: message.replyToMessageId == null
-                            ? null
-                            : messagesById[message.replyToMessageId!],
-                        waitingFiles: waitingFiles,
-                        filesSaved: filesSaved,
-                        hasLaterDeliveredMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.delivered,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _dismissKeyboard,
+                  child: ListView.separated(
+                    controller: _messagesScrollController,
+                    reverse: false,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.all(16),
+                    itemBuilder: (context, index) {
+                      final message = conversation.messages[index];
+                      final previous =
+                          index > 0 ? conversation.messages[index - 1] : null;
+                      final next = index + 1 < conversation.messages.length
+                          ? conversation.messages[index + 1]
+                          : null;
+                      final laterMessages = conversation.messages.sublist(
+                        index + 1,
+                      );
+                      final outgoingFiles =
+                          ref.watch(ipnStateProvider)?.outgoingFiles ??
+                              const [];
+                      return KeyedSubtree(
+                        key: _messageKeyFor(message.id),
+                        child: _MessageBubble(
+                          message: message,
+                          outgoingFiles: outgoingFiles,
+                          previousMessage: previous,
+                          nextMessage: next,
+                          replyTarget: message.replyToMessageId == null
+                              ? null
+                              : messagesById[message.replyToMessageId!],
+                          waitingFiles: waitingFiles,
+                          filesSaved: filesSaved,
+                          hasLaterDeliveredMessage: laterMessages.any(
+                            (item) =>
+                                _isLocalMessage(item) &&
+                                item.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.delivered,
+                          ),
+                          hasLaterSentMessage: laterMessages.any(
+                            (item) =>
+                                _isLocalMessage(item) &&
+                                item.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.sent,
+                          ),
+                          hasLaterPendingMessage: laterMessages.any(
+                            (item) =>
+                                _isLocalMessage(item) &&
+                                item.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.pending,
+                          ),
+                          hasLaterFailedMessage: laterMessages.any(
+                            (item) =>
+                                _isLocalMessage(item) &&
+                                item.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.failed,
+                          ),
+                          onDelete: () => _deleteMessage(message),
+                          onReply: () => _beginReply(message),
+                          onSendAgain: _isLocalMessage(message) &&
+                                  message.deliveryStatus ==
+                                      PeerMessagingDeliveryStatus.failed
+                              ? () => _retryMessage(message)
+                              : null,
+                          onShowFailureDetails: _isLocalMessage(message) &&
+                                  message.deliveryStatus ==
+                                      PeerMessagingDeliveryStatus.failed
+                              ? () => _showFailedMessageDialog(message)
+                              : null,
+                          onSaveAttachment: (attachment) =>
+                              _saveAttachment(message.id, attachment),
+                          onOpenAttachment: (attachment) =>
+                              _openAttachment(message.id, attachment),
+                          resolveAttachmentPath: (attachment) =>
+                              _resolveAttachmentPreviewPath(
+                            message.id,
+                            attachment,
+                          ),
+                          onApproval: (approved) async {
+                            await ref
+                                .read(peerMessagingServiceProvider.notifier)
+                                .submitApproval(
+                                  conversationId: conversation.id,
+                                  approvalId: message.approvalId ?? '',
+                                  approved: approved,
+                                );
+                          },
+                          onMenuSelection: (action, title) async {
+                            await ref
+                                .read(peerMessagingServiceProvider.notifier)
+                                .submitMenuSelection(
+                                  conversationId: conversation.id,
+                                  messageId: message.id,
+                                  action: action,
+                                  title: title,
+                                );
+                          },
                         ),
-                        hasLaterSentMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.sent,
-                        ),
-                        hasLaterPendingMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.pending,
-                        ),
-                        hasLaterFailedMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.failed,
-                        ),
-                        onDelete: () => _deleteMessage(message),
-                        onReply: () => _beginReply(message),
-                        onSendAgain: _isLocalMessage(message) &&
-                                message.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.failed
-                            ? () => _retryMessage(message)
-                            : null,
-                        onShowFailureDetails: _isLocalMessage(message) &&
-                                message.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.failed
-                            ? () => _showFailedMessageDialog(message)
-                            : null,
-                        onSaveAttachment: (attachment) =>
-                            _saveAttachment(message.id, attachment),
-                        onOpenAttachment: (attachment) =>
-                            _openAttachment(message.id, attachment),
-                        resolveAttachmentPath: (attachment) =>
-                            _resolveAttachmentPreviewPath(
-                          message.id,
-                          attachment,
-                        ),
-                        onApproval: (approved) async {
-                          await ref
-                              .read(peerMessagingServiceProvider.notifier)
-                              .submitApproval(
-                                conversationId: conversation.id,
-                                approvalId: message.approvalId ?? '',
-                                approved: approved,
-                              );
-                        },
-                        onMenuSelection: (action, title) async {
-                          await ref
-                              .read(peerMessagingServiceProvider.notifier)
-                              .submitMenuSelection(
-                                conversationId: conversation.id,
-                                messageId: message.id,
-                                action: action,
-                                title: title,
-                              );
-                        },
-                      ),
-                    );
-                  },
-                  separatorBuilder: (_, index) {
-                    final current = conversation.messages[index];
-                    final next = conversation.messages[index + 1];
-                    final sameRun = _messagesBelongToSameRun(current, next);
-                    return SizedBox(height: sameRun ? 3 : 14);
-                  },
-                  itemCount: conversation.messages.length,
+                      );
+                    },
+                    separatorBuilder: (_, index) {
+                      final current = conversation.messages[index];
+                      final next = conversation.messages[index + 1];
+                      final sameRun = _messagesBelongToSameRun(current, next);
+                      return SizedBox(height: sameRun ? 3 : 14);
+                    },
+                    itemCount: conversation.messages.length,
+                  ),
                 ),
               ),
             ),
@@ -1179,11 +1193,13 @@ class _PeerMessagingThreadViewState
                                         const SizedBox(height: 10),
                                       ],
                                       TextField(
+                                        focusNode: _composerFocusNode,
                                         controller: _controller,
                                         minLines: 3,
                                         maxLines: 8,
                                         textInputAction:
                                             TextInputAction.newline,
+                                        onTapOutside: (_) => _dismissKeyboard(),
                                         decoration: const InputDecoration(
                                           hintText: 'Reply…',
                                           alignLabelWithHint: true,

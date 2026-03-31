@@ -292,6 +292,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     final tailchatRunning = ref.watch(tailchatServiceStateProvider);
     final notificationPreviewEnabled =
         ref.watch(notificationPreviewEnabledProvider);
+    final peerMessageSummaryEnabled =
+        ref.watch(peerMessageSummaryEnabledProvider);
     return Container(
       alignment: Alignment.topCenter,
       child: Container(
@@ -368,9 +370,23 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                             onChanged: _toggleNotificationPreviews,
                           ),
                   ),
+                  AdaptiveListTile.notched(
+                    title: const Text('Show Peer Message Summary'),
+                    subtitle: const Text(
+                      'Display the latest message preview on the main screen',
+                    ),
+                    trailing: AdaptiveSwitch(
+                      value: peerMessageSummaryEnabled,
+                      onChanged: (value) {
+                        ref
+                            .read(peerMessageSummaryEnabledProvider.notifier)
+                            .setValue(value);
+                      },
+                    ),
+                  ),
                 ],
                 footer: const AdaptiveGroupedFooter(
-                  'Turn this off to hide message text and file names from notifications.',
+                  'Turn these off to reduce how much message content is shown in notifications and on the main screen.',
                 ),
               ),
             if (isMobile() || Platform.isMacOS)

@@ -571,12 +571,16 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildPeerMessagingSummary(BuildContext context, WidgetRef ref) {
     final conversations = ref.watch(peerMessagingConversationsProvider);
     final unread = ref.watch(peerMessagingUnreadCountProvider);
+    final showPeerMessageSummary = ref.watch(peerMessageSummaryEnabledProvider);
     if (conversations.isEmpty) return const SizedBox.shrink();
 
     final latest = conversations.first;
     final preview = latest.preview.isEmpty ? 'No messages yet' : latest.preview;
     final title =
         unread > 0 ? 'Peer Messages: $unread unread' : 'Peer Messages';
+    final subtitle = showPeerMessageSummary
+        ? '${latest.title}: $preview'
+        : 'Open Peer Messages to view recent conversations';
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -599,7 +603,7 @@ class _MainViewState extends ConsumerState<MainView> {
         ),
         title: Text(title),
         subtitle: Text(
-          '${latest.title}: $preview',
+          subtitle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
