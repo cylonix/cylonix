@@ -82,6 +82,31 @@ enum PeerMessagingDeliveryStatus {
   }
 }
 
+class PeerMessagingSendResult {
+  final bool accepted;
+  final bool queued;
+  final PeerMessagingDeliveryStatus deliveryStatus;
+  final String? messageId;
+
+  const PeerMessagingSendResult({
+    required this.accepted,
+    required this.queued,
+    required this.deliveryStatus,
+    this.messageId,
+  });
+
+  factory PeerMessagingSendResult.fromJson(Map<String, dynamic> json) {
+    return PeerMessagingSendResult(
+      accepted: json['accepted'] as bool? ?? false,
+      queued: json['queued'] as bool? ?? false,
+      deliveryStatus: PeerMessagingDeliveryStatus.fromValue(
+        json['delivery_status'] as String?,
+      ),
+      messageId: json['message_id'] as String?,
+    );
+  }
+}
+
 class PeerMessagingApprovalAction {
   final String id;
   final String title;

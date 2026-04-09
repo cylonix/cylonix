@@ -55,8 +55,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       ),
     );
 
-    _bridgeSubscription =
-        _ipnService.peerMessagingEventStream.listen(_handleBridgeEventFromStream);
+    _bridgeSubscription = _ipnService.peerMessagingEventStream
+        .listen(_handleBridgeEventFromStream);
     _notificationSubscription =
         _ipnService.notificationStream.listen(_handleIpnNotification);
 
@@ -107,6 +107,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String conversationId,
     String text, {
     String? conversationTitle,
+    String? deliveryPolicy,
     List<PeerMessagingMenuOption> menuOptions = const [],
     List<PeerMessagingAttachment> attachments = const [],
     String? replyToMessageId,
@@ -159,6 +160,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       'conversation_id': conversationId,
       'message': message.toJson(),
       if (conversationTitle != null) 'conversation_title': conversationTitle,
+      if ((deliveryPolicy ?? '').trim().isNotEmpty)
+        'delivery_policy': deliveryPolicy!.trim(),
     };
 
     await _sendOutgoingMessage(
@@ -395,11 +398,13 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     };
 
     try {
-      await _ipnService.sendPeerMessagingMessage(payload);
+      final sendResult = await _ipnService.sendPeerMessagingMessage(payload);
       await _applyDeliveryStatus(
         conversationId,
         message.id,
-        PeerMessagingDeliveryStatus.delivered,
+        sendResult.queued
+            ? PeerMessagingDeliveryStatus.pending
+            : PeerMessagingDeliveryStatus.delivered,
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -449,11 +454,13 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     };
 
     try {
-      await _ipnService.sendPeerMessagingMessage(payload);
+      final sendResult = await _ipnService.sendPeerMessagingMessage(payload);
       await _applyDeliveryStatus(
         conversationId,
         message.id,
-        PeerMessagingDeliveryStatus.delivered,
+        sendResult.queued
+            ? PeerMessagingDeliveryStatus.pending
+            : PeerMessagingDeliveryStatus.delivered,
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -624,7 +631,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }
 
   Future<void> _handleIpnNotification(IpnNotification notification) async {
-    if (notification.outgoingFiles != null && notification.outgoingFiles!.isNotEmpty) {
+    if (notification.outgoingFiles != null &&
+        notification.outgoingFiles!.isNotEmpty) {
       await _consumeOutgoingAttachmentProgress(notification.outgoingFiles!);
     }
     if (!(Platform.isIOS || Platform.isMacOS) ||
@@ -1055,11 +1063,6 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }
 
   bool _shouldBroadcastEvent(PeerMessagingEvent event) {
-    final messageJson = Map<String, dynamic>.from(
-      event.payload['message'] as Map? ?? const {},
-    );
-    final role =
-        PeerMessagingMessageRole.fromValue(messageJson['role'] as String?);
     switch (event.type) {
       case PeerMessagingEventType.messageSent:
       case PeerMessagingEventType.approvalSubmitted:
@@ -1068,7 +1071,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       case PeerMessagingEventType.messageReceived:
       case PeerMessagingEventType.approvalRequested:
       case PeerMessagingEventType.menuRequested:
-        return role != PeerMessagingMessageRole.user;
+        return true;
       default:
         return true;
     }
@@ -1215,6 +1218,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               payload['conversation_id'] as String? ?? '',
               payload['text'] as String? ?? '',
               conversationTitle: payload['conversation_title'] as String?,
+              deliveryPolicy: payload['delivery_policy'] as String?,
               menuOptions: menuOptions,
               replyToMessageId: payload['reply_to_message_id'] as String? ??
                   (payload['message'] as Map?)?['reply_to_message_id']
@@ -1449,16 +1453,42 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       if (filePayloads.isNotEmpty) {
         await _ipnService.sendPeerFiles(conversationId, filePayloads);
       }
-      await _ipnService.sendPeerMessagingMessage(payload);
+      final sendResult = await _ipnService.sendPeerMessagingMessage(payload);
       await _updateMessage(
         conversationId: conversationId,
         messageId: messageId,
         transform: (current) => current.copyWith(
-          deliveryStatus: PeerMessagingDeliveryStatus.delivered,
+          deliveryStatus: sendResult.queued
+              ? PeerMessagingDeliveryStatus.pending
+              : PeerMessagingDeliveryStatus.delivered,
           failureMessage: null,
-          metadata: {...current.metadata}..remove('failure_message'),
+          metadata: {
+            ...current.metadata,
+            if (sendResult.queued) 'delivery_policy': 'queue',
+            if (sendResult.queued) 'queued': true,
+          }..remove('failure_message'),
         ),
       );
+      final updatedMessage = _findMessage(
+        conversationId: conversationId,
+        messageId: messageId,
+      );
+      if (updatedMessage != null) {
+        await _broadcast(
+          PeerMessagingEvent(
+            version: _protocolVersion,
+            type: PeerMessagingEventType.messageSent,
+            conversationId: conversationId,
+            messageId: messageId,
+            timestamp: DateTime.now().toUtc(),
+            payload: {
+              'conversation_id': conversationId,
+              'message': updatedMessage.toJson(),
+              'queued': sendResult.queued,
+            },
+          ),
+        );
+      }
     } catch (e) {
       await _updateMessage(
         conversationId: conversationId,

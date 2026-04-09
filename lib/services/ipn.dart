@@ -902,14 +902,26 @@ class IpnService {
     }
   }
 
-  Future<void> sendPeerMessagingMessage(Map<String, dynamic> payload) async {
+  Future<PeerMessagingSendResult> sendPeerMessagingMessage(
+    Map<String, dynamic> payload,
+  ) async {
     final result = await _sendCommand(
       'send_peer_message',
       jsonEncode(payload),
     );
-    if (result != "Success") {
+    if (result == "Success") {
+      return const PeerMessagingSendResult(
+        accepted: true,
+        queued: false,
+        deliveryStatus: PeerMessagingDeliveryStatus.delivered,
+      );
+    }
+    if (!result.trimLeft().startsWith('{')) {
       throw Exception("Failed to send peer messaging message: $result");
     }
+    return PeerMessagingSendResult.fromJson(
+      Map<String, dynamic>.from(jsonDecode(result) as Map),
+    );
   }
 
   Future<void> switchProfile(String id) async {

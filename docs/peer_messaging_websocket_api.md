@@ -42,10 +42,16 @@ Supported client actions:
   "payload": {
     "conversation_id": "iphone11.cy123456.cylonix.org",
     "conversation_title": "Randy Mac",
+    "delivery_policy": "drop",
     "text": "Please approve deployment"
   }
 }
 ```
+
+`delivery_policy` is optional:
+
+- `drop`: fail immediately if the peer cannot be reached
+- `queue`: accept the send locally and let the Cylonix API retry it later
 
 `send_message` can also create a menu-style prompt by including `menu_options`:
 
