@@ -266,12 +266,11 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
     List<AwaitingFile>? awaitingFiles;
     var errMessage = notification.errMessage ?? currentState?.errMessage;
-    // For Apple platforms, we rely on the notification from native side
+    // For Apple App Store builds, we rely on the notification from native side
     // to update the files waiting and move them, so we don't fetch it here.
-    // We may receive such notification while the notification
-    // from native side is still being processed. Just ignore the race
-    // condition here.
-    if (!isApple()) {
+    // For direct distribution on macOS, we use the HTTP API like non-Apple
+    // platforms since there is no network extension to relay notifications.
+    if (!isApple() || IpnService.isDirectDistribution) {
       if (notification.filesWaiting != null) {
         if (isApple()) {}
         try {

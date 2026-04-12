@@ -967,6 +967,9 @@ struct PeerRow: View {
     let onRetry: () -> Void
     @State private var showDialog = false
     @State private var errorMessage: String?
+    #if os(macOS)
+    @State private var isHovered = false
+    #endif
     private var displayName: String {
         peer.dnsName.components(separatedBy: ".").first ?? peer.dnsName
     }
@@ -1058,13 +1061,25 @@ struct PeerRow: View {
                         .foregroundColor(.green)
                 }
             } else if peer.online {
-                // Note, on iOS, the whole row is tappable.
+                #if os(macOS)
+                if isHovered {
+                    Button("Send", action: onSend)
+                        .foregroundColor(.accentColor)
+                }
+                #else
+                // On iOS, the whole row is tappable.
                 Button("Send", action: onSend)
                     .foregroundColor(.accentColor)
+                #endif
             }
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
+        #if os(macOS)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        #endif
         .listRowBackground(Color.clear)
     }
 }
