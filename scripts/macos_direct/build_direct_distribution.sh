@@ -145,6 +145,11 @@ build_archive() {
   local app_entitlements="$PROJECT_DIR/Runner/Release.entitlements"
   codesign --force --options runtime --sign "$signing_identity" \
     --entitlements "$app_entitlements" "$app_bundle"
+
+  # Unregister the intermediate build app from LaunchServices so its share
+  # extension doesn't appear alongside the real installed app's extension.
+  local lsregister="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
+  "$lsregister" -u "$DERIVED_DATA_PATH/Build/Intermediates.noindex/ArchiveIntermediates/Runner/InstallationBuildProductsLocation/Applications/$APP_NAME" 2>/dev/null || true
 }
 
 export_archive() {

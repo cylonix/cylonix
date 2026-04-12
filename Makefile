@@ -70,6 +70,9 @@ direct_macos_export:
 	./scripts/macos_direct/build_direct_distribution.sh export
 
 direct_macos_pkg:
+	./scripts/macos_direct/build_direct_distribution.sh flutter
+	./scripts/macos_direct/build_direct_distribution.sh archive
+	./scripts/macos_direct/build_direct_distribution.sh export
 	./scripts/macos_direct/build_direct_distribution.sh pkg
 
 direct_macos_notarize:

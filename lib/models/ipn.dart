@@ -93,6 +93,7 @@ class IpnNotification with _$IpnNotification {
     @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
     @JsonKey(name: 'TailFSShares') List<String>? tailFSShares,
     @JsonKey(name: 'Health') HealthState? health,
+    @JsonKey(name: 'PeerMessageEvent') Map<String, dynamic>? peerMessageEvent,
   }) = _IpnNotification;
 
   factory IpnNotification.fromJson(Map<String, dynamic> json) =>

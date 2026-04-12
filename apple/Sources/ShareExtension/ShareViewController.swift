@@ -14,7 +14,7 @@ import UniformTypeIdentifiers
 
 public func debugLog(_ message: String, function: String = #function) {
     let logger = OSLog(subsystem: "io.cylonix.sase.shareExtension", category: "ShareViewController")
-    os_log("[%{public}@] %{public}@", log: logger, type: .debug, function, "CylonixShareView: \(message)")
+    os_log("[%{public}@] %{public}@", log: logger, type: .error, function, "CylonixShareView: \(message)")
     #if DEBUG
         print("CylonixShareView: ShareViewController: \(function): \(message)")
     #endif

@@ -74,87 +74,177 @@ func sharedTempFolder() -> URL? {
 // MARK: – Direct daemon HTTP client
 
 #if os(macOS)
+import Network
+
 private class DirectDaemonClient {
     static let socketPath = "/var/run/cylonix/cylonixd.sock"
-    static let baseURL = "http://local-tailscaled.sock"
 
     func getStatus() async throws -> Status {
-        let data = try await curlRequest(method: "GET", path: "/localapi/v0/status")
+        let data = try await httpRequest(method: "GET", path: "/localapi/v0/status")
         return try JSONDecoder().decode(Status.self, from: data)
     }
 
     func sendFiles(peerID: String, files: [OutgoingFileData]) async throws -> String {
-        var args = [
-            "/usr/bin/curl", "-s", "--unix-socket", Self.socketPath,
-            "-X", "PUT",
-        ]
+        let boundary = "CylonixBoundary\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        var body = Data()
 
+        // First part: JSON manifest (required by the LocalAPI)
+        let manifest = files.map { ["ID": $0.ID, "Name": $0.Name, "DeclaredSize": $0.DeclaredSize, "PeerID": $0.PeerID] } as [[String: Any]]
+        let manifestData = try JSONSerialization.data(withJSONObject: manifest)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"manifest.json\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/json\r\n\r\n".data(using: .utf8)!)
+        body.append(manifestData)
+        body.append("\r\n".data(using: .utf8)!)
+
+        // Subsequent parts: actual file data
         for file in files {
-            guard let path = file.Path else { continue }
+            guard let path = file.Path,
+                  let fileData = FileManager.default.contents(atPath: path) else { continue }
             let safeName = file.Name.replacingOccurrences(of: "\"", with: "_")
                 .replacingOccurrences(of: ";", with: "_")
-            args += ["-F", "file=@\(path);filename=\(safeName)"]
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(safeName)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+            body.append(fileData)
+            body.append("\r\n".data(using: .utf8)!)
         }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        args += ["\(Self.baseURL)/localapi/v0/file-put/\(peerID)"]
-
-        let data = try await runProcess(args)
+        let headers = [
+            "Content-Type": "multipart/form-data; boundary=\(boundary)",
+            "Content-Length": "\(body.count)",
+        ]
+        let data = try await httpRequest(method: "POST", path: "/localapi/v0/file-put/\(peerID)",
+                                         headers: headers, body: body, timeout: 300)
         return String(data: data, encoding: .utf8) ?? "Success"
     }
 
-    private func curlRequest(method: String, path: String) async throws -> Data {
-        let args = [
-            "/usr/bin/curl", "-s", "--unix-socket", Self.socketPath,
-            "-X", method,
-            "\(Self.baseURL)\(path)",
-        ]
-        return try await runProcess(args)
-    }
+    private func httpRequest(method: String, path: String,
+                             headers: [String: String] = [:],
+                             body: Data? = nil,
+                             timeout: TimeInterval = 30) async throws -> Data {
+        // Build raw HTTP request
+        var request = "\(method) \(path) HTTP/1.1\r\nHost: local-tailscaled.sock\r\nConnection: close\r\n"
+        for (key, value) in headers {
+            request += "\(key): \(value)\r\n"
+        }
+        if let body = body, headers["Content-Length"] == nil {
+            request += "Content-Length: \(body.count)\r\n"
+        }
+        request += "\r\n"
 
-    private func runProcess(_ arguments: [String], timeout: TimeInterval = 30) async throws -> Data {
+        var requestData = request.data(using: .utf8)!
+        if let body = body {
+            requestData.append(body)
+        }
+
         return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global().async {
-                let process = Process()
-                let pipe = Pipe()
-                let errPipe = Pipe()
+            let endpoint = NWEndpoint.unix(path: Self.socketPath)
+            let connection = NWConnection(to: endpoint, using: .tcp)
+            let responseBuffer = DataWrapper()
+            var completed = false
 
-                process.executableURL = URL(fileURLWithPath: arguments[0])
-                process.arguments = Array(arguments.dropFirst())
-                process.standardOutput = pipe
-                process.standardError = errPipe
+            let timer = DispatchSource.makeTimerSource(queue: .global())
+            timer.schedule(deadline: .now() + timeout)
+            timer.setEventHandler {
+                guard !completed else { return }
+                completed = true
+                connection.cancel()
+                continuation.resume(throwing: NSError(
+                    domain: "DirectDaemonClient", code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "request timed out"]))
+            }
+            timer.resume()
 
-                do {
-                    try process.run()
-
-                    // Kill the process if it exceeds the timeout
-                    let timer = DispatchSource.makeTimerSource(queue: .global())
-                    timer.schedule(deadline: .now() + timeout)
-                    timer.setEventHandler {
-                        if process.isRunning { process.terminate() }
-                    }
-                    timer.resume()
-
-                    process.waitUntilExit()
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    connection.send(content: requestData, completion: .contentProcessed { error in
+                        if let error = error {
+                            guard !completed else { return }
+                            completed = true
+                            timer.cancel()
+                            connection.cancel()
+                            continuation.resume(throwing: error)
+                            return
+                        }
+                        self.receiveLoop(connection: connection, buffer: responseBuffer) {
+                            guard !completed else { return }
+                            completed = true
+                            timer.cancel()
+                            let responseData = responseBuffer.data
+                            // Extract HTTP body (after \r\n\r\n)
+                            if let range = responseData.range(of: Data("\r\n\r\n".utf8)) {
+                                let bodyData = responseData.subdata(in: range.upperBound..<responseData.endIndex)
+                                // Handle chunked transfer encoding
+                                let headerStr = String(data: responseData.subdata(in: responseData.startIndex..<range.lowerBound), encoding: .utf8) ?? ""
+                                if headerStr.lowercased().contains("transfer-encoding: chunked") {
+                                    let decoded = self.decodeChunked(bodyData)
+                                    continuation.resume(returning: decoded)
+                                } else {
+                                    continuation.resume(returning: bodyData)
+                                }
+                            } else {
+                                continuation.resume(returning: responseData)
+                            }
+                        }
+                    })
+                case .failed(let error):
+                    guard !completed else { return }
+                    completed = true
                     timer.cancel()
-
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    if process.terminationStatus != 0 {
-                        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-                        let errStr = String(data: errData, encoding: .utf8) ?? "curl failed"
-                        continuation.resume(throwing: NSError(
-                            domain: "DirectDaemonClient",
-                            code: Int(process.terminationStatus),
-                            userInfo: [NSLocalizedDescriptionKey: errStr]
-                        ))
-                    } else {
-                        continuation.resume(returning: data)
-                    }
-                } catch {
                     continuation.resume(throwing: error)
+                case .cancelled:
+                    break
+                default:
+                    break
                 }
             }
+            connection.start(queue: .global())
         }
     }
+
+    private func receiveLoop(connection: NWConnection, buffer: DataWrapper, completion: @escaping () -> Void) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { content, _, isComplete, error in
+            if let content = content, !content.isEmpty {
+                buffer.data.append(content)
+            }
+            if isComplete || error != nil {
+                connection.cancel()
+                completion()
+                return
+            }
+            self.receiveLoop(connection: connection, buffer: buffer, completion: completion)
+        }
+    }
+
+    private func decodeChunked(_ data: Data) -> Data {
+        var result = Data()
+        var offset = 0
+        let bytes = [UInt8](data)
+        while offset < bytes.count {
+            // Find end of chunk size line
+            var lineEnd = offset
+            while lineEnd < bytes.count - 1 {
+                if bytes[lineEnd] == 0x0D && bytes[lineEnd + 1] == 0x0A { break }
+                lineEnd += 1
+            }
+            guard lineEnd < bytes.count - 1 else { break }
+            let sizeStr = String(bytes: bytes[offset..<lineEnd], encoding: .utf8)?.trimmingCharacters(in: .whitespaces) ?? "0"
+            guard let chunkSize = UInt64(sizeStr, radix: 16), chunkSize > 0 else { break }
+            let chunkStart = lineEnd + 2
+            let chunkEnd = chunkStart + Int(chunkSize)
+            guard chunkEnd <= bytes.count else { break }
+            result.append(contentsOf: bytes[chunkStart..<chunkEnd])
+            offset = chunkEnd + 2 // skip trailing \r\n
+        }
+        return result
+    }
+}
+
+private class DataWrapper {
+    var data = Data()
 }
 #endif
 

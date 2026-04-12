@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:downloadsfolder/downloadsfolder.dart' as dlf;
@@ -20,6 +21,7 @@ import 'models/ipn.dart';
 import 'models/peer_messaging.dart';
 import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
+import 'services/ipn.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
@@ -405,17 +407,29 @@ class _PeerMessagingThreadViewState
         );
         if (toPath == null) return;
         final waitingPath = waitingFile?.path;
-        final srcPath = managedPath ??
+        String? srcPath = managedPath ??
             ((waitingPath != null && await File(waitingPath).exists())
                 ? waitingPath
-                : null) ??
+                : null);
+        if (srcPath == null) {
+          if (IpnService.isDirectDistribution && waitingFile != null) {
+            // Download from daemon via HTTP local API directly to target
             await ref
+                .read(ipnServiceProvider)
+                .saveFile(sourceFileName, toPath);
+            srcPath = toPath;
+          } else {
+            srcPath = await ref
                 .read(ipnStateNotifierProvider.notifier)
                 .getFilePath(sourceFileName);
+          }
+        }
         _logger.d(
           'macOS save source resolved: sourceFileName=$sourceFileName srcPath=$srcPath toPath=$toPath',
         );
-        await File(srcPath).copy(toPath);
+        if (srcPath != toPath) {
+          await File(srcPath).copy(toPath);
+        }
         showPath = toPath;
       } else if (Platform.isIOS) {
         final srcPath = managedPath ??
@@ -840,6 +854,7 @@ class _PeerMessagingThreadViewState
       attachment,
       ref.read(filesWaitingProvider),
     );
+
     return _resolveAttachmentSourcePath(
       messageId,
       attachment,
@@ -1500,53 +1515,47 @@ class _MessageBubble extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              Padding(
-                padding: EdgeInsets.only(
-                  left: isLocal ? 0 : (_showsTail ? 6 : 0),
-                  right: isLocal ? (_showsTail ? 6 : 0) : 0,
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color:
+                      isMediaOnlyMessage ? Colors.transparent : bubbleColor,
+                  borderRadius: isMediaOnlyMessage ? null : borderRadius,
                 ),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color:
-                        isMediaOnlyMessage ? Colors.transparent : bubbleColor,
-                    borderRadius: isMediaOnlyMessage ? null : borderRadius,
-                  ),
-                  child: DefaultTextStyle.merge(
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                          color: foregroundColor,
-                          height: 1.24,
-                          fontSize: 16,
-                          letterSpacing: -0.15,
-                        ) ??
-                        TextStyle(
-                          color: foregroundColor,
-                          height: 1.24,
-                          fontSize: 16,
-                        ),
-                    child: IconTheme.merge(
-                      data: IconThemeData(color: foregroundColor),
-                      child: Padding(
-                        padding: isMediaOnlyMessage
-                            ? EdgeInsets.zero
-                            : message.attachments.isNotEmpty
-                                ? const EdgeInsetsGeometry.only(
-                                    top: 8,
-                                    left: 2,
-                                    right: 2,
-                                    bottom: 2,
-                                  )
-                                : const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 9,
-                                  ),
-                        child: _buildBubbleContent(
-                          context,
-                          isLocal: isLocal,
-                          isMediaOnlyMessage: isMediaOnlyMessage,
-                          foregroundColor: foregroundColor,
-                          secondaryForegroundColor: secondaryForegroundColor,
-                          actionStyle: actionStyle,
-                        ),
+                child: DefaultTextStyle.merge(
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                        color: foregroundColor,
+                        height: 1.24,
+                        fontSize: 16,
+                        letterSpacing: -0.15,
+                      ) ??
+                      TextStyle(
+                        color: foregroundColor,
+                        height: 1.24,
+                        fontSize: 16,
+                      ),
+                  child: IconTheme.merge(
+                    data: IconThemeData(color: foregroundColor),
+                    child: Padding(
+                      padding: isMediaOnlyMessage
+                          ? EdgeInsets.zero
+                          : message.attachments.isNotEmpty
+                              ? const EdgeInsetsGeometry.only(
+                                  top: 8,
+                                  left: 2,
+                                  right: 2,
+                                  bottom: 2,
+                                )
+                              : const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 9,
+                                ),
+                      child: _buildBubbleContent(
+                        context,
+                        isLocal: isLocal,
+                        isMediaOnlyMessage: isMediaOnlyMessage,
+                        foregroundColor: foregroundColor,
+                        secondaryForegroundColor: secondaryForegroundColor,
+                        actionStyle: actionStyle,
                       ),
                     ),
                   ),
@@ -1554,9 +1563,9 @@ class _MessageBubble extends StatelessWidget {
               ),
               if (_showsTail && !isMediaOnlyMessage)
                 Positioned(
-                  bottom: 0,
-                  right: isLocal ? 0 : null,
-                  left: isLocal ? null : 0,
+                  bottom: -1,
+                  right: isLocal ? -6 : null,
+                  left: isLocal ? null : -6,
                   child: _BubbleTail(
                     color: bubbleColor,
                     isLocal: isLocal,
@@ -1597,87 +1606,117 @@ class _MessageBubble extends StatelessWidget {
                           .withValues(alpha: 0.28),
                 ),
               ),
-              child: SelectableText(
-                message.text,
-                contextMenuBuilder: (menuContext, editableTextState) {
-                  final platformExtras =
-                      editableTextState.contextMenuButtonItems
-                          .where(
-                            (item) =>
-                                item.type != ContextMenuButtonType.copy &&
-                                item.type != ContextMenuButtonType.selectAll &&
-                                item.type != ContextMenuButtonType.cut &&
-                                item.type != ContextMenuButtonType.paste,
-                          )
-                          .toList();
-                  return AdaptiveTextSelectionToolbar.buttonItems(
-                    anchors: editableTextState.contextMenuAnchors,
-                    buttonItems: [
-                      ContextMenuButtonItem(
-                        label: editableTextState
-                                .textEditingValue.selection.isCollapsed
-                            ? 'Copy Text'
-                            : 'Copy',
-                        onPressed: () {
-                          ContextMenuController.removeAny();
-                          final sel =
-                              editableTextState.textEditingValue.selection;
-                          final text = sel.isCollapsed
-                              ? message.text
-                              : editableTextState.textEditingValue.text
-                                  .substring(sel.start, sel.end);
-                          Clipboard.setData(ClipboardData(text: text));
-                        },
+              child: _supportsLongPressAction(context)
+                  // Mobile: use Text.rich so long-press triggers the
+                  // action menu instead of selecting a word.
+                  ? Text.rich(
+                      _buildLinkedTextSpan(
+                        message.text,
+                        linkColor: isLocal
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.primary,
                       ),
-                      ContextMenuButtonItem(
-                        label: 'Select All',
-                        onPressed: () {
-                          editableTextState.selectAll(
-                            SelectionChangedCause.toolbar,
-                          );
-                        },
+                    )
+                  // Desktop: use SelectableText for partial text
+                  // selection; right-click provides the context menu.
+                  : SelectableText.rich(
+                      _buildLinkedTextSpan(
+                        message.text,
+                        linkColor: isLocal
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.primary,
                       ),
-                      for (final item in platformExtras)
-                        ContextMenuButtonItem(
-                          label: item.label ?? _platformItemLabel(item.type),
-                          onPressed: item.onPressed,
-                        ),
-                      ContextMenuButtonItem(
-                        label: 'Reply/Quote',
-                        onPressed: () {
-                          ContextMenuController.removeAny();
-                          onReply();
-                        },
-                      ),
-                      if (onSendAgain != null)
-                        ContextMenuButtonItem(
-                          label: 'Send Again',
-                          onPressed: () {
-                            ContextMenuController.removeAny();
-                            onSendAgain!();
-                          },
-                        ),
-                      for (final attachment in message.attachments)
-                        ContextMenuButtonItem(
-                          label: filesSaved.contains(attachment.name)
-                              ? 'Save Again'
-                              : 'Save',
-                          onPressed: () {
-                            ContextMenuController.removeAny();
-                            onSaveAttachment(attachment);
-                          },
-                        ),
-                      ContextMenuButtonItem(
-                        label: 'Delete Message',
-                        onPressed: () {
-                          ContextMenuController.removeAny();
-                          onDelete();
-                        },
-                      ),
-                    ],
-                  );
-                },
-              ),
+                      contextMenuBuilder:
+                          (menuContext, editableTextState) {
+                        final platformExtras = editableTextState
+                            .contextMenuButtonItems
+                            .where(
+                              (item) =>
+                                  item.type !=
+                                      ContextMenuButtonType.copy &&
+                                  item.type !=
+                                      ContextMenuButtonType.selectAll &&
+                                  item.type !=
+                                      ContextMenuButtonType.cut &&
+                                  item.type !=
+                                      ContextMenuButtonType.paste,
+                            )
+                            .toList();
+                        return AdaptiveTextSelectionToolbar.buttonItems(
+                          anchors:
+                              editableTextState.contextMenuAnchors,
+                          buttonItems: [
+                            ContextMenuButtonItem(
+                              label: editableTextState.textEditingValue
+                                      .selection.isCollapsed
+                                  ? 'Copy Text'
+                                  : 'Copy',
+                              onPressed: () {
+                                ContextMenuController.removeAny();
+                                final sel = editableTextState
+                                    .textEditingValue.selection;
+                                final text = sel.isCollapsed
+                                    ? message.text
+                                    : editableTextState
+                                        .textEditingValue.text
+                                        .substring(sel.start, sel.end);
+                                Clipboard.setData(
+                                  ClipboardData(text: text),
+                                );
+                              },
+                            ),
+                            ContextMenuButtonItem(
+                              label: 'Select All',
+                              onPressed: () {
+                                editableTextState.selectAll(
+                                  SelectionChangedCause.toolbar,
+                                );
+                              },
+                            ),
+                            for (final item in platformExtras)
+                              ContextMenuButtonItem(
+                                label: item.label ??
+                                    _platformItemLabel(item.type),
+                                onPressed: item.onPressed,
+                              ),
+                            ContextMenuButtonItem(
+                              label: 'Reply/Quote',
+                              onPressed: () {
+                                ContextMenuController.removeAny();
+                                onReply();
+                              },
+                            ),
+                            if (onSendAgain != null)
+                              ContextMenuButtonItem(
+                                label: 'Send Again',
+                                onPressed: () {
+                                  ContextMenuController.removeAny();
+                                  onSendAgain!();
+                                },
+                              ),
+                            for (final attachment
+                                in message.attachments)
+                              ContextMenuButtonItem(
+                                label: filesSaved
+                                        .contains(attachment.name)
+                                    ? 'Save Again'
+                                    : 'Save',
+                                onPressed: () {
+                                  ContextMenuController.removeAny();
+                                  onSaveAttachment(attachment);
+                                },
+                              ),
+                            ContextMenuButtonItem(
+                              label: 'Delete Message',
+                              onPressed: () {
+                                ContextMenuController.removeAny();
+                                onDelete();
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    ),
             ),
           ),
         if (message.attachments.isNotEmpty) ...[
@@ -1748,66 +1787,47 @@ class _MessageBubble extends StatelessWidget {
   BorderRadius _bubbleBorderRadius(bool isLocal) {
     const outer = Radius.circular(19);
     const inner = Radius.circular(5);
+    // The tail-side bottom corner uses a near-zero radius so the
+    // custom-painted tail blends seamlessly into the bubble edge.
+    const tailCorner = Radius.circular(2);
     final position = _groupPosition;
+    final hasTail = position == _BubbleGroupPosition.single ||
+        position == _BubbleGroupPosition.bottom;
     if (isLocal) {
       switch (position) {
         case _BubbleGroupPosition.single:
-          return const BorderRadius.only(
-            topLeft: outer,
-            topRight: outer,
-            bottomLeft: outer,
-            bottomRight: inner,
-          );
         case _BubbleGroupPosition.top:
-          return const BorderRadius.only(
+          return BorderRadius.only(
             topLeft: outer,
             topRight: outer,
             bottomLeft: outer,
-            bottomRight: inner,
+            bottomRight: hasTail ? tailCorner : inner,
           );
         case _BubbleGroupPosition.middle:
-          return const BorderRadius.only(
-            topLeft: outer,
-            topRight: inner,
-            bottomLeft: outer,
-            bottomRight: inner,
-          );
         case _BubbleGroupPosition.bottom:
-          return const BorderRadius.only(
+          return BorderRadius.only(
             topLeft: outer,
             topRight: inner,
             bottomLeft: outer,
-            bottomRight: inner,
+            bottomRight: hasTail ? tailCorner : inner,
           );
       }
     }
     switch (position) {
       case _BubbleGroupPosition.single:
-        return const BorderRadius.only(
-          topLeft: outer,
-          topRight: outer,
-          bottomLeft: inner,
-          bottomRight: outer,
-        );
       case _BubbleGroupPosition.top:
-        return const BorderRadius.only(
+        return BorderRadius.only(
           topLeft: outer,
           topRight: outer,
-          bottomLeft: inner,
+          bottomLeft: hasTail ? tailCorner : inner,
           bottomRight: outer,
         );
       case _BubbleGroupPosition.middle:
-        return const BorderRadius.only(
-          topLeft: inner,
-          topRight: outer,
-          bottomLeft: inner,
-          bottomRight: outer,
-        );
       case _BubbleGroupPosition.bottom:
-        return const BorderRadius.only(
+        return BorderRadius.only(
           topLeft: inner,
           topRight: outer,
-          bottomLeft: inner,
+          bottomLeft: hasTail ? tailCorner : inner,
           bottomRight: outer,
         );
     }
@@ -2598,6 +2618,45 @@ String _platformItemLabel(ContextMenuButtonType type) {
     default:
       return 'More';
   }
+}
+
+final _urlRegExp = RegExp(
+  r'https?://[^\s<>\[\]()]+',
+  caseSensitive: false,
+);
+
+TextSpan _buildLinkedTextSpan(String text, {required Color linkColor}) {
+  final matches = _urlRegExp.allMatches(text).toList();
+  if (matches.isEmpty) {
+    return TextSpan(text: text);
+  }
+  final spans = <InlineSpan>[];
+  var lastEnd = 0;
+  for (final match in matches) {
+    if (match.start > lastEnd) {
+      spans.add(TextSpan(text: text.substring(lastEnd, match.start)));
+    }
+    final url = match.group(0)!;
+    spans.add(
+      TextSpan(
+        text: url,
+        style: TextStyle(
+          color: linkColor,
+          decoration: TextDecoration.underline,
+          decorationColor: linkColor.withValues(alpha: 0.5),
+        ),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () {
+            launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+          },
+      ),
+    );
+    lastEnd = match.end;
+  }
+  if (lastEnd < text.length) {
+    spans.add(TextSpan(text: text.substring(lastEnd)));
+  }
+  return TextSpan(children: spans);
 }
 
 class _ReplyLinkTrail extends StatelessWidget {

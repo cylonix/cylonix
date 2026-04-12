@@ -120,6 +120,7 @@ _$IpnNotificationImpl _$$IpnNotificationImplFromJson(
       health: json['Health'] == null
           ? null
           : HealthState.fromJson(json['Health'] as Map<String, dynamic>),
+      peerMessageEvent: json['PeerMessageEvent'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$$IpnNotificationImplToJson(
@@ -141,6 +142,7 @@ Map<String, dynamic> _$$IpnNotificationImplToJson(
       'ClientVersion': instance.clientVersion,
       'TailFSShares': instance.tailFSShares,
       'Health': instance.health,
+      'PeerMessageEvent': instance.peerMessageEvent,
     };
 
 _$HealthStateImpl _$$HealthStateImplFromJson(Map<String, dynamic> json) =>

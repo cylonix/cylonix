@@ -48,6 +48,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
+    _logger.i('PeerMessagingService init [build:20260412B] isDirectDistribution=${IpnService.isDirectDistribution}');
 
     final storedState = await _loadState();
     _activeProfileId = await _resolveCurrentProfileId();
@@ -625,7 +626,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               : event.payload['conversation_title'] as String? ??
                   'Peer Conversation';
           _logger.i(
-            'handleBridgeEvent: applying message id=${message.id} localConversation=$localConversationId inbound=$isInboundEvent attachments=${message.attachments.length}',
+            'handleBridgeEvent: applying message id=${message.id} localConversation=$localConversationId inbound=$isInboundEvent attachments=${message.attachments.length} isDirectDistribution=${IpnService.isDirectDistribution}',
           );
           _upsertConversationMessage(
             profileId,
@@ -640,11 +641,31 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           );
           if ((Platform.isMacOS || Platform.isIOS) &&
               message.attachments.isNotEmpty) {
-            await _consumeAutoSavedAttachmentPaths();
-            await _applyPendingAutoSavedPaths(
-              conversationId: localConversationId,
-              messageId: message.id,
-            );
+            if (IpnService.isDirectDistribution && isInboundEvent) {
+              // Direct/PKG distribution: download attachments from daemon
+              // via HTTP and save to Downloads, then update attachment paths.
+              for (var attempt = 0; attempt < 5; attempt++) {
+                if (attempt > 0) {
+                  await Future<void>.delayed(
+                    const Duration(seconds: 2),
+                  );
+                }
+                final resolved =
+                    await _consumeDirectModeAttachmentFiles(
+                  conversationId: localConversationId,
+                  messageId: message.id,
+                );
+                if (resolved) break;
+              }
+            } else {
+              // App Store distribution: system extension auto-saves files
+              // and records transferId→path mapping.
+              await _consumeAutoSavedAttachmentPaths();
+              await _applyPendingAutoSavedPaths(
+                conversationId: localConversationId,
+                messageId: message.id,
+              );
+            }
           }
           if (Platform.isIOS &&
               isInboundEvent &&
@@ -1078,6 +1099,156 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     await _persistState();
   }
 
+  /// Downloads attachments from the daemon via HTTP for direct (non-App Store)
+  /// macOS distribution. Mirrors what [_consumeAutoSavedAttachmentPaths] does
+  /// for the App Store version, but uses the HTTP local API to fetch the file
+  /// content since the daemon stores files in its own file system.
+  /// Returns `true` if all attachments for the target message were resolved.
+  Future<bool> _consumeDirectModeAttachmentFiles({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    List<AwaitingFile> waitingFiles;
+    try {
+      waitingFiles = await _ipnService.getWaitingFiles(
+            timeoutMilliseconds: 3000,
+          ) ??
+          [];
+    } catch (e) {
+      _logger.e('Direct mode: failed to fetch waiting files: $e');
+      return false;
+    }
+    if (waitingFiles.isEmpty) {
+      _logger.d('Direct mode: no waiting files available for attachment match');
+      return false;
+    }
+    _logger.d(
+      'Direct mode: fetched ${waitingFiles.length} waiting files for attachment matching',
+    );
+
+    // Temporarily update _lastWaitingFiles so _matchWaitingFileForAttachment works
+    final previousWaitingFiles = _lastWaitingFiles;
+    _lastWaitingFiles = waitingFiles;
+
+    // Save to Downloads, matching App Store auto-save behavior
+    final downloadsDir = await getDownloadsDirectory();
+    if (downloadsDir == null) {
+      _logger.e('Direct mode: could not resolve Downloads directory');
+      return false;
+    }
+    var changed = false;
+    final consumedFileNames = <String>{};
+    final conversations = <PeerMessagingConversation>[];
+
+    for (final conversation in state.conversations) {
+      if (conversation.id != conversationId) {
+        conversations.add(conversation);
+        continue;
+      }
+
+      final messages = <PeerMessagingMessage>[];
+      for (final message in conversation.messages) {
+        if (message.id != messageId || message.attachments.isEmpty) {
+          messages.add(message);
+          continue;
+        }
+
+        var messageChanged = false;
+        final nextAttachments = <PeerMessagingAttachment>[];
+        for (final attachment in message.attachments) {
+          if ((attachment.path ?? '').isNotEmpty &&
+              await File(attachment.path!).exists()) {
+            nextAttachments.add(attachment);
+            continue;
+          }
+
+          final waitingFile = _matchWaitingFileForAttachment(
+            attachment,
+            excludeNames: consumedFileNames,
+          );
+          if (waitingFile == null) {
+            _logger.d(
+              'Direct mode: no waiting file match for attachment ${attachment.name}',
+            );
+            nextAttachments.add(attachment);
+            continue;
+          }
+
+          final destinationPath =
+              _uniqueFilePath(downloadsDir.path, attachment.name);
+
+          try {
+            // Download file content from daemon via HTTP saveFile API
+            await _ipnService.saveFile(waitingFile.name, destinationPath);
+            if (!await File(destinationPath).exists()) {
+              _logger.e(
+                'Direct mode: saveFile completed but file not found at $destinationPath',
+              );
+              nextAttachments.add(attachment);
+              continue;
+            }
+            _logger.d(
+              'Direct mode: downloaded attachment ${attachment.name} to $destinationPath',
+            );
+            // Remove from daemon's waiting queue
+            try {
+              await _ipnService.deleteFile(waitingFile.name);
+            } catch (e) {
+              _logger.e(
+                'Direct mode: failed to delete waiting file ${waitingFile.name}: $e',
+              );
+            }
+            consumedFileNames.add(waitingFile.name);
+            nextAttachments.add(
+              PeerMessagingAttachment(
+                id: attachment.id,
+                transferId: attachment.transferId,
+                name: attachment.name,
+                size: attachment.size,
+                mimeType: attachment.mimeType,
+                path: destinationPath,
+              ),
+            );
+            messageChanged = true;
+          } catch (e) {
+            _logger.e(
+              'Direct mode: failed to download attachment ${waitingFile.name}: $e',
+            );
+            nextAttachments.add(attachment);
+          }
+        }
+
+        if (messageChanged) {
+          changed = true;
+          messages.add(message.copyWith(attachments: nextAttachments));
+        } else {
+          messages.add(message);
+        }
+      }
+      conversations.add(conversation.copyWith(messages: messages));
+    }
+
+    // Restore _lastWaitingFiles, removing consumed entries
+    _lastWaitingFiles = previousWaitingFiles
+        .where((file) => !consumedFileNames.contains(file.name))
+        .toList();
+
+    if (!changed) {
+      _logger.d(
+        'Direct mode: no attachment paths were updated for message $messageId',
+      );
+      return false;
+    }
+
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    _logger.d(
+      'Direct mode: persisting updated attachment paths for message $messageId (resolved ${consumedFileNames.length} attachments)',
+    );
+    await _persistState();
+    return true;
+  }
+
+
   AwaitingFile? _matchWaitingFileForAttachment(
     PeerMessagingAttachment attachment, {
     Set<String> excludeNames = const {},
@@ -1137,6 +1308,21 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final baseName = p.basenameWithoutExtension(value);
     final normalizedBaseName = baseName.replaceFirst(RegExp(r' \(\d+\)$'), '');
     return '$normalizedBaseName$extension';
+  }
+
+  /// Returns a unique file path in [directory] for [fileName], appending
+  /// " (N)" before the extension if needed — matching the App Store auto-save
+  /// behavior in BackgroundTaskManager.getUniqueFileName.
+  String _uniqueFilePath(String directory, String fileName) {
+    var candidate = p.join(directory, fileName);
+    if (!File(candidate).existsSync()) return candidate;
+    final ext = p.extension(fileName);
+    final base = p.basenameWithoutExtension(fileName);
+    for (var i = 1; i < 1000; i++) {
+      candidate = p.join(directory, '$base ($i)$ext');
+      if (!File(candidate).existsSync()) return candidate;
+    }
+    return candidate;
   }
 
   Future<Directory> _attachmentStorageDir() async {

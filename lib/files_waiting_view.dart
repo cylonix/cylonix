@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import 'providers/ipn.dart';
+import 'services/ipn.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
@@ -112,7 +113,7 @@ class FilesWaitingView extends ConsumerWidget {
           fileName,
         );
         showPath = 'the "Download" folder';
-      } else if (Platform.isMacOS) {
+      } else if (Platform.isMacOS && !IpnService.isDirectDistribution) {
         final waitingFile = ref
             .read(filesWaitingProvider)
             .where((file) => file.name == fileName)

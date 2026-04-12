@@ -623,6 +623,9 @@ mixin _$IpnNotification {
   List<String>? get tailFSShares => throw _privateConstructorUsedError;
   @JsonKey(name: 'Health')
   HealthState? get health => throw _privateConstructorUsedError;
+  @JsonKey(name: 'PeerMessageEvent')
+  Map<String, dynamic>? get peerMessageEvent =>
+      throw _privateConstructorUsedError;
 
   /// Serializes this IpnNotification to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -656,7 +659,9 @@ abstract class $IpnNotificationCopyWith<$Res> {
       @JsonKey(name: 'IncomingFiles') List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
       @JsonKey(name: 'TailFSShares') List<String>? tailFSShares,
-      @JsonKey(name: 'Health') HealthState? health});
+      @JsonKey(name: 'Health') HealthState? health,
+      @JsonKey(name: 'PeerMessageEvent')
+      Map<String, dynamic>? peerMessageEvent});
 
   $IpnPrefsCopyWith<$Res>? get prefs;
   $NetworkMapCopyWith<$Res>? get netMap;
@@ -696,6 +701,7 @@ class _$IpnNotificationCopyWithImpl<$Res, $Val extends IpnNotification>
     Object? clientVersion = freezed,
     Object? tailFSShares = freezed,
     Object? health = freezed,
+    Object? peerMessageEvent = freezed,
   }) {
     return _then(_value.copyWith(
       version: freezed == version
@@ -762,6 +768,10 @@ class _$IpnNotificationCopyWithImpl<$Res, $Val extends IpnNotification>
           ? _value.health
           : health // ignore: cast_nullable_to_non_nullable
               as HealthState?,
+      peerMessageEvent: freezed == peerMessageEvent
+          ? _value.peerMessageEvent
+          : peerMessageEvent // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>?,
     ) as $Val);
   }
 
@@ -860,7 +870,9 @@ abstract class _$$IpnNotificationImplCopyWith<$Res>
       @JsonKey(name: 'IncomingFiles') List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
       @JsonKey(name: 'TailFSShares') List<String>? tailFSShares,
-      @JsonKey(name: 'Health') HealthState? health});
+      @JsonKey(name: 'Health') HealthState? health,
+      @JsonKey(name: 'PeerMessageEvent')
+      Map<String, dynamic>? peerMessageEvent});
 
   @override
   $IpnPrefsCopyWith<$Res>? get prefs;
@@ -903,6 +915,7 @@ class __$$IpnNotificationImplCopyWithImpl<$Res>
     Object? clientVersion = freezed,
     Object? tailFSShares = freezed,
     Object? health = freezed,
+    Object? peerMessageEvent = freezed,
   }) {
     return _then(_$IpnNotificationImpl(
       version: freezed == version
@@ -969,6 +982,10 @@ class __$$IpnNotificationImplCopyWithImpl<$Res>
           ? _value.health
           : health // ignore: cast_nullable_to_non_nullable
               as HealthState?,
+      peerMessageEvent: freezed == peerMessageEvent
+          ? _value._peerMessageEvent
+          : peerMessageEvent // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>?,
     ));
   }
 }
@@ -992,12 +1009,15 @@ class _$IpnNotificationImpl implements _IpnNotification {
       @JsonKey(name: 'IncomingFiles') final List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') this.clientVersion,
       @JsonKey(name: 'TailFSShares') final List<String>? tailFSShares,
-      @JsonKey(name: 'Health') this.health})
+      @JsonKey(name: 'Health') this.health,
+      @JsonKey(name: 'PeerMessageEvent')
+      final Map<String, dynamic>? peerMessageEvent})
       : _loginFinished = loginFinished,
         _filesWaiting = filesWaiting,
         _outgoingFiles = outgoingFiles,
         _incomingFiles = incomingFiles,
-        _tailFSShares = tailFSShares;
+        _tailFSShares = tailFSShares,
+        _peerMessageEvent = peerMessageEvent;
 
   factory _$IpnNotificationImpl.fromJson(Map<String, dynamic> json) =>
       _$$IpnNotificationImplFromJson(json);
@@ -1090,10 +1110,20 @@ class _$IpnNotificationImpl implements _IpnNotification {
   @override
   @JsonKey(name: 'Health')
   final HealthState? health;
+  final Map<String, dynamic>? _peerMessageEvent;
+  @override
+  @JsonKey(name: 'PeerMessageEvent')
+  Map<String, dynamic>? get peerMessageEvent {
+    final value = _peerMessageEvent;
+    if (value == null) return null;
+    if (_peerMessageEvent is EqualUnmodifiableMapView) return _peerMessageEvent;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
 
   @override
   String toString() {
-    return 'IpnNotification(version: $version, errMessage: $errMessage, loginFinished: $loginFinished, filesWaiting: $filesWaiting, outgoingFiles: $outgoingFiles, state: $state, prefs: $prefs, netMap: $netMap, engine: $engine, browseToURL: $browseToURL, backendLogId: $backendLogId, localTCPPort: $localTCPPort, incomingFiles: $incomingFiles, clientVersion: $clientVersion, tailFSShares: $tailFSShares, health: $health)';
+    return 'IpnNotification(version: $version, errMessage: $errMessage, loginFinished: $loginFinished, filesWaiting: $filesWaiting, outgoingFiles: $outgoingFiles, state: $state, prefs: $prefs, netMap: $netMap, engine: $engine, browseToURL: $browseToURL, backendLogId: $backendLogId, localTCPPort: $localTCPPort, incomingFiles: $incomingFiles, clientVersion: $clientVersion, tailFSShares: $tailFSShares, health: $health, peerMessageEvent: $peerMessageEvent)';
   }
 
   @override
@@ -1126,7 +1156,9 @@ class _$IpnNotificationImpl implements _IpnNotification {
                 other.clientVersion == clientVersion) &&
             const DeepCollectionEquality()
                 .equals(other._tailFSShares, _tailFSShares) &&
-            (identical(other.health, health) || other.health == health));
+            (identical(other.health, health) || other.health == health) &&
+            const DeepCollectionEquality()
+                .equals(other._peerMessageEvent, _peerMessageEvent));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1148,7 +1180,8 @@ class _$IpnNotificationImpl implements _IpnNotification {
       const DeepCollectionEquality().hash(_incomingFiles),
       clientVersion,
       const DeepCollectionEquality().hash(_tailFSShares),
-      health);
+      health,
+      const DeepCollectionEquality().hash(_peerMessageEvent));
 
   /// Create a copy of IpnNotification
   /// with the given fields replaced by the non-null parameter values.
@@ -1184,8 +1217,9 @@ abstract class _IpnNotification implements IpnNotification {
       @JsonKey(name: 'IncomingFiles') final List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') final ClientVersion? clientVersion,
       @JsonKey(name: 'TailFSShares') final List<String>? tailFSShares,
-      @JsonKey(name: 'Health')
-      final HealthState? health}) = _$IpnNotificationImpl;
+      @JsonKey(name: 'Health') final HealthState? health,
+      @JsonKey(name: 'PeerMessageEvent')
+      final Map<String, dynamic>? peerMessageEvent}) = _$IpnNotificationImpl;
 
   factory _IpnNotification.fromJson(Map<String, dynamic> json) =
       _$IpnNotificationImpl.fromJson;
@@ -1238,6 +1272,9 @@ abstract class _IpnNotification implements IpnNotification {
   @override
   @JsonKey(name: 'Health')
   HealthState? get health;
+  @override
+  @JsonKey(name: 'PeerMessageEvent')
+  Map<String, dynamic>? get peerMessageEvent;
 
   /// Create a copy of IpnNotification
   /// with the given fields replaced by the non-null parameter values.

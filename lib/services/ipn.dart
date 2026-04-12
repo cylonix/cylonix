@@ -254,13 +254,17 @@ class IpnService {
     final c = Completer();
     late final StreamSubscription<BackendNotifyEvent> sub;
 
+    // Use a longer initial timeout (60s) since the backend may take time
+    // to establish a connection to the peer before progress events start.
+    // Once progress events arrive, use a shorter 30s inactivity timeout.
+    var timeoutDuration = const Duration(seconds: 60);
     void setTimeout() {
-      currentTimer = Timer(const Duration(seconds: 10), () {
+      currentTimer = Timer(timeoutDuration, () {
         if (!c.isCompleted) {
           c.completeError(
             TimeoutException(
               "Transfer to peer timed out",
-              const Duration(seconds: 10),
+              timeoutDuration,
             ),
           );
         }
@@ -277,6 +281,8 @@ class IpnService {
         final outgoingFiles = event.notification.outgoingFiles ?? [];
         // Only reset timeout if we see progress for our files
         if (outgoingFiles.any((f) => f.peerID == peerID)) {
+          // Switch to shorter inactivity timeout after first progress
+          timeoutDuration = const Duration(seconds: 30);
           currentTimer?.cancel();
           setTimeout();
         }
@@ -593,6 +599,15 @@ class IpnService {
   }
 
   Future<void> _turnOffVPN() async {
+    if (_useHttpLocalApi) {
+      // For direct/daemon mode, set WantRunning=false via prefs
+      await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/prefs'),
+        'PATCH',
+        body: {'WantRunningSet': true, 'WantRunning': false},
+      );
+      return;
+    }
     final result = await _sendCommand('turn_off_vpn', '');
     if (result != 'Success') {
       throw Exception('Turn off VPN failed: $result');
@@ -688,6 +703,21 @@ class IpnService {
                 "Notification: backend state = ${notification.state}",
                 sendToIpn: false,
               );
+            }
+            // Handle peer message events from watch-ipn-bus (daemon mode)
+            if (notification.peerMessageEvent != null) {
+              try {
+                final event = PeerMessagingEvent.fromJson(
+                  notification.peerMessageEvent!,
+                );
+                _pendingPeerMessagingEvents.add(event);
+                _peerMessagingController.add(event);
+                eventBus.fire(PeerMessagingBridgeEvent(event));
+              } catch (e) {
+                _logger.e(
+                  'Failed to parse peer message event from notification: $e',
+                );
+              }
             }
             eventBus.fire(BackendNotifyEvent(notification));
           } catch (e) {
@@ -905,6 +935,23 @@ class IpnService {
   Future<PeerMessagingSendResult> sendPeerMessagingMessage(
     Map<String, dynamic> payload,
   ) async {
+    if (_useHttpLocalApi) {
+      final result = await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/peer-message/send'),
+        'POST',
+        body: payload,
+      );
+      if (result.trimLeft().startsWith('{')) {
+        return PeerMessagingSendResult.fromJson(
+          Map<String, dynamic>.from(jsonDecode(result) as Map),
+        );
+      }
+      return const PeerMessagingSendResult(
+        accepted: true,
+        queued: false,
+        deliveryStatus: PeerMessagingDeliveryStatus.delivered,
+      );
+    }
     final result = await _sendCommand(
       'send_peer_message',
       jsonEncode(payload),
@@ -1060,7 +1107,7 @@ class IpnService {
         request.headers.set(HttpHeaders.connectionHeader, "close");
       }
       final response = await request.close().timeout(
-            const Duration(milliseconds: 1000),
+            const Duration(seconds: 30),
           );
 
       if (response.statusCode != 200) {
