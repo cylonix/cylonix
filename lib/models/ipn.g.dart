@@ -262,6 +262,7 @@ Map<String, dynamic> _$$IpnOptionsImplToJson(_$IpnOptionsImpl instance) =>
 _$MaskedPrefsImpl _$$MaskedPrefsImplFromJson(Map<String, dynamic> json) =>
     _$MaskedPrefsImpl(
       controlURLSet: json['ControlURLSet'] as bool?,
+      authKeySet: json['AuthKeySet'] as bool?,
       routeAllSet: json['RouteAllSet'] as bool?,
       corpDNSSet: json['CorpDNSSet'] as bool?,
       exitNodeIDSet: json['ExitNodeIDSet'] as bool?,
@@ -273,6 +274,7 @@ _$MaskedPrefsImpl _$$MaskedPrefsImplFromJson(Map<String, dynamic> json) =>
       hostnameSet: json['HostnameSet'] as bool?,
       internalExitNodePriorSet: json['InternalExitNodePriorSet'] as bool?,
       controlURL: json['ControlURL'] as String?,
+      authKey: json['AuthKey'] as String?,
       routeAll: json['RouteAll'] as bool?,
       corpDNS: json['CorpDNS'] as bool?,
       exitNodeID: json['ExitNodeID'] as String?,
@@ -290,6 +292,7 @@ _$MaskedPrefsImpl _$$MaskedPrefsImplFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$$MaskedPrefsImplToJson(_$MaskedPrefsImpl instance) =>
     <String, dynamic>{
       'ControlURLSet': instance.controlURLSet,
+      'AuthKeySet': instance.authKeySet,
       'RouteAllSet': instance.routeAllSet,
       'CorpDNSSet': instance.corpDNSSet,
       'ExitNodeIDSet': instance.exitNodeIDSet,
@@ -301,6 +304,7 @@ Map<String, dynamic> _$$MaskedPrefsImplToJson(_$MaskedPrefsImpl instance) =>
       'HostnameSet': instance.hostnameSet,
       'InternalExitNodePriorSet': instance.internalExitNodePriorSet,
       'ControlURL': instance.controlURL,
+      'AuthKey': instance.authKey,
       'RouteAll': instance.routeAll,
       'CorpDNS': instance.corpDNS,
       'ExitNodeID': instance.exitNodeID,

@@ -159,7 +159,12 @@ class _PeerMessagingThreadViewState
     }
 
     final attachmentsDir = Directory(
-      p.join(sharedFolderPath, 'peer-messaging', 'attachments'),
+      p.join(
+        sharedFolderPath,
+        'peer-messaging',
+        'attachments',
+        _attachmentScopeFolderName(),
+      ),
     );
     await attachmentsDir.create(recursive: true);
 
@@ -748,7 +753,12 @@ class _PeerMessagingThreadViewState
   Future<Directory> _managedAttachmentDirectory() async {
     final supportDir = await getApplicationSupportDirectory();
     final attachmentsDir = Directory(
-      p.join(supportDir.path, 'openclaw', 'attachments'),
+      p.join(
+        supportDir.path,
+        'openclaw',
+        'attachments',
+        _attachmentScopeFolderName(),
+      ),
     );
     await attachmentsDir.create(recursive: true);
     return attachmentsDir;
@@ -757,7 +767,12 @@ class _PeerMessagingThreadViewState
   Future<String> _iosAttachmentSavePath(String fileName) async {
     final dir = await getApplicationDocumentsDirectory();
     final attachmentsDir = Directory(
-      p.join(dir.path, 'downloads', 'peer-messaging'),
+      p.join(
+        dir.path,
+        'downloads',
+        'peer-messaging',
+        _attachmentScopeFolderName(),
+      ),
     );
     await attachmentsDir.create(recursive: true);
 
@@ -778,6 +793,11 @@ class _PeerMessagingThreadViewState
       attachmentsDir.path,
       '${baseName}_${DateTime.now().millisecondsSinceEpoch}$extension',
     );
+  }
+
+  String _attachmentScopeFolderName() {
+    final profileId = ref.read(currentLoginProfileProvider)?.id ?? 'default';
+    return profileId.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   }
 
   Future<AwaitingFile?> _resolveCurrentWaitingFileForAttachment(
@@ -2804,7 +2824,7 @@ class _ReplyLinkIndicatorPainter extends CustomPainter {
       final startY = previewHeight;
       final endY = targetCenterY;
       final gap = idealEndX - idealStartX;
-      final needed = 2 * cornerRadius;
+      const needed = 2 * cornerRadius;
       double startX = idealStartX;
       double endX = idealEndX;
       if (gap < needed) {
@@ -2831,7 +2851,7 @@ class _ReplyLinkIndicatorPainter extends CustomPainter {
       final startY = previewHeight;
       final endY = targetCenterY;
       final gap = idealStartX - idealEndX;
-      final needed = 2 * cornerRadius;
+      const needed = 2 * cornerRadius;
       double startX = idealStartX;
       double endX = idealEndX;
       if (gap < needed) {

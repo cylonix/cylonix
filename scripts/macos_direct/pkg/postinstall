@@ -1,0 +1,81 @@
+#!/bin/zsh
+# Copyright (c) EZBLOCK Inc & AUTHORS
+# SPDX-License-Identifier: BSD-3-Clause
+
+set -euo pipefail
+
+PLIST_NAME="io.cylonix.sase.direct.daemon"
+PLIST_DST="/Library/LaunchDaemons/$PLIST_NAME.plist"
+APP_PATH="/Applications/Cylonix.app"
+DAEMON_PATH="$APP_PATH/Contents/Resources/cylonixd"
+
+# Create required directories
+mkdir -p /var/lib/cylonix
+mkdir -p /var/run/cylonix
+mkdir -p /var/log/cylonix
+
+# Stop existing daemon if running
+if launchctl list "$PLIST_NAME" &>/dev/null; then
+  launchctl unload "$PLIST_DST" 2>/dev/null || true
+fi
+
+# Install launchd plist
+cat > "$PLIST_DST" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>io.cylonix.sase.direct.daemon</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/Cylonix.app/Contents/Resources/cylonixd</string>
+		<string>--tun</string>
+		<string>utun</string>
+		<string>--state</string>
+		<string>/var/lib/cylonix/cylonixd.state</string>
+		<string>--statedir</string>
+		<string>/var/lib/cylonix</string>
+		<string>--socket</string>
+		<string>/var/run/cylonix/cylonixd.sock</string>
+		<string>--port</string>
+		<string>41741</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/var/log/cylonix/cylonixd.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/log/cylonix/cylonixd.log</string>
+</dict>
+</plist>
+PLIST
+
+chown root:wheel "$PLIST_DST"
+chmod 644 "$PLIST_DST"
+
+# Load and start daemon
+launchctl load "$PLIST_DST"
+
+# Kill any running Cylonix app so the new version is picked up
+killall Cylonix 2>/dev/null || true
+killall "cylonix-direct" 2>/dev/null || true
+
+# Register app with LaunchServices so macOS uses this copy for share extension
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
+
+# Unregister any stale copies from derived-data directories
+"$LSREGISTER" -u "/tmp/cylonix-direct-derived" 2>/dev/null || true
+
+# Register the installed app
+"$LSREGISTER" -f -R "$APP_PATH"
+
+# Register share extension with pluginkit
+SHARE_EXT="$APP_PATH/Contents/PlugIns/ShareExtension.appex"
+if [[ -d "$SHARE_EXT" ]]; then
+  pluginkit -a "$SHARE_EXT" 2>/dev/null || true
+fi
+
+exit 0

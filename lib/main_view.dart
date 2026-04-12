@@ -16,6 +16,7 @@ import 'files_waiting_view.dart';
 import 'health_view.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
+import 'services/ipn.dart';
 import 'providers/peer_messaging.dart';
 import 'providers/settings.dart';
 import 'providers/theme.dart';
@@ -57,6 +58,10 @@ class MainView extends ConsumerStatefulWidget {
 
 class _MainViewState extends ConsumerState<MainView> {
   static final _logger = Logger(tag: "MainView");
+  static const _loginStateWarnableCode = 'login-state';
+  static const _healthArgErrorKey = 'error';
+  static bool _vpnPermissionAutoRequestedThisLaunch = false;
+  final _authKeyController = TextEditingController();
   Timer? _autoLaunchTimer;
   String? _urlToLaunch;
   bool _waitingForURL = false;
@@ -66,11 +71,36 @@ class _MainViewState extends ConsumerState<MainView> {
   bool _signInWithWebSuccess = false;
   bool _showingSigninQRCode = false;
   bool _isReauthenticating = false;
+  bool _isSubmittingAuthKey = false;
+  bool _showAuthKeyEntry = false;
+  String? _authKeyErrorText;
+  bool _vpnPermissionRequestInFlight = false;
+  bool _vpnPermissionAutoRequestScheduled = false;
 
   @override
   void dispose() {
     _cancelAutoLaunchTimer();
+    _authKeyController.dispose();
     super.dispose();
+  }
+
+  void _maybeAutoRequestVpnPermission(WidgetRef ref) {
+    if (!Platform.isMacOS ||
+        _vpnPermissionRequestInFlight ||
+        _vpnPermissionAutoRequestScheduled ||
+        _vpnPermissionAutoRequestedThisLaunch) {
+      return;
+    }
+
+    _vpnPermissionAutoRequestedThisLaunch = true;
+    _vpnPermissionAutoRequestScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _vpnPermissionAutoRequestScheduled = false;
+      if (!mounted || _vpnPermissionRequestInFlight) {
+        return;
+      }
+      await _requestPermission(context, ref, showErrorDialog: false);
+    });
   }
 
   @override
@@ -829,20 +859,39 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildConnectView(BuildContext context, WidgetRef ref) {
-    if (!isApple()) {
+    if (!isApple() || IpnService.isDirectDistribution) {
       // Android asks for VPN permission ONLY after backend is running.
-      // We don't need to check for vpn permission first.
+      // Direct distribution uses launchd daemon, no VPN permission needed.
       return _buildVPNPreparedConnectView(context, ref);
     }
 
     return ref.watch(vpnPermissionNotifierProvider).when(
           data: (state) {
+            if (state.isGranted) {
+              _vpnPermissionRequestInFlight = false;
+              _vpnPermissionAutoRequestScheduled = false;
+              _vpnPermissionAutoRequestedThisLaunch = false;
+              return _buildVPNPreparedConnectView(context, ref);
+            }
+
+            if (Platform.isMacOS) {
+              _maybeAutoRequestVpnPermission(ref);
+              return _buildPermissionRequest(
+                context,
+                ref,
+                isAutomatic: true,
+                hasBeenAsked: state.hasBeenAsked,
+              );
+            }
+
             if (!state.hasBeenAsked && !state.isGranted) {
               return _buildWelcomeView(context, ref);
-            } else if (!state.isGranted) {
-              return _buildPermissionRequest(context, ref);
             }
-            return _buildVPNPreparedConnectView(context, ref);
+            return _buildPermissionRequest(
+              context,
+              ref,
+              hasBeenAsked: state.hasBeenAsked,
+            );
           },
           loading: () => _buildLoadingWithLogoView(context, ref),
           error: (error, stack) => _buildErrorWidget(
@@ -980,9 +1029,15 @@ class _MainViewState extends ConsumerState<MainView> {
   Widget _buildConnectingView(BuildContext context, bool turningOn) {
     final health = ref.watch(healthProvider);
     final loginURL = ref.read(ipnStateProvider)?.browseToURL;
-    if (health != null && health.warnings?['login-state'] != null) {
-      _logger.d("Login state warning: ${health.warnings!['login-state']}");
-      return _buildLoginRequiredView(context, ref, loginURL);
+    final loginStateWarning = health?.warnings?[_loginStateWarnableCode];
+    if (loginStateWarning != null) {
+      _logger.d("Login state warning: $loginStateWarning");
+      return _buildLoginRequiredView(
+        context,
+        ref,
+        loginURL,
+        loginStateWarning: loginStateWarning,
+      );
     }
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 600),
@@ -1003,11 +1058,15 @@ class _MainViewState extends ConsumerState<MainView> {
             ),
             const AdaptiveLoadingWidget(),
             AdaptiveButton(
+              key: const ValueKey('connecting_cancel_retry_button'),
+              accessibilityLabel: 'Cancel and retry connection',
               width: 250,
               onPressed: () => _resetIpnStateNotifier(),
               child: const Text('Cancel and Retry'),
             ),
             AdaptiveButton(
+              key: const ValueKey('connecting_start_signin_button'),
+              accessibilityLabel: 'Start sign in',
               width: 250,
               onPressed: () => _startSignin(context, ref),
               child: const Text('Start Signin'),
@@ -1104,6 +1163,8 @@ class _MainViewState extends ConsumerState<MainView> {
         ),
         const SizedBox(height: 48),
         AdaptiveButton(
+          key: const ValueKey('disconnected_start_button'),
+          accessibilityLabel: 'Start connecting to Cylonix',
           filled: true,
           width: 200,
           onPressed: () => _onConnect(context, ref),
@@ -1113,7 +1174,19 @@ class _MainViewState extends ConsumerState<MainView> {
     );
   }
 
-  Widget _buildPermissionRequest(BuildContext context, WidgetRef ref) {
+  Widget _buildPermissionRequest(
+    BuildContext context,
+    WidgetRef ref, {
+    bool isAutomatic = false,
+    bool hasBeenAsked = false,
+  }) {
+    final isWaitingForSystemApproval = isAutomatic && hasBeenAsked;
+    final title =
+        isWaitingForSystemApproval ? 'Approve VPN Permission' : 'Preparing VPN';
+    final message = isWaitingForSystemApproval
+        ? 'Cylonix has requested VPN permission. Approve the request in System Settings to continue.'
+        : 'Cylonix is requesting VPN permission to secure your connection. You may be prompted by macOS.';
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1122,7 +1195,7 @@ class _MainViewState extends ConsumerState<MainView> {
           const Icon(Icons.vpn_key, size: 50),
           const SizedBox(height: 16),
           Text(
-            'VPN Permission Required',
+            title,
             style: Theme.of(context).textTheme.titleLarge?.apply(
                   fontWeightDelta: 2,
                   color: isApple()
@@ -1132,8 +1205,7 @@ class _MainViewState extends ConsumerState<MainView> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Cylonix needs VPN permission to secure your connection. '
-            'Please grant permission when prompted.',
+            message,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.apply(
                   color: isApple()
@@ -1142,28 +1214,64 @@ class _MainViewState extends ConsumerState<MainView> {
                 ),
           ),
           const SizedBox(height: 48),
-          AdaptiveButton(
-            filled: true,
-            onPressed: () => _requestPermission(context, ref),
-            child: const Text('Continue to Grant Permission'),
-          ),
+          if (isAutomatic) ...[
+            const AdaptiveLoadingWidget(),
+            const SizedBox(height: 24),
+            AdaptiveButton(
+              key: const ValueKey('vpn_permission_retry_button'),
+              accessibilityLabel: 'Retry VPN permission request',
+              filled: false,
+              onPressed: () => _requestPermission(context, ref),
+              child: const Text('Retry Request'),
+            ),
+          ] else
+            AdaptiveButton(
+              key: const ValueKey('vpn_permission_continue_button'),
+              accessibilityLabel: 'Continue to grant VPN permission',
+              filled: true,
+              onPressed: () => _requestPermission(context, ref),
+              child: const Text('Continue to Grant Permission'),
+            ),
         ],
       ),
     );
   }
 
-  Future<void> _requestPermission(BuildContext context, WidgetRef ref) async {
+  Future<void> _requestPermission(
+    BuildContext context,
+    WidgetRef ref, {
+    bool showErrorDialog = true,
+  }) async {
+    if (_vpnPermissionRequestInFlight) {
+      _logger.d("VPN permission request already in flight");
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _vpnPermissionRequestInFlight = true;
+      });
+    }
+
     try {
       await ref
           .read(vpnPermissionNotifierProvider.notifier)
           .requestPermission();
     } catch (e) {
-      if (context.mounted) {
+      if (showErrorDialog && context.mounted) {
         await showAlertDialog(
           context,
           "Error",
           "Failed to request VPN permission: $e",
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _vpnPermissionRequestInFlight = false;
+        });
+      } else {
+        _vpnPermissionRequestInFlight = false;
       }
     }
   }
@@ -1202,6 +1310,8 @@ class _MainViewState extends ConsumerState<MainView> {
           ),
           const SizedBox(height: 16),
           AdaptiveButton(
+            key: const ValueKey('vpn_permission_start_button'),
+            accessibilityLabel: 'Start VPN permission request',
             filled: true,
             width: 200,
             onPressed: () => _requestPermission(context, ref),
@@ -1240,6 +1350,8 @@ class _MainViewState extends ConsumerState<MainView> {
           const SizedBox(height: 16),
           if (adminURL != null)
             AdaptiveButton(
+              key: const ValueKey('open_admin_console_button'),
+              accessibilityLabel: 'Open admin console',
               onPressed: () => _loginToAdminURL(adminURL),
               child: const Text('Open Admin Console'),
             ),
@@ -1312,6 +1424,8 @@ class _MainViewState extends ConsumerState<MainView> {
           ),
           const SizedBox(height: 16),
           AdaptiveButton(
+            key: const ValueKey('not_connected_connect_button'),
+            accessibilityLabel: 'Connect to your network',
             filled: true,
             width: 200,
             onPressed: () => _onConnect(context, ref),
@@ -1390,6 +1504,7 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   void _startSignin(BuildContext context, WidgetRef ref) async {
+    FocusScope.of(context).unfocus();
     setState(() {
       _waitingForURL = true;
     });
@@ -1401,6 +1516,244 @@ class _MainViewState extends ConsumerState<MainView> {
       _logger.e("Failed to start signin: $e");
       await showAlertDialog(context, "Error", "Failed to start signin: $e");
     }
+  }
+
+  Future<void> _submitAuthKey(BuildContext context, WidgetRef ref) async {
+    final authKey = _authKeyController.text.trim();
+    if (authKey.isEmpty || _isSubmittingAuthKey) {
+      setState(() {
+        _authKeyErrorText =
+            authKey.isEmpty ? 'Enter the auth key from your admin' : null;
+      });
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    _cancelAutoLaunchTimer();
+    setState(() {
+      _authKeyErrorText = null;
+      _isSubmittingAuthKey = true;
+      _waitingForURL = false;
+      _signingInWithApple = false;
+      _signInWithAppleSuccess = false;
+      _signInWithWebSuccess = false;
+    });
+
+    try {
+      await ref.read(ipnStateNotifierProvider.notifier).login(
+            authKey: authKey,
+            controlURL: ref.read(controlURLProvider),
+          );
+    } catch (e) {
+      _logger.e("Failed to sign in with auth key: $e");
+      if (!mounted) return;
+      setState(() {
+        _authKeyErrorText = _friendlyAuthKeyError('$e');
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmittingAuthKey = false;
+        });
+      }
+    }
+  }
+
+  String _friendlyAuthKeyError(String rawError) {
+    return _looksLikeInvalidAuthKey(rawError)
+        ? 'That auth key is invalid or has expired'
+        : rawError;
+  }
+
+  bool _looksLikeInvalidAuthKey(String rawError) {
+    final normalizedError = rawError.toLowerCase();
+    return (normalizedError.contains('register request') &&
+            normalizedError.contains('http 401')) ||
+        normalizedError.contains('invalid authkey') ||
+        normalizedError.contains('invalid auth key') ||
+        normalizedError.contains('expired auth key');
+  }
+
+  Widget _buildAuthKeySignInCard(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool showAccountsShortcut,
+    String? inlineErrorText,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final supportingTextColor = isApple()
+        ? CupertinoColors.secondaryLabel.resolveFrom(context)
+        : Theme.of(context).textTheme.bodyMedium?.color;
+    final cardColor = isApple()
+        ? CupertinoColors.secondarySystemBackground.resolveFrom(context)
+        : colorScheme.surfaceContainerHighest;
+    final borderColor = isApple()
+        ? CupertinoColors.separator.resolveFrom(context)
+        : colorScheme.outlineVariant;
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isApple() ? CupertinoIcons.lock_fill : Icons.key,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Sign in with auth key',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Paste the auth key your admin sent you. This is the fastest way '
+            'to join your network.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: supportingTextColor,
+                ),
+          ),
+          const SizedBox(height: 16),
+          AdaptiveTextFormField(
+            key: const ValueKey('signin_auth_key_input'),
+            accessibilityLabel: 'Auth key input',
+            controller: _authKeyController,
+            placeholder: 'cy-auth-xxxxxx-xxxxxxxxxxxxxxx',
+            labelText: isApple() ? null : 'Auth Key',
+            errorText: inlineErrorText,
+            autofocus: true,
+            keyboardType: TextInputType.visiblePassword,
+            textInputAction: TextInputAction.done,
+            onChanged: (_) {
+              if (_authKeyErrorText != null) {
+                setState(() {
+                  _authKeyErrorText = null;
+                });
+              }
+            },
+            onFieldSubmitted: (_) => _submitAuthKey(context, ref),
+          ),
+          if (inlineErrorText != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              inlineErrorText,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isApple()
+                        ? CupertinoColors.systemRed.resolveFrom(context)
+                        : Theme.of(context).colorScheme.error,
+                  ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: AdaptiveButton(
+              key: const ValueKey('signin_auth_key_submit_button'),
+              accessibilityLabel: 'Continue with auth key',
+              filled: true,
+              onPressed: _isSubmittingAuthKey
+                  ? () {}
+                  : () => _submitAuthKey(context, ref),
+              child: Text(
+                _isSubmittingAuthKey
+                    ? 'Signing in with Auth Key...'
+                    : 'Continue with Auth Key',
+              ),
+            ),
+          ),
+          if (showAccountsShortcut) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: AdaptiveButton(
+                key: const ValueKey('open_accounts_button'),
+                accessibilityLabel: 'Open accounts',
+                textButton: true,
+                onPressed: widget.onNavigateToUserSwitcher,
+                child: const Text('Open Accounts'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOtherSigninMethods(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool isInvalidAuthKey,
+  }) {
+    final isAndroidTV = ref.watch(isAndroidTVProvider);
+    return Column(
+      children: [
+        if (!isAndroidTV) ...[
+          if (!_showAuthKeyEntry)
+            SizedBox(
+              width: 300,
+              height: 40,
+              child: AdaptiveButton(
+                key: const ValueKey('show_auth_key_signin_button'),
+                accessibilityLabel: 'Show auth key sign in',
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _showAuthKeyEntry = true;
+                    _authKeyErrorText = null;
+                  });
+                },
+                child: const Text('Sign in with Auth Key'),
+              ),
+            ),
+          if (_showAuthKeyEntry)
+            _buildAuthKeySignInCard(
+              context,
+              ref,
+              showAccountsShortcut: isInvalidAuthKey,
+              inlineErrorText: isInvalidAuthKey
+                  ? 'That auth key is invalid or has expired'
+                  : _authKeyErrorText,
+            ),
+          const SizedBox(height: 20),
+        ],
+        if (!_waitingForURL)
+          SizedBox(
+            width: 300,
+            height: 40,
+            child: AdaptiveButton(
+              key: const ValueKey('signin_other_methods_button'),
+              accessibilityLabel: 'Sign in with other methods',
+              onPressed: () => _startSignin(context, ref),
+              child: const Text('Sign In with Other Methods'),
+            ),
+          ),
+        if (_waitingForURL) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Waiting for backend to start the signin process...',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.apply(
+                  color: isApple()
+                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                      : null,
+                ),
+          ),
+          const SizedBox(height: 16),
+          const CircularProgressIndicator.adaptive(),
+        ],
+      ],
+    );
   }
 
   void _signinWithApple(String loginURL) async {
@@ -1556,6 +1909,8 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
                   title: const Text('Apple Signin Success'),
                   trailing: AdaptiveButton(
+                    key: const ValueKey('apple_signin_confirm_cancel_button'),
+                    accessibilityLabel: 'Cancel Apple sign in confirmation',
                     onPressed: () => Navigator.pop(c, false),
                     child: const Text('Cancel'),
                   ),
@@ -1569,6 +1924,8 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
                 ),
                 AdaptiveButton(
+                  key: const ValueKey('apple_signin_connect_device_button'),
+                  accessibilityLabel: 'Connect device after Apple sign in',
                   filled: true,
                   onPressed: () async {
                     try {
@@ -1613,10 +1970,13 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   Widget _buildLoginRequiredView(
-      BuildContext context, WidgetRef ref, String? loginURL) {
+      BuildContext context, WidgetRef ref, String? loginURL,
+      {UnhealthyState? loginStateWarning}) {
     final profiles = ref.watch(loginProfilesProvider);
     var urlLaunched = ref.watch(urlBrowsedProvider);
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final invalidAuthKeyError = _invalidAuthKeyError(loginStateWarning);
+    final isInvalidAuthKey = invalidAuthKeyError != null;
     _logger.d("urlLaunched1: $urlLaunched, loginURL: $loginURL");
     urlLaunched = ref.read(ipnStateNotifierProvider.notifier).urlBrowsed;
     _logger.d("urlLaunched2: $urlLaunched, loginURL: $loginURL");
@@ -1630,37 +1990,11 @@ class _MainViewState extends ConsumerState<MainView> {
           _welcomeTitle,
           const SizedBox(height: 8),
           if (loginURL == null) ...[
-            Text(
-              'Sign in to join your network',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium?.apply(
-                    color: isApple()
-                        ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                        : null,
-                  ),
+            _buildOtherSigninMethods(
+              context,
+              ref,
+              isInvalidAuthKey: isInvalidAuthKey,
             ),
-            const SizedBox(height: 16),
-            if (!_waitingForURL)
-              AdaptiveButton(
-                autofocus: true,
-                filled: true,
-                onPressed: () => _startSignin(context, ref),
-                child: const Text('Start Signin'),
-              ),
-            if (_waitingForURL) ...[
-              const SizedBox(height: 16),
-              Text(
-                'Waiting for backend to start the signin process...',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium?.apply(
-                      color: isApple()
-                          ? CupertinoColors.secondaryLabel.resolveFrom(context)
-                          : null,
-                    ),
-              ),
-              const SizedBox(height: 16),
-              const CircularProgressIndicator.adaptive(),
-            ],
           ],
           if (loginURL != null && _canSignInWithAppleInApp) ...[
             if (_signingInWithApple || urlLaunched == loginURL) ...[
@@ -1692,15 +2026,24 @@ class _MainViewState extends ConsumerState<MainView> {
             if (!_signingInWithApple && urlLaunched != loginURL) ...[
               SizedBox(
                 width: 300,
-                child: SignInWithAppleButton(
-                  height: 40,
-                  style: isDarkMode(context)
-                      ? SignInWithAppleButtonStyle.whiteOutlined
-                      : SignInWithAppleButtonStyle.black,
-                  onPressed: () => _signinWithApple(loginURL),
+                child: Semantics(
+                  label: 'Sign in with Apple',
+                  button: true,
+                  child: KeyedSubtree(
+                    key: const ValueKey('signin_with_apple_button'),
+                    child: SignInWithAppleButton(
+                      height: 40,
+                      style: isDarkMode(context)
+                          ? SignInWithAppleButtonStyle.whiteOutlined
+                          : SignInWithAppleButtonStyle.black,
+                      onPressed: () => _signinWithApple(loginURL),
+                    ),
+                  ),
                 ),
               ),
               AdaptiveButton(
+                key: const ValueKey('signin_more_methods_web_button'),
+                accessibilityLabel: 'Sign in with more methods',
                 width: 300,
                 height: 40,
                 onPressed: () => _launchUrl(loginURL, force: true),
@@ -1721,6 +2064,8 @@ class _MainViewState extends ConsumerState<MainView> {
             ),
             const SizedBox(height: 16),
             AdaptiveButton(
+                key: const ValueKey('show_signin_qr_code_button'),
+                accessibilityLabel: 'Show sign in QR code',
                 autofocus: true,
                 filled: true,
                 onPressed: () async {
@@ -1784,6 +2129,8 @@ class _MainViewState extends ConsumerState<MainView> {
             ),
             const SizedBox(height: 16),
             AdaptiveButton(
+              key: const ValueKey('go_to_signin_page_button'),
+              accessibilityLabel: 'Go to sign in page',
               filled: true,
               onPressed: () => _launchUrl(loginURL, force: true),
               child: const Text('Go to Signin Page'),
@@ -1801,6 +2148,8 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
             ),
             AdaptiveButton(
+              key: const ValueKey('select_profile_button'),
+              accessibilityLabel: 'Select profile',
               textButton: true,
               onPressed: widget.onNavigateToUserSwitcher,
               child: const Text('Select Profile'),
@@ -1840,5 +2189,21 @@ class _MainViewState extends ConsumerState<MainView> {
       padding: const EdgeInsets.all(16),
       child: AdaptiveErrorWidget(error: error, onRetry: onRetry),
     );
+  }
+
+  String? _invalidAuthKeyError(UnhealthyState? warning) {
+    if (warning?.warnableCode != _loginStateWarnableCode) {
+      return null;
+    }
+
+    final rawError = warning?.args?[_healthArgErrorKey] ?? warning?.text ?? '';
+    final normalizedError = rawError.toLowerCase();
+    final isInvalidAuthKey = (normalizedError.contains('register request') &&
+            normalizedError.contains('http 401')) ||
+        normalizedError.contains('invalid authkey') ||
+        normalizedError.contains('invalid auth key') ||
+        normalizedError.contains('expired auth key');
+
+    return isInvalidAuthKey ? rawError : null;
   }
 }

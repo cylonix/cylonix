@@ -750,7 +750,7 @@ class IpnService {
       wantRunning: false,
       wantRunningSet: true,
     ));
-    if (isApple()) await _turnOffVPN();
+    if (isApple() && !isDirectDistribution) await _turnOffVPN();
   }
 
   Future<void> stopPing() async {
@@ -1441,6 +1441,7 @@ class IpnService {
       Future<void> editPrefsBeforeLogin() async {
         // Handle MDM control URL (assuming you have MDM settings)
         var prefs = maskedPrefs;
+        final isInteractiveLogin = authKey == null || authKey.isEmpty;
         final mdmControlURL = await _getMdmControlURL();
         if (mdmControlURL.isNotEmpty) {
           controlURL = mdmControlURL;
@@ -1455,6 +1456,13 @@ class IpnService {
           wantRunning: true,
           wantRunningSet: true,
         );
+        if (isInteractiveLogin) {
+          prefs = prefs.copyWith(
+            authKey: '',
+            authKeySet: true,
+          );
+          _logger.d("Clearing stored auth key before interactive login");
+        }
         _logger.d("apply control URL $controlURL");
         await editPrefs(prefs);
       }
@@ -1529,7 +1537,7 @@ class IpnService {
       }
     });
     try {
-      if (isApple()) {
+      if (isApple() && !isDirectDistribution) {
         try {
           await createTunnelsManager(/* don't care about the result */ "");
           final e = await completer.future.timeout(const Duration(seconds: 15));
@@ -1748,20 +1756,25 @@ class IpnService {
   static const useWindowsTcpClient = true;
 
   static HttpClient get _httpClient {
-    if (!Platform.isLinux && !Platform.isWindows) {
+    if (!_useHttpLocalApi) {
       throw UnsupportedError(
-          "Http client is only supported on Linux and Windows platforms.");
+          "Http client is not supported for this platform/distribution.");
     }
-    final socket = Platform.isLinux
-        ? "/var/run/cylonix/cylonixd.sock"
-        : r'\\.\pipe\ProtectedPrefix\Administrators\Cylonix\cylonixd';
+    final String socket;
+    if (Platform.isLinux || isDirectDistribution) {
+      socket = "/var/run/cylonix/cylonixd.sock";
+    } else if (Platform.isWindows) {
+      socket = r'\\.\pipe\ProtectedPrefix\Administrators\Cylonix\cylonixd';
+    } else {
+      throw UnsupportedError("No socket path for this platform.");
+    }
     final address = InternetAddress(socket, type: InternetAddressType.unix);
 
     final client = HttpClient()
       ..connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) {
         assert(proxyHost == null);
         assert(proxyPort == null);
-        return Platform.isLinux
+        return (Platform.isLinux || isDirectDistribution)
             ? Socket.startConnect(address, 0)
             : useWindowsTcpClient
                 ? Socket.startConnect("127.0.0.1", 41112)
@@ -1771,9 +1784,13 @@ class IpnService {
     return client;
   }
 
+  static const _distributionMode = String.fromEnvironment('DISTRIBUTION_MODE');
+
+  static bool get isDirectDistribution =>
+      Platform.isMacOS && _distributionMode == 'direct';
+
   static bool get _useHttpLocalApi {
-    // Use HTTP local API only on Linux and Windows.
-    return Platform.isLinux || Platform.isWindows;
+    return Platform.isLinux || Platform.isWindows || isDirectDistribution;
   }
 
   Future<String> _listenToHttpResponse(

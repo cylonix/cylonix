@@ -503,6 +503,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 20),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(

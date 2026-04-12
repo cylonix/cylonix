@@ -1,0 +1,7 @@
+DEVELOPMENT_TEAM = P7Y2NJ7JP3
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY[sdk=macosx*] = Developer ID Application
+
+DIRECT_APP_PROFILE_SPECIFIER = Cylonix Direct App Developer ID
+DIRECT_SYSTEM_EXTENSION_PROFILE_SPECIFIER = Cylonix Direct Network Extension Developer ID
+DIRECT_SHARE_EXTENSION_PROFILE_SPECIFIER = Cylonix Direct Share Extension Developer ID

@@ -233,6 +233,7 @@ class MaskedPrefs with _$MaskedPrefs {
 
   const factory MaskedPrefs({
     @JsonKey(name: 'ControlURLSet') bool? controlURLSet,
+    @JsonKey(name: 'AuthKeySet') bool? authKeySet,
     @JsonKey(name: 'RouteAllSet') bool? routeAllSet,
     @JsonKey(name: 'CorpDNSSet') bool? corpDNSSet,
     @JsonKey(name: 'ExitNodeIDSet') bool? exitNodeIDSet,
@@ -244,6 +245,7 @@ class MaskedPrefs with _$MaskedPrefs {
     @JsonKey(name: 'HostnameSet') bool? hostnameSet,
     @JsonKey(name: 'InternalExitNodePriorSet') bool? internalExitNodePriorSet,
     @JsonKey(name: 'ControlURL') String? controlURL,
+    @JsonKey(name: 'AuthKey') String? authKey,
     @JsonKey(name: 'RouteAll') bool? routeAll,
     @JsonKey(name: 'CorpDNS') bool? corpDNS,
     @JsonKey(name: 'ExitNodeID') StableNodeID? exitNodeID,

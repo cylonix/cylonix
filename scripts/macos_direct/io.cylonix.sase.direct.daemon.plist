@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>io.cylonix.sase.direct.daemon</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/Cylonix.app/Contents/Resources/cylonixd</string>
+		<string>--tun</string>
+		<string>utun</string>
+		<string>--state</string>
+		<string>/var/lib/cylonix/cylonixd.state</string>
+		<string>--statedir</string>
+		<string>/var/lib/cylonix</string>
+		<string>--socket</string>
+		<string>/var/run/cylonix/cylonixd.sock</string>
+		<string>--port</string>
+		<string>41741</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/var/log/cylonix/cylonixd.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/log/cylonix/cylonixd.log</string>
+</dict>
+</plist>

@@ -61,9 +61,11 @@
 		25B0F02F2D93B8C300222F78 /* key.h in Sources */ = {isa = PBXBuildFile; fileRef = 25B0F0122D93B8C300222F78 /* key.h */; };
 		25B0F0302D93B8C300222F78 /* ringlogger.c in Sources */ = {isa = PBXBuildFile; fileRef = 25B0F0132D93B8C300222F78 /* ringlogger.c */; };
 		25E16CAF2D93FD4500370B6F /* LocalizationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E16CAE2D93FD4500370B6F /* LocalizationHelper.swift */; };
-		25F66A742D93D00A0076904B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A732D93D0090076904B /* AppDelegate.swift */; };
-		25CC000300000000000A0001 /* NativeSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000200000000000A0001 /* NativeSwitchView.swift */; };
-		25F66A8D2D93D1DF0076904B /* TunnelConfiguration+UapiConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A872D93D1DE0076904B /* TunnelConfiguration+UapiConfig.swift */; };
+			25F66A742D93D00A0076904B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A732D93D0090076904B /* AppDelegate.swift */; };
+			25CC000300000000000A0001 /* NativeSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000200000000000A0001 /* NativeSwitchView.swift */; };
+			25CC100000000000000B0001 /* VpnController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC100000000000000B0002 /* VpnController.swift */; };
+			25CC100000000000000B0003 /* AppStoreVpnController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC100000000000000B0004 /* AppStoreVpnController.swift */; };
+			25F66A8D2D93D1DF0076904B /* TunnelConfiguration+UapiConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A872D93D1DE0076904B /* TunnelConfiguration+UapiConfig.swift */; };
 		25F66A8E2D93D1DF0076904B /* MockTunnels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A882D93D1DE0076904B /* MockTunnels.swift */; };
 		25F66A8F2D93D1DF0076904B /* TunnelsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A892D93D1DE0076904B /* TunnelsManager.swift */; };
 		25F66A902D93D1DF0076904B /* TunnelStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F66A8A2D93D1DE0076904B /* TunnelStatus.swift */; };
@@ -209,8 +211,10 @@
 		25B0F0122D93B8C300222F78 /* key.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = key.h; path = "../wireguard-apple/Sources/WireGuardKitC/key.h"; sourceTree = "<group>"; };
 		25B0F0132D93B8C300222F78 /* ringlogger.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = ringlogger.c; path = "../wireguard-apple/Sources/Shared/Logging/ringlogger.c"; sourceTree = "<group>"; };
 		25E16CAE2D93FD4500370B6F /* LocalizationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocalizationHelper.swift; path = "../wireguard-apple/Sources/WireGuardApp/LocalizationHelper.swift"; sourceTree = "<group>"; };
-		25F66A732D93D0090076904B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ../ios/Runner/AppDelegate.swift; sourceTree = "<group>"; };
-		25CC000200000000000A0001 /* NativeSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeSwitchView.swift; path = ../ios/Runner/NativeSwitchView.swift; sourceTree = "<group>"; };
+			25F66A732D93D0090076904B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ../ios/Runner/AppDelegate.swift; sourceTree = "<group>"; };
+			25CC000200000000000A0001 /* NativeSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeSwitchView.swift; path = ../ios/Runner/NativeSwitchView.swift; sourceTree = "<group>"; };
+			25CC100000000000000B0002 /* VpnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VpnController.swift; path = ../apple/Sources/AppRuntime/VpnController.swift; sourceTree = "<group>"; };
+			25CC100000000000000B0004 /* AppStoreVpnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreVpnController.swift; path = ../apple/Sources/AppRuntime/AppStoreVpnController.swift; sourceTree = "<group>"; };
 		25F66A872D93D1DE0076904B /* TunnelConfiguration+UapiConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TunnelConfiguration+UapiConfig.swift"; path = "../wireguard-apple/Sources/WireGuardApp/Tunnel/TunnelConfiguration+UapiConfig.swift"; sourceTree = "<group>"; };
 		25F66A882D93D1DE0076904B /* MockTunnels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockTunnels.swift; path = "../wireguard-apple/Sources/WireGuardApp/Tunnel/MockTunnels.swift"; sourceTree = "<group>"; };
 		25F66A892D93D1DE0076904B /* TunnelsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TunnelsManager.swift; path = "../wireguard-apple/Sources/WireGuardApp/Tunnel/TunnelsManager.swift"; sourceTree = "<group>"; };
@@ -394,12 +398,14 @@
 				25F66A8B2D93D1DE0076904B /* ActivateOnDemandOption.swift */,
 				25F66A882D93D1DE0076904B /* MockTunnels.swift */,
 				25F66A872D93D1DE0076904B /* TunnelConfiguration+UapiConfig.swift */,
-				25F66A8C2D93D1DF0076904B /* TunnelErrors.swift */,
-				25F66A892D93D1DE0076904B /* TunnelsManager.swift */,
-				25F66A8A2D93D1DE0076904B /* TunnelStatus.swift */,
-				25F66A732D93D0090076904B /* AppDelegate.swift */,
-				25CC000200000000000A0001 /* NativeSwitchView.swift */,
-				25B0F00C2D93B8C200222F78 /* Array+ConcurrentMap.swift */,
+					25F66A8C2D93D1DF0076904B /* TunnelErrors.swift */,
+					25F66A892D93D1DE0076904B /* TunnelsManager.swift */,
+					25F66A8A2D93D1DE0076904B /* TunnelStatus.swift */,
+					25F66A732D93D0090076904B /* AppDelegate.swift */,
+					25CC100000000000000B0002 /* VpnController.swift */,
+					25CC100000000000000B0004 /* AppStoreVpnController.swift */,
+					25CC000200000000000A0001 /* NativeSwitchView.swift */,
+					25B0F00C2D93B8C200222F78 /* Array+ConcurrentMap.swift */,
 				25B0EFF92D93B8C100222F78 /* DNSResolver.swift */,
 				25B0F0112D93B8C300222F78 /* DNSServer.swift */,
 				25B0F0062D93B8C200222F78 /* Endpoint.swift */,
@@ -841,10 +847,12 @@
 				25F66A8E2D93D1DF0076904B /* MockTunnels.swift in Sources */,
 				25F66A8F2D93D1DF0076904B /* TunnelsManager.swift in Sources */,
 				25F66A902D93D1DF0076904B /* TunnelStatus.swift in Sources */,
-				25F66A912D93D1DF0076904B /* ActivateOnDemandOption.swift in Sources */,
-				25F66A922D93D1DF0076904B /* TunnelErrors.swift in Sources */,
-				25F66A742D93D00A0076904B /* AppDelegate.swift in Sources */,
-				25CC000300000000000A0001 /* NativeSwitchView.swift in Sources */,
+					25F66A912D93D1DF0076904B /* ActivateOnDemandOption.swift in Sources */,
+					25F66A922D93D1DF0076904B /* TunnelErrors.swift in Sources */,
+					25F66A742D93D00A0076904B /* AppDelegate.swift in Sources */,
+					25CC100000000000000B0001 /* VpnController.swift in Sources */,
+					25CC100000000000000B0003 /* AppStoreVpnController.swift in Sources */,
+					25CC000300000000000A0001 /* NativeSwitchView.swift in Sources */,
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

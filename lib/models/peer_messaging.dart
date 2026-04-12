@@ -353,6 +353,7 @@ class PeerMessagingMessage {
 
 class PeerMessagingConversation {
   final String id;
+  final String profileId;
   final String title;
   final String subtitle;
   final DateTime updatedAt;
@@ -362,6 +363,7 @@ class PeerMessagingConversation {
 
   const PeerMessagingConversation({
     required this.id,
+    required this.profileId,
     required this.title,
     required this.subtitle,
     required this.updatedAt,
@@ -378,6 +380,7 @@ class PeerMessagingConversation {
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return PeerMessagingConversation(
       id: json['id'] as String? ?? '',
+      profileId: json['profile_id'] as String? ?? '',
       title: json['title'] as String? ?? 'Peer Messaging',
       subtitle: json['subtitle'] as String? ?? '',
       updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? '') ??
@@ -391,6 +394,7 @@ class PeerMessagingConversation {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      if (profileId.isNotEmpty) 'profile_id': profileId,
       'title': title,
       'subtitle': subtitle,
       'updated_at': updatedAt.toIso8601String(),
@@ -414,6 +418,7 @@ class PeerMessagingConversation {
   }
 
   PeerMessagingConversation copyWith({
+    String? profileId,
     String? title,
     String? subtitle,
     DateTime? updatedAt,
@@ -423,6 +428,7 @@ class PeerMessagingConversation {
   }) {
     return PeerMessagingConversation(
       id: id,
+      profileId: profileId ?? this.profileId,
       title: title ?? this.title,
       subtitle: subtitle ?? this.subtitle,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -588,6 +594,16 @@ class PeerMessagingState {
       conversations: conversations ?? this.conversations,
       proxy: proxy ?? this.proxy,
     );
+  }
+
+  List<PeerMessagingConversation> conversationsForProfile(String profileId) {
+    return conversations
+        .where((conversation) => conversation.profileId == profileId)
+        .toList();
+  }
+
+  PeerMessagingState forProfile(String profileId) {
+    return copyWith(conversations: conversationsForProfile(profileId));
   }
 }
 

@@ -1,0 +1,24 @@
+#!/bin/zsh
+# Copyright (c) EZBLOCK Inc & AUTHORS
+# SPDX-License-Identifier: BSD-3-Clause
+
+set -euo pipefail
+
+PLIST_NAME="io.cylonix.sase.direct.daemon"
+PLIST_DST="/Library/LaunchDaemons/$PLIST_NAME.plist"
+PKG_ID="io.cylonix.sase.direct.installer"
+
+# Stop existing daemon before overwriting the app
+if launchctl list "$PLIST_NAME" &>/dev/null; then
+  launchctl unload "$PLIST_DST" 2>/dev/null || true
+fi
+
+# Forget old package receipt so installer uses our --install-location
+pkgutil --forget "$PKG_ID" 2>/dev/null || true
+
+# Remove old-named app if present (renamed from cylonix-direct to Cylonix)
+if [[ -d "/Applications/cylonix-direct.app" ]]; then
+  rm -rf "/Applications/cylonix-direct.app"
+fi
+
+exit 0

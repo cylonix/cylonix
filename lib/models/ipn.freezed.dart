@@ -2588,6 +2588,8 @@ MaskedPrefs _$MaskedPrefsFromJson(Map<String, dynamic> json) {
 mixin _$MaskedPrefs {
   @JsonKey(name: 'ControlURLSet')
   bool? get controlURLSet => throw _privateConstructorUsedError;
+  @JsonKey(name: 'AuthKeySet')
+  bool? get authKeySet => throw _privateConstructorUsedError;
   @JsonKey(name: 'RouteAllSet')
   bool? get routeAllSet => throw _privateConstructorUsedError;
   @JsonKey(name: 'CorpDNSSet')
@@ -2610,6 +2612,8 @@ mixin _$MaskedPrefs {
   bool? get internalExitNodePriorSet => throw _privateConstructorUsedError;
   @JsonKey(name: 'ControlURL')
   String? get controlURL => throw _privateConstructorUsedError;
+  @JsonKey(name: 'AuthKey')
+  String? get authKey => throw _privateConstructorUsedError;
   @JsonKey(name: 'RouteAll')
   bool? get routeAll => throw _privateConstructorUsedError;
   @JsonKey(name: 'CorpDNS')
@@ -2649,6 +2653,7 @@ abstract class $MaskedPrefsCopyWith<$Res> {
   @useResult
   $Res call(
       {@JsonKey(name: 'ControlURLSet') bool? controlURLSet,
+      @JsonKey(name: 'AuthKeySet') bool? authKeySet,
       @JsonKey(name: 'RouteAllSet') bool? routeAllSet,
       @JsonKey(name: 'CorpDNSSet') bool? corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') bool? exitNodeIDSet,
@@ -2661,6 +2666,7 @@ abstract class $MaskedPrefsCopyWith<$Res> {
       @JsonKey(name: 'HostnameSet') bool? hostnameSet,
       @JsonKey(name: 'InternalExitNodePriorSet') bool? internalExitNodePriorSet,
       @JsonKey(name: 'ControlURL') String? controlURL,
+      @JsonKey(name: 'AuthKey') String? authKey,
       @JsonKey(name: 'RouteAll') bool? routeAll,
       @JsonKey(name: 'CorpDNS') bool? corpDNS,
       @JsonKey(name: 'ExitNodeID') String? exitNodeID,
@@ -2689,6 +2695,7 @@ class _$MaskedPrefsCopyWithImpl<$Res, $Val extends MaskedPrefs>
   @override
   $Res call({
     Object? controlURLSet = freezed,
+    Object? authKeySet = freezed,
     Object? routeAllSet = freezed,
     Object? corpDNSSet = freezed,
     Object? exitNodeIDSet = freezed,
@@ -2700,6 +2707,7 @@ class _$MaskedPrefsCopyWithImpl<$Res, $Val extends MaskedPrefs>
     Object? hostnameSet = freezed,
     Object? internalExitNodePriorSet = freezed,
     Object? controlURL = freezed,
+    Object? authKey = freezed,
     Object? routeAll = freezed,
     Object? corpDNS = freezed,
     Object? exitNodeID = freezed,
@@ -2715,6 +2723,10 @@ class _$MaskedPrefsCopyWithImpl<$Res, $Val extends MaskedPrefs>
       controlURLSet: freezed == controlURLSet
           ? _value.controlURLSet
           : controlURLSet // ignore: cast_nullable_to_non_nullable
+              as bool?,
+      authKeySet: freezed == authKeySet
+          ? _value.authKeySet
+          : authKeySet // ignore: cast_nullable_to_non_nullable
               as bool?,
       routeAllSet: freezed == routeAllSet
           ? _value.routeAllSet
@@ -2759,6 +2771,10 @@ class _$MaskedPrefsCopyWithImpl<$Res, $Val extends MaskedPrefs>
       controlURL: freezed == controlURL
           ? _value.controlURL
           : controlURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      authKey: freezed == authKey
+          ? _value.authKey
+          : authKey // ignore: cast_nullable_to_non_nullable
               as String?,
       routeAll: freezed == routeAll
           ? _value.routeAll
@@ -2814,6 +2830,7 @@ abstract class _$$MaskedPrefsImplCopyWith<$Res>
   @useResult
   $Res call(
       {@JsonKey(name: 'ControlURLSet') bool? controlURLSet,
+      @JsonKey(name: 'AuthKeySet') bool? authKeySet,
       @JsonKey(name: 'RouteAllSet') bool? routeAllSet,
       @JsonKey(name: 'CorpDNSSet') bool? corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') bool? exitNodeIDSet,
@@ -2826,6 +2843,7 @@ abstract class _$$MaskedPrefsImplCopyWith<$Res>
       @JsonKey(name: 'HostnameSet') bool? hostnameSet,
       @JsonKey(name: 'InternalExitNodePriorSet') bool? internalExitNodePriorSet,
       @JsonKey(name: 'ControlURL') String? controlURL,
+      @JsonKey(name: 'AuthKey') String? authKey,
       @JsonKey(name: 'RouteAll') bool? routeAll,
       @JsonKey(name: 'CorpDNS') bool? corpDNS,
       @JsonKey(name: 'ExitNodeID') String? exitNodeID,
@@ -2852,6 +2870,7 @@ class __$$MaskedPrefsImplCopyWithImpl<$Res>
   @override
   $Res call({
     Object? controlURLSet = freezed,
+    Object? authKeySet = freezed,
     Object? routeAllSet = freezed,
     Object? corpDNSSet = freezed,
     Object? exitNodeIDSet = freezed,
@@ -2863,6 +2882,7 @@ class __$$MaskedPrefsImplCopyWithImpl<$Res>
     Object? hostnameSet = freezed,
     Object? internalExitNodePriorSet = freezed,
     Object? controlURL = freezed,
+    Object? authKey = freezed,
     Object? routeAll = freezed,
     Object? corpDNS = freezed,
     Object? exitNodeID = freezed,
@@ -2878,6 +2898,10 @@ class __$$MaskedPrefsImplCopyWithImpl<$Res>
       controlURLSet: freezed == controlURLSet
           ? _value.controlURLSet
           : controlURLSet // ignore: cast_nullable_to_non_nullable
+              as bool?,
+      authKeySet: freezed == authKeySet
+          ? _value.authKeySet
+          : authKeySet // ignore: cast_nullable_to_non_nullable
               as bool?,
       routeAllSet: freezed == routeAllSet
           ? _value.routeAllSet
@@ -2922,6 +2946,10 @@ class __$$MaskedPrefsImplCopyWithImpl<$Res>
       controlURL: freezed == controlURL
           ? _value.controlURL
           : controlURL // ignore: cast_nullable_to_non_nullable
+              as String?,
+      authKey: freezed == authKey
+          ? _value.authKey
+          : authKey // ignore: cast_nullable_to_non_nullable
               as String?,
       routeAll: freezed == routeAll
           ? _value.routeAll
@@ -2972,6 +3000,7 @@ class __$$MaskedPrefsImplCopyWithImpl<$Res>
 class _$MaskedPrefsImpl extends _MaskedPrefs {
   const _$MaskedPrefsImpl(
       {@JsonKey(name: 'ControlURLSet') this.controlURLSet,
+      @JsonKey(name: 'AuthKeySet') this.authKeySet,
       @JsonKey(name: 'RouteAllSet') this.routeAllSet,
       @JsonKey(name: 'CorpDNSSet') this.corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') this.exitNodeIDSet,
@@ -2984,6 +3013,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
       @JsonKey(name: 'HostnameSet') this.hostnameSet,
       @JsonKey(name: 'InternalExitNodePriorSet') this.internalExitNodePriorSet,
       @JsonKey(name: 'ControlURL') this.controlURL,
+      @JsonKey(name: 'AuthKey') this.authKey,
       @JsonKey(name: 'RouteAll') this.routeAll,
       @JsonKey(name: 'CorpDNS') this.corpDNS,
       @JsonKey(name: 'ExitNodeID') this.exitNodeID,
@@ -3003,6 +3033,9 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
   @override
   @JsonKey(name: 'ControlURLSet')
   final bool? controlURLSet;
+  @override
+  @JsonKey(name: 'AuthKeySet')
+  final bool? authKeySet;
   @override
   @JsonKey(name: 'RouteAllSet')
   final bool? routeAllSet;
@@ -3036,6 +3069,9 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
   @override
   @JsonKey(name: 'ControlURL')
   final String? controlURL;
+  @override
+  @JsonKey(name: 'AuthKey')
+  final String? authKey;
   @override
   @JsonKey(name: 'RouteAll')
   final bool? routeAll;
@@ -3077,7 +3113,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
 
   @override
   String toString() {
-    return 'MaskedPrefs(controlURLSet: $controlURLSet, routeAllSet: $routeAllSet, corpDNSSet: $corpDNSSet, exitNodeIDSet: $exitNodeIDSet, exitNodeAllowLANAccessSet: $exitNodeAllowLANAccessSet, wantRunningSet: $wantRunningSet, shieldsUpSet: $shieldsUpSet, advertiseRoutesSet: $advertiseRoutesSet, forceDaemonSet: $forceDaemonSet, hostnameSet: $hostnameSet, internalExitNodePriorSet: $internalExitNodePriorSet, controlURL: $controlURL, routeAll: $routeAll, corpDNS: $corpDNS, exitNodeID: $exitNodeID, internalExitNodePrior: $internalExitNodePrior, exitNodeAllowLANAccess: $exitNodeAllowLANAccess, wantRunning: $wantRunning, shieldsUp: $shieldsUp, advertiseRoutes: $advertiseRoutes, forceDaemon: $forceDaemon, hostname: $hostname)';
+    return 'MaskedPrefs(controlURLSet: $controlURLSet, authKeySet: $authKeySet, routeAllSet: $routeAllSet, corpDNSSet: $corpDNSSet, exitNodeIDSet: $exitNodeIDSet, exitNodeAllowLANAccessSet: $exitNodeAllowLANAccessSet, wantRunningSet: $wantRunningSet, shieldsUpSet: $shieldsUpSet, advertiseRoutesSet: $advertiseRoutesSet, forceDaemonSet: $forceDaemonSet, hostnameSet: $hostnameSet, internalExitNodePriorSet: $internalExitNodePriorSet, controlURL: $controlURL, authKey: $authKey, routeAll: $routeAll, corpDNS: $corpDNS, exitNodeID: $exitNodeID, internalExitNodePrior: $internalExitNodePrior, exitNodeAllowLANAccess: $exitNodeAllowLANAccess, wantRunning: $wantRunning, shieldsUp: $shieldsUp, advertiseRoutes: $advertiseRoutes, forceDaemon: $forceDaemon, hostname: $hostname)';
   }
 
   @override
@@ -3087,6 +3123,8 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
             other is _$MaskedPrefsImpl &&
             (identical(other.controlURLSet, controlURLSet) ||
                 other.controlURLSet == controlURLSet) &&
+            (identical(other.authKeySet, authKeySet) ||
+                other.authKeySet == authKeySet) &&
             (identical(other.routeAllSet, routeAllSet) ||
                 other.routeAllSet == routeAllSet) &&
             (identical(other.corpDNSSet, corpDNSSet) ||
@@ -3111,6 +3149,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
                 other.internalExitNodePriorSet == internalExitNodePriorSet) &&
             (identical(other.controlURL, controlURL) ||
                 other.controlURL == controlURL) &&
+            (identical(other.authKey, authKey) || other.authKey == authKey) &&
             (identical(other.routeAll, routeAll) ||
                 other.routeAll == routeAll) &&
             (identical(other.corpDNS, corpDNS) || other.corpDNS == corpDNS) &&
@@ -3137,6 +3176,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
   int get hashCode => Object.hashAll([
         runtimeType,
         controlURLSet,
+        authKeySet,
         routeAllSet,
         corpDNSSet,
         exitNodeIDSet,
@@ -3148,6 +3188,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
         hostnameSet,
         internalExitNodePriorSet,
         controlURL,
+        authKey,
         routeAll,
         corpDNS,
         exitNodeID,
@@ -3179,6 +3220,7 @@ class _$MaskedPrefsImpl extends _MaskedPrefs {
 abstract class _MaskedPrefs extends MaskedPrefs {
   const factory _MaskedPrefs(
       {@JsonKey(name: 'ControlURLSet') final bool? controlURLSet,
+      @JsonKey(name: 'AuthKeySet') final bool? authKeySet,
       @JsonKey(name: 'RouteAllSet') final bool? routeAllSet,
       @JsonKey(name: 'CorpDNSSet') final bool? corpDNSSet,
       @JsonKey(name: 'ExitNodeIDSet') final bool? exitNodeIDSet,
@@ -3192,6 +3234,7 @@ abstract class _MaskedPrefs extends MaskedPrefs {
       @JsonKey(name: 'InternalExitNodePriorSet')
       final bool? internalExitNodePriorSet,
       @JsonKey(name: 'ControlURL') final String? controlURL,
+      @JsonKey(name: 'AuthKey') final String? authKey,
       @JsonKey(name: 'RouteAll') final bool? routeAll,
       @JsonKey(name: 'CorpDNS') final bool? corpDNS,
       @JsonKey(name: 'ExitNodeID') final String? exitNodeID,
@@ -3212,6 +3255,9 @@ abstract class _MaskedPrefs extends MaskedPrefs {
   @override
   @JsonKey(name: 'ControlURLSet')
   bool? get controlURLSet;
+  @override
+  @JsonKey(name: 'AuthKeySet')
+  bool? get authKeySet;
   @override
   @JsonKey(name: 'RouteAllSet')
   bool? get routeAllSet;
@@ -3245,6 +3291,9 @@ abstract class _MaskedPrefs extends MaskedPrefs {
   @override
   @JsonKey(name: 'ControlURL')
   String? get controlURL;
+  @override
+  @JsonKey(name: 'AuthKey')
+  String? get authKey;
   @override
   @JsonKey(name: 'RouteAll')
   bool? get routeAll;

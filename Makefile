@@ -63,6 +63,20 @@ aab:
 
 # apple build:
 # please use the Xcode project
+direct_macos_archive:
+	./scripts/macos_direct/build_direct_distribution.sh archive
+
+direct_macos_export:
+	./scripts/macos_direct/build_direct_distribution.sh export
+
+direct_macos_pkg:
+	./scripts/macos_direct/build_direct_distribution.sh pkg
+
+direct_macos_notarize:
+	./scripts/macos_direct/build_direct_distribution.sh notarize
+
+direct_macos_verify:
+	./scripts/macos_direct/build_direct_distribution.sh verify
 
 # windows build:
 SIGN_CMD=signtool.exe

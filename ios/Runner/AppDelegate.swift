@@ -21,6 +21,9 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate {
     var methodChannel: FlutterMethodChannel?
     var tunnelsManager: TunnelsManager?
+    lazy var vpnController: AppleVpnControlling = AppleVpnControllerFactory.make { [weak self] method, arguments in
+        self?.invokeMethod(method, arguments: arguments)
+    }
     #if os(iOS)
         private var previewFileURL: URL?
         private var documentInteractionController: UIDocumentInteractionController?
@@ -284,6 +287,7 @@ import UserNotifications
                 binaryMessenger: controller.engine.binaryMessenger
             )
             setupMethodCallHandler()
+            wg_log(.info, message: "Using VPN controller mode '\(CylonixDistributionMode.current().rawValue)'")
             RegisterGeneratedPlugins(registry: controller.engine)
             let switchRegistrar = controller.registrar(forPlugin: "NativeSwitchViewPlugin")
             switchRegistrar.register(
@@ -298,12 +302,12 @@ import UserNotifications
         methodChannel!.setMethodCallHandler {
             (call: FlutterMethodCall, result: @escaping FlutterResult) in
                 if call.method == "create_tunnels_manager" {
-                    self.setupTunnelsManager(call.arguments as? String ?? "")
+                    self.vpnController.createTunnelsManager(call.arguments as? String ?? "")
                     result("Success")
                     return
                 }
                 if call.method == "checkVPNPermission" {
-                    self.checkVPNPermission(call.arguments as? String ?? "")
+                    self.vpnController.checkVPNPermission(call.arguments as? String ?? "")
                     result("Success")
                     return
                 }
@@ -347,16 +351,9 @@ import UserNotifications
 
                 // All cylonixd related calls should go through packet tunnel
                 // provider as it is a separate process.
-                guard let tunnelsMgr = self.tunnelsManager else {
-                    let message = "FAILED: tunnels manager is nil. command: \(call.method)"
-                    wg_log(.error, message: message)
-                    result(message)
-                    return
-                }
-
                 switch call.method {
                 case "getLogs":
-                    result(self.handleGetWgLogs(tunnelsMgr, call.arguments as? String ?? ""))
+                    result(self.vpnController.handleGetLogs(call.arguments as? String ?? ""))
                 case "getSharedFolderPath":
                     let sharedFolderURL = FileManager.sharedFolderURL
                     wg_log(.debug, message: "Shared folder URL: \(String(describing: sharedFolderURL?.path))")
@@ -392,46 +389,7 @@ import UserNotifications
                         return
                     }
 
-                    guard let cmd = arguments["cmd"], let id = arguments["id"], let args = arguments["args"] else {
-                        let message = "Invalid arguments: \(arguments)"
-                        wg_log(.error, message: message)
-                        result(message)
-                        return
-                    }
-
-                    tunnelsMgr.sendCommand(self.tunnelName, cmd, args) { result in
-                        // wg_log(.debug, message: "sendCommand result: \(result)")
-                        if id == "" {
-                            // No need to send result back to flutter
-                            return
-                        }
-                        self.invokeMethod("commandResult", arguments: ["cmd": cmd, "id": id, "result": result])
-
-                        // Save tailchat service state if command succeeds
-                        if result == "Success", cmd == "start_tailchat" || cmd == "stop_tailchat" {
-                            if let appGroupId = FileManager.appGroupId,
-                               let groupDefaults = UserDefaults(suiteName: appGroupId)
-                            {
-                                let state = cmd == "start_tailchat" ? "enabled" : "disabled"
-                                groupDefaults.set(cmd == "start_tailchat", forKey: "tailchat_service_enabled")
-                                // Post Darwin notification for state change
-                                let center = CFNotificationCenterGetDarwinNotifyCenter()
-                                let name = "io.cylonix.sase.tailchat.stateChange" as CFString
-                                CFNotificationCenterPostNotification(
-                                    center,
-                                    CFNotificationName(name),
-                                    nil,
-                                    nil,
-                                    true
-                                )
-                                wg_log(.debug, message: "Saved tailchat service state as '\(state)' in app group defaults and notified")
-                            } else {
-                                wg_log(.error, message: "Failed to access app group defaults")
-                            }
-                        }
-                    }
-
-                    result("Success")
+                    result(self.vpnController.handleSendCommand(arguments))
                 default:
                     result("Error: unknown method \(call.method)")
                 }

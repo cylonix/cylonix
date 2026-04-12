@@ -195,6 +195,7 @@ Color focusedButtonColor(BuildContext context, Color color) {
 class AdaptiveButton extends ConsumerWidget {
   final VoidCallback onPressed;
   final Widget child;
+  final String? accessibilityLabel;
   final bool filled;
   final bool textButton;
   final bool iconButton;
@@ -207,6 +208,7 @@ class AdaptiveButton extends ConsumerWidget {
   final EdgeInsetsGeometry? padding;
   const AdaptiveButton({
     super.key,
+    this.accessibilityLabel,
     this.filled = false,
     this.textButton = false,
     this.iconButton = false,
@@ -230,14 +232,20 @@ class AdaptiveButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    late final Widget button;
     if (isApple()) {
       if (textButton || iconButton) {
-        return CupertinoButton(
+        button = CupertinoButton(
           padding: padding ?? const EdgeInsets.only(left: 16, right: 16),
           focusNode: focusNode,
           autofocus: autofocus,
           onPressed: onPressed,
           child: child,
+        );
+        return _wrapAccessibleControl(
+          child: button,
+          label: accessibilityLabel,
+          button: true,
         );
       }
       final style = large
@@ -246,7 +254,7 @@ class AdaptiveButton extends ConsumerWidget {
               ? CupertinoButtonSize.small
               : CupertinoButtonSize.medium;
       if (filled) {
-        return SizedBox(
+        button = SizedBox(
           width: width,
           height: height,
           child: CupertinoButton.filled(
@@ -259,8 +267,13 @@ class AdaptiveButton extends ConsumerWidget {
             sizeStyle: style,
           ),
         );
+        return _wrapAccessibleControl(
+          child: button,
+          label: accessibilityLabel,
+          button: true,
+        );
       }
-      return Container(
+      button = Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
@@ -279,9 +292,14 @@ class AdaptiveButton extends ConsumerWidget {
           child: child,
         ),
       );
+      return _wrapAccessibleControl(
+        child: button,
+        label: accessibilityLabel,
+        button: true,
+      );
     }
     if (isAndroidTV) {
-      return TVButton(
+      button = TVButton(
         textButton: textButton,
         iconButton: iconButton,
         autofocus: autofocus,
@@ -293,24 +311,39 @@ class AdaptiveButton extends ConsumerWidget {
         filled: filled,
         padding: padding,
       );
+      return _wrapAccessibleControl(
+        child: button,
+        label: accessibilityLabel,
+        button: true,
+      );
     }
     if (textButton) {
-      return TextButton(
+      button = TextButton(
         onPressed: onPressed,
         autofocus: autofocus,
         focusNode: focusNode,
         child: child,
       );
+      return _wrapAccessibleControl(
+        child: button,
+        label: accessibilityLabel,
+        button: true,
+      );
     }
     if (iconButton) {
-      return IconButton(
+      button = IconButton(
         onPressed: onPressed,
         autofocus: autofocus,
         focusNode: focusNode,
         icon: child,
       );
+      return _wrapAccessibleControl(
+        child: button,
+        label: accessibilityLabel,
+        button: true,
+      );
     }
-    return SizedBox(
+    button = SizedBox(
       width: width,
       height: height,
       child: filled
@@ -326,6 +359,11 @@ class AdaptiveButton extends ConsumerWidget {
               onPressed: onPressed,
               child: child,
             ),
+    );
+    return _wrapAccessibleControl(
+      child: button,
+      label: accessibilityLabel,
+      button: true,
     );
   }
 }
@@ -764,6 +802,7 @@ class AdaptiveTextFormField extends StatelessWidget {
   final TextEditingController? controller;
   final String? placeholder;
   final String? labelText;
+  final String? accessibilityLabel;
   final String? initialValue;
   final String? errorText;
   final bool obscureText;
@@ -781,6 +820,7 @@ class AdaptiveTextFormField extends StatelessWidget {
     this.controller,
     this.placeholder,
     this.labelText,
+    this.accessibilityLabel,
     this.initialValue,
     this.errorText,
     this.obscureText = false,
@@ -796,7 +836,7 @@ class AdaptiveTextFormField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return isApple() && !alwaysNonAppleStyle
+    final field = isApple() && !alwaysNonAppleStyle
         ? CupertinoTextFormFieldRow(
             controller: controller,
             decoration: BoxDecoration(
@@ -867,7 +907,30 @@ class AdaptiveTextFormField extends StatelessWidget {
                 keyboardType: keyboardType,
                 textInputAction: textInputAction,
               );
+    return _wrapAccessibleControl(
+      child: field,
+      label: accessibilityLabel ?? labelText ?? placeholder,
+      textField: true,
+    );
   }
+}
+
+Widget _wrapAccessibleControl({
+  required Widget child,
+  String? label,
+  bool button = false,
+  bool textField = false,
+}) {
+  if (label == null || label.isEmpty) {
+    return child;
+  }
+
+  return Semantics(
+    label: label,
+    button: button,
+    textField: textField,
+    child: child,
+  );
 }
 
 class AdaptiveModalPopup extends StatelessWidget {

@@ -11,6 +11,22 @@ import SwiftUI
     import AppKit
 #endif
 
+// MARK: – Distribution mode detection
+
+private let isDirectMode: Bool = {
+    if let mode = Bundle.main.object(forInfoDictionaryKey: "io.cylonix.distribution_mode") as? String {
+        return mode == "direct"
+    }
+    // Share extensions: check parent app bundle
+    if let appBundlePath = Bundle.main.bundlePath.components(separatedBy: ".app/").first {
+        let appBundle = Bundle(path: appBundlePath + ".app")
+        if let mode = appBundle?.object(forInfoDictionaryKey: "io.cylonix.distribution_mode") as? String {
+            return mode == "direct"
+        }
+    }
+    return false
+}()
+
 public func containerURL() -> URL? {
     #if os(macOS)
         #if DEBUG
@@ -34,6 +50,16 @@ public func containerURL() -> URL? {
 }
 
 func sharedTempFolder() -> URL? {
+    if isDirectMode {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("io.cylonix.share", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: tmpDir,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        return tmpDir
+    }
     guard let base = containerURL() else { return nil }
     let shareDir = base.appendingPathComponent("share", isDirectory: true)
     let tmpDir = shareDir.appendingPathComponent("tmp", isDirectory: true)
@@ -44,6 +70,93 @@ func sharedTempFolder() -> URL? {
     )
     return tmpDir
 }
+
+// MARK: – Direct daemon HTTP client
+
+#if os(macOS)
+private class DirectDaemonClient {
+    static let socketPath = "/var/run/cylonix/cylonixd.sock"
+    static let baseURL = "http://local-tailscaled.sock"
+
+    func getStatus() async throws -> Status {
+        let data = try await curlRequest(method: "GET", path: "/localapi/v0/status")
+        return try JSONDecoder().decode(Status.self, from: data)
+    }
+
+    func sendFiles(peerID: String, files: [OutgoingFileData]) async throws -> String {
+        var args = [
+            "/usr/bin/curl", "-s", "--unix-socket", Self.socketPath,
+            "-X", "PUT",
+        ]
+
+        for file in files {
+            guard let path = file.Path else { continue }
+            let safeName = file.Name.replacingOccurrences(of: "\"", with: "_")
+                .replacingOccurrences(of: ";", with: "_")
+            args += ["-F", "file=@\(path);filename=\(safeName)"]
+        }
+
+        args += ["\(Self.baseURL)/localapi/v0/file-put/\(peerID)"]
+
+        let data = try await runProcess(args)
+        return String(data: data, encoding: .utf8) ?? "Success"
+    }
+
+    private func curlRequest(method: String, path: String) async throws -> Data {
+        let args = [
+            "/usr/bin/curl", "-s", "--unix-socket", Self.socketPath,
+            "-X", method,
+            "\(Self.baseURL)\(path)",
+        ]
+        return try await runProcess(args)
+    }
+
+    private func runProcess(_ arguments: [String], timeout: TimeInterval = 30) async throws -> Data {
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global().async {
+                let process = Process()
+                let pipe = Pipe()
+                let errPipe = Pipe()
+
+                process.executableURL = URL(fileURLWithPath: arguments[0])
+                process.arguments = Array(arguments.dropFirst())
+                process.standardOutput = pipe
+                process.standardError = errPipe
+
+                do {
+                    try process.run()
+
+                    // Kill the process if it exceeds the timeout
+                    let timer = DispatchSource.makeTimerSource(queue: .global())
+                    timer.schedule(deadline: .now() + timeout)
+                    timer.setEventHandler {
+                        if process.isRunning { process.terminate() }
+                    }
+                    timer.resume()
+
+                    process.waitUntilExit()
+                    timer.cancel()
+
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if process.terminationStatus != 0 {
+                        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+                        let errStr = String(data: errData, encoding: .utf8) ?? "curl failed"
+                        continuation.resume(throwing: NSError(
+                            domain: "DirectDaemonClient",
+                            code: Int(process.terminationStatus),
+                            userInfo: [NSLocalizedDescriptionKey: errStr]
+                        ))
+                    } else {
+                        continuation.resume(returning: data)
+                    }
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+}
+#endif
 
 // MARK: – C callbacks
 
@@ -87,6 +200,7 @@ private struct GlassButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, macOS 26, *) {
             content
+                .buttonStyle(.plain)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .glassEffect()
@@ -264,24 +378,30 @@ class FileDropViewModel: ObservableObject {
     private var pending = [String: (Data?) -> Void]()
     private let channelSuffix = "share"
     private var channel: String { PacketTunnelMessage.prefix + channelSuffix }
+    #if os(macOS)
+    private let daemonClient: DirectDaemonClient? = isDirectMode ? DirectDaemonClient() : nil
+    #endif
 
     init() {
-        debugLog("FileDropViewModel init")
-        setupResponseListener()
-        setupProgressListener()
+        debugLog("FileDropViewModel init (direct=\(isDirectMode))")
+        if !isDirectMode {
+            setupResponseListener()
+            setupProgressListener()
+        }
         debugLog("FileDropViewModel init done")
     }
 
     deinit {
-        let center = CFNotificationCenterGetDarwinNotifyCenter()
-        // remove *all* notifications for this observer
-        CFNotificationCenterRemoveObserver(
-            center,
-            Unmanaged.passUnretained(self).toOpaque(),
-            nil,
-            nil
-        )
-        debugLog("FileDropViewModel deinit – removed Darwin observer")
+        if !isDirectMode {
+            let center = CFNotificationCenterGetDarwinNotifyCenter()
+            CFNotificationCenterRemoveObserver(
+                center,
+                Unmanaged.passUnretained(self).toOpaque(),
+                nil,
+                nil
+            )
+        }
+        debugLog("FileDropViewModel deinit")
     }
 
     private func setupResponseListener() {
@@ -480,6 +600,25 @@ class FileDropViewModel: ObservableObject {
     func loadStatus() {
         isLoading = true
         debugLog("loadStatus()")
+
+        #if os(macOS)
+        if let client = daemonClient {
+            Task {
+                do {
+                    let s = try await client.getStatus()
+                    await MainActor.run {
+                        self.status = s
+                        self.isLoading = false
+                    }
+                } catch {
+                    debugLog("Direct loadStatus failed: \(error)")
+                    await MainActor.run { self.isLoading = false }
+                }
+            }
+            return
+        }
+        #endif
+
         postMessage(["method": "status"]) { [weak self] data in
             debugLog("loadStatus response: \(String(describing: data))")
             guard
@@ -581,6 +720,34 @@ class FileDropViewModel: ObservableObject {
             }
             return
         }
+
+        #if os(macOS)
+        if let client = daemonClient {
+            Task {
+                do {
+                    let result = try await client.sendFiles(peerID: peer.id, files: toSend)
+                    debugLog("Direct sendFiles result: \(result)")
+                    await MainActor.run {
+                        if var ts = self.transfers[peer.id] {
+                            ts.status = .complete
+                            ts.progress = 1.0
+                            self.transfers[peer.id] = ts
+                        }
+                    }
+                } catch {
+                    debugLog("Direct sendFiles failed: \(error)")
+                    await MainActor.run {
+                        if var ts = self.transfers[peer.id] {
+                            ts.status = .failed
+                            ts.errorMessage = error.localizedDescription
+                            self.transfers[peer.id] = ts
+                        }
+                    }
+                }
+            }
+            return
+        }
+        #endif
 
         let args = SendFilesArguments(peerID: peer.id, files: toSend)
         guard let argData = try? JSONEncoder().encode(args),

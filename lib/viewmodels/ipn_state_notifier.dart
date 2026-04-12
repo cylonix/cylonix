@@ -45,7 +45,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   IpnStateNotifier(this._ipnService, this._mdmSettings, this.ref)
       : super(const AsyncValue.loading()) {
     _logger.d("IpnStateNotifier initialized to loading state");
-    if (isApple()) {
+    if (isApple() && !IpnService.isDirectDistribution) {
       ref.listen(vpnPermissionStateProvider, (previous, next) {
         if (next && previous != true) {
           _logger.d("VPN permission granted=$next, initializing engine");
@@ -58,7 +58,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         }
       });
     } else {
-      _logger.d("Not an Apple platform, initializing engine");
+      _logger.d("Not an Apple platform or direct distribution, initializing engine");
       _initialize();
     }
   }
@@ -89,8 +89,40 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         _processNextNotification();
       });
       await _ipnService.initializeEngine(_onError);
+      await _syncStateFromBackendStatus();
     } catch (error, stack) {
       _onError(error, stack);
+    }
+  }
+
+  Future<void> _syncStateFromBackendStatus() async {
+    try {
+      final status = await _ipnService.status(light: true, fast: true);
+      final backendState = BackendState.fromString(status.backendState);
+      final currentState = state.valueOrNull ?? const IpnState();
+      final shouldSync =
+          currentState.backendState == BackendState.noState ||
+              currentState.vpnState == VpnState.connecting;
+
+      if (!shouldSync) {
+        return;
+      }
+
+      final shouldClearSessionData =
+          backendState.index <= BackendState.needsLogin.index;
+      state = AsyncValue.data(
+        currentState.copyWith(
+          backendState: backendState,
+          vpnState: _vpnStateForBackendState(backendState),
+          loggedInUser: shouldClearSessionData ? null : currentState.loggedInUser,
+          selfNode: shouldClearSessionData ? null : currentState.selfNode,
+          netmap: shouldClearSessionData ? null : currentState.netmap,
+          currentProfile:
+              shouldClearSessionData ? null : currentState.currentProfile,
+        ),
+      );
+    } catch (error) {
+      _logger.w("Failed to sync backend status after initialization: $error");
     }
   }
 
@@ -387,6 +419,13 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
   VpnState _determineVpnState(IpnNotification notification) {
     final backendState = BackendState.fromInt(notification.state ?? -1);
+    if (backendState == BackendState.noState) {
+      return state.valueOrNull?.vpnState ?? VpnState.disconnected;
+    }
+    return _vpnStateForBackendState(backendState);
+  }
+
+  VpnState _vpnStateForBackendState(BackendState backendState) {
     switch (backendState) {
       case BackendState.noState:
         return state.valueOrNull?.vpnState ?? VpnState.disconnected;
@@ -509,6 +548,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       loginSent = true;
     } catch (error, stack) {
       state = AsyncValue.error(error, stack);
+      rethrow;
     }
   }
 
