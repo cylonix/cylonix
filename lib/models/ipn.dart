@@ -66,6 +66,7 @@ class IpnState with _$IpnState {
     LoginProfile? currentProfile,
     @Default([]) List<LoginProfile> loginProfiles,
     @Default(false) bool isRunningExitNode,
+    @Default(false) bool isMeshMode,
   }) = _IpnState;
 
   factory IpnState.fromJson(Map<String, dynamic> json) =>

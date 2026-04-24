@@ -45,6 +45,7 @@ _$IpnStateImpl _$$IpnStateImplFromJson(Map<String, dynamic> json) =>
               .toList() ??
           const [],
       isRunningExitNode: json['isRunningExitNode'] as bool? ?? false,
+      isMeshMode: json['isMeshMode'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$$IpnStateImplToJson(_$IpnStateImpl instance) =>
@@ -63,6 +64,7 @@ Map<String, dynamic> _$$IpnStateImplToJson(_$IpnStateImpl instance) =>
       'currentProfile': instance.currentProfile,
       'loginProfiles': instance.loginProfiles,
       'isRunningExitNode': instance.isRunningExitNode,
+      'isMeshMode': instance.isMeshMode,
     };
 
 const _$BackendStateEnumMap = {

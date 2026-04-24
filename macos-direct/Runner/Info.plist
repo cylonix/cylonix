@@ -34,8 +34,6 @@
 	<string>NSApplication</string>
 	<key>io.cylonix.distribution_mode</key>
 	<string>direct</string>
-	<key>NSDownloadsFolderUsageDescription</key>
-	<string>Access to Downloads folder is needed to save received files</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Cylonix can discover local printers and game peers when Local Network Discovery Relay is enabled.</string>
 	<key>NSBonjourServices</key>

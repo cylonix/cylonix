@@ -18,6 +18,7 @@ PKG_STAGING_DIR="${PKG_STAGING_DIR:-/tmp/cylonix-direct-pkg}"
 PKG_PATH="${PKG_PATH:-/tmp/Cylonix.pkg}"
 PKG_SCRIPTS_DIR="$ROOT_DIR/scripts/macos_direct/pkg"
 PKG_IDENTIFIER="io.cylonix.sase.direct.installer"
+TUN_MODE="${TUN_MODE:-utun}"
 EXPORT_OPTIONS_PLIST="${EXPORT_OPTIONS_PLIST:-$PROJECT_DIR/ExportOption.plist}"
 APP_NAME="${APP_NAME:-Cylonix.app}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-${APPLE_NOTARY_PROFILE:-}}"
@@ -54,11 +55,22 @@ require_signing_values() {
 }
 
 build_daemon() {
-  echo "==> Building cylonixd daemon..."
+  echo "==> Building cylonixd daemon (universal)..."
   cd "$ROOT_DIR/tailscale"
   GOOS=darwin GOARCH=arm64 ./build_dist.sh tailscale.com/cmd/tailscaled
-  echo "==> Building cylonix CLI..."
+  mv tailscaled tailscaled-arm64
+  GOOS=darwin GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscaled
+  mv tailscaled tailscaled-amd64
+  lipo -create -output tailscaled tailscaled-arm64 tailscaled-amd64
+  rm tailscaled-arm64 tailscaled-amd64
+
+  echo "==> Building cylonix CLI (universal)..."
   GOOS=darwin GOARCH=arm64 ./build_dist.sh tailscale.com/cmd/tailscale
+  mv tailscale tailscale-arm64
+  GOOS=darwin GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscale
+  mv tailscale tailscale-amd64
+  lipo -create -output tailscale tailscale-arm64 tailscale-amd64
+  rm tailscale-arm64 tailscale-amd64
   cd "$ROOT_DIR"
 }
 
@@ -118,14 +130,17 @@ build_archive() {
   local app_resources="$ARCHIVE_PATH/Products/Applications/$APP_NAME/Contents/Resources"
   echo "==> Bundling cylonixd into archive..."
   cp "$ROOT_DIR/tailscale/tailscaled" "$app_resources/cylonixd"
-  cp "$ROOT_DIR/tailscale/tailscale" "$app_resources/cylonixc"
-  chmod 755 "$app_resources/cylonixd" "$app_resources/cylonixc"
+  cp "$ROOT_DIR/tailscale/tailscale" "$app_resources/cylonix"
+  chmod 755 "$app_resources/cylonixd" "$app_resources/cylonix"
+
+  # Note: downloadsfolder.framework must stay — the Runner binary is dynamically
+  # linked against it, so removing it causes a dyld crash at launch.
 
   # Sign the daemon binaries with the same identity
   local signing_identity="Developer ID Application"
   echo "==> Signing daemon binaries..."
   codesign --force --options runtime --sign "$signing_identity" "$app_resources/cylonixd"
-  codesign --force --options runtime --sign "$signing_identity" "$app_resources/cylonixc"
+  codesign --force --options runtime --sign "$signing_identity" "$app_resources/cylonix"
 
   # Re-sign the app bundle (without --deep to preserve extension entitlements)
   echo "==> Re-signing app bundle..."
@@ -193,9 +208,16 @@ build_pkg() {
 
   rm -rf "$PKG_STAGING_DIR" "$PKG_PATH"
   mkdir -p "$PKG_STAGING_DIR/payload/Applications"
+  mkdir -p "$PKG_STAGING_DIR/scripts"
 
   # Copy app to payload
   cp -R "$app_path" "$PKG_STAGING_DIR/payload/Applications/"
+
+  # Prepare pkg scripts with the configured TUN_MODE
+  cp "$PKG_SCRIPTS_DIR/preinstall" "$PKG_STAGING_DIR/scripts/"
+  sed "s|<string>utun</string>|<string>$TUN_MODE</string>|" \
+    "$PKG_SCRIPTS_DIR/postinstall" > "$PKG_STAGING_DIR/scripts/postinstall"
+  chmod +x "$PKG_STAGING_DIR/scripts/preinstall" "$PKG_STAGING_DIR/scripts/postinstall"
 
   # Read version from the app's Info.plist
   local app_version
@@ -207,7 +229,7 @@ build_pkg() {
   pkgbuild \
     --root "$PKG_STAGING_DIR/payload" \
     --component-plist "$PKG_SCRIPTS_DIR/component.plist" \
-    --scripts "$PKG_SCRIPTS_DIR" \
+    --scripts "$PKG_STAGING_DIR/scripts" \
     --identifier "$PKG_IDENTIFIER" \
     --version "$app_version" \
     --install-location "/" \
@@ -217,13 +239,41 @@ build_pkg() {
   # Prepare resources directory for installer
   local pkg_resources="$PKG_STAGING_DIR/resources"
   mkdir -p "$pkg_resources"
-  cp "$PKG_SCRIPTS_DIR/welcome.html" "$pkg_resources/welcome.html"
   cp "$PKG_SCRIPTS_DIR/background.png" "$pkg_resources/background.png"
+
+  local installer_title="Cylonix"
+  if [[ "$TUN_MODE" == "userspace-networking" ]]; then
+    installer_title="Cylonix Mesh"
+    cat > "$pkg_resources/welcome.html" <<'WELCOMEHTML'
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {
+    font-family: -apple-system, Helvetica Neue, sans-serif;
+    margin: 24px;
+    margin-top: 24px;
+}
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 16px 0; text-align: center; }
+p { font-size: 13px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<h1>Cylonix Mesh</h1>
+<p>This installer will install Cylonix in <b>Mesh Mode</b> and set up the background daemon.</p>
+<p>Mesh Mode provides direct peer-to-peer connectivity without creating a system tunnel device. This avoids conflicts with other VPN software.</p>
+<p>Mesh Mode does not support exit nodes or subnet routing. MagicDNS and peer-to-peer connections work normally.</p>
+</body>
+</html>
+WELCOMEHTML
+  else
+    cp "$PKG_SCRIPTS_DIR/welcome.html" "$pkg_resources/welcome.html"
+  fi
 
   cat > "$PKG_STAGING_DIR/distribution.xml" <<DISTXML
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>Cylonix</title>
+    <title>$installer_title</title>
     <background file="background.png" alignment="bottomleft" scaling="none" mime-type="image/png"/>
     <background-darkAqua file="background.png" alignment="bottomleft" scaling="none" mime-type="image/png"/>
     <welcome file="welcome.html" mime-type="text/html"/>
@@ -323,6 +373,11 @@ case "$step" in
   verify)
     verify_distribution
     ;;
+  mesh-pkg)
+    TUN_MODE="userspace-networking"
+    PKG_PATH="${PKG_PATH%.pkg}-Mesh.pkg"
+    build_pkg
+    ;;
   all)
     build_daemon
     prepare_flutter
@@ -333,7 +388,7 @@ case "$step" in
     verify_distribution
     ;;
   *)
-    echo "usage: $0 [daemon|flutter|archive|export|dmg|pkg|notarize|verify|all]" >&2
+    echo "usage: $0 [daemon|flutter|archive|export|dmg|pkg|mesh-pkg|notarize|verify|all]" >&2
     exit 1
     ;;
 esac

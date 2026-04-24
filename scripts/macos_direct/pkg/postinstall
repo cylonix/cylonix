@@ -13,6 +13,10 @@ DAEMON_PATH="$APP_PATH/Contents/Resources/cylonixd"
 mkdir -p /var/lib/cylonix
 mkdir -p /var/run/cylonix
 mkdir -p /var/log/cylonix
+chmod 755 /var/log/cylonix
+# Ensure log file is world-readable so the app can display daemon logs
+touch /var/log/cylonix/cylonixd.log
+chmod 644 /var/log/cylonix/cylonixd.log
 
 # Stop existing daemon if running
 if launchctl list "$PLIST_NAME" &>/dev/null; then
@@ -59,6 +63,10 @@ chmod 644 "$PLIST_DST"
 # Load and start daemon
 launchctl load "$PLIST_DST"
 
+# Symlink CLI to /usr/local/bin so users can run "cylonix" from the terminal
+mkdir -p /usr/local/bin
+ln -sf "$APP_PATH/Contents/Resources/cylonix" /usr/local/bin/cylonix
+
 # Kill any running Cylonix app so the new version is picked up
 killall Cylonix 2>/dev/null || true
 killall "cylonix-direct" 2>/dev/null || true
@@ -70,7 +78,7 @@ LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/A/Framewo
 "$LSREGISTER" -u "/tmp/cylonix-direct-derived" 2>/dev/null || true
 
 # Register the installed app
-"$LSREGISTER" -f -R "$APP_PATH"
+"$LSREGISTER" -f "$APP_PATH"
 
 # Register share extension with pluginkit
 SHARE_EXT="$APP_PATH/Contents/PlugIns/ShareExtension.appex"

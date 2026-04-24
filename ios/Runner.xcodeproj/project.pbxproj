@@ -83,10 +83,10 @@
 		2553EFD927F6F09A00C25AE1 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2553EF7C27F6D48700C25AE1 /* NetworkExtension.framework */; };
 		2568B6E12DC72A9E00FA46E2 /* UserDefaults+AtomicUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2568B6E02DC72A9D00FA46E2 /* UserDefaults+AtomicUpdate.swift */; };
 		257520FF2F3BAFF3004C6003 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 257520FE2F3BAFF3004C6003 /* libresolv.9.tbd */; };
-			25CC000100000000000A0001 /* NativeSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000A0001 /* NativeSwitchView.swift */; };
-			25CC000100000000000B0001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000B0001 /* SceneDelegate.swift */; };
-			25CC100000000000000A0001 /* VpnController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC100000000000000A0002 /* VpnController.swift */; };
-			25CC100000000000000A0003 /* AppStoreVpnController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC100000000000000A0004 /* AppStoreVpnController.swift */; };
+		25CC000100000000000A0001 /* NativeSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000A0001 /* NativeSwitchView.swift */; };
+		25CC000100000000000B0001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC000000000000000B0001 /* SceneDelegate.swift */; };
+		25CC100000000000000A0001 /* VpnController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC100000000000000A0002 /* VpnController.swift */; };
+		25CC100000000000000A0003 /* AppStoreVpnController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CC100000000000000A0004 /* AppStoreVpnController.swift */; };
 		25DB94F0293F113400D64966 /* OVPFlutterViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 25DB94EF293F113400D64966 /* OVPFlutterViewController.m */; };
 		25FF4AEE2DC20CED00E47A96 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 25FF4AED2DC20CED00E47A96 /* SystemConfiguration.framework */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -332,10 +332,10 @@
 		2553EFBD27F6DB5F00C25AE1 /* saseWgNetworkExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = saseWgNetworkExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2568B6E02DC72A9D00FA46E2 /* UserDefaults+AtomicUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "UserDefaults+AtomicUpdate.swift"; path = "Runner/UserDefaults+AtomicUpdate.swift"; sourceTree = "<group>"; };
 		257520FE2F3BAFF3004C6003 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
-			25CC000000000000000A0001 /* NativeSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSwitchView.swift; sourceTree = "<group>"; };
-			25CC000000000000000B0001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
-			25CC100000000000000A0002 /* VpnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VpnController.swift; path = "../apple/Sources/AppRuntime/VpnController.swift"; sourceTree = "<group>"; };
-			25CC100000000000000A0004 /* AppStoreVpnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreVpnController.swift; path = "../apple/Sources/AppRuntime/AppStoreVpnController.swift"; sourceTree = "<group>"; };
+		25CC000000000000000A0001 /* NativeSwitchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSwitchView.swift; sourceTree = "<group>"; };
+		25CC000000000000000B0001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		25CC100000000000000A0002 /* VpnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VpnController.swift; path = ../../apple/Sources/AppRuntime/VpnController.swift; sourceTree = "<group>"; };
+		25CC100000000000000A0004 /* AppStoreVpnController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreVpnController.swift; path = ../../apple/Sources/AppRuntime/AppStoreVpnController.swift; sourceTree = "<group>"; };
 		25DB94EF293F113400D64966 /* OVPFlutterViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = OVPFlutterViewController.m; path = Runner/OVPFlutterViewController.m; sourceTree = "<group>"; };
 		25FF4AEB2DC1F71B00E47A96 /* DNSConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DNSConfig.swift; path = "../wireguard-apple/Sources/WireGuardKit/DNSConfig.swift"; sourceTree = "<group>"; };
 		25FF4AED2DC20CED00E47A96 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
@@ -827,14 +827,14 @@
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
 				97C147021CF9000F007C117D /* Info.plist */,
-					1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
-					1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
-					74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
-					25CC100000000000000A0002 /* VpnController.swift */,
-					25CC100000000000000A0004 /* AppStoreVpnController.swift */,
-					25CC000000000000000A0001 /* NativeSwitchView.swift */,
-					25CC000000000000000B0001 /* SceneDelegate.swift */,
-					74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
+				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
+				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
+				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
+				25CC100000000000000A0002 /* VpnController.swift */,
+				25CC100000000000000A0004 /* AppStoreVpnController.swift */,
+				25CC000000000000000A0001 /* NativeSwitchView.swift */,
+				25CC000000000000000B0001 /* SceneDelegate.swift */,
+				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -1025,13 +1025,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -1243,11 +1239,11 @@
 				251D837327F70B1C004CBB56 /* dummy.c in Sources */,
 				251D837127F70AF7004CBB56 /* TunnelConfiguration+WgQuickConfig.swift in Sources */,
 				251D836F27F70AD1004CBB56 /* LogViewHelper.swift in Sources */,
-					251D836D27F70AA0004CBB56 /* Keychain+Extension.swift in Sources */,
-					74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
-					25CC100000000000000A0001 /* VpnController.swift in Sources */,
-					25CC100000000000000A0003 /* AppStoreVpnController.swift in Sources */,
-					25CC000100000000000A0001 /* NativeSwitchView.swift in Sources */,
+				251D836D27F70AA0004CBB56 /* Keychain+Extension.swift in Sources */,
+				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
+				25CC100000000000000A0001 /* VpnController.swift in Sources */,
+				25CC100000000000000A0003 /* AppStoreVpnController.swift in Sources */,
+				25CC000100000000000A0001 /* NativeSwitchView.swift in Sources */,
 				25CC000100000000000B0001 /* SceneDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);

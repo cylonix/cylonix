@@ -942,13 +942,39 @@ class _PeerMessagingThreadViewState
   }
 
   void _scheduleInitialOrNewMessageScroll(int messageCount) {
-    if (_lastRenderedMessageCount == messageCount) {
+    final isFirstLayout = _lastRenderedMessageCount == 0 && messageCount > 0;
+    final isNewMessage = messageCount > _lastRenderedMessageCount;
+    if (!isFirstLayout && !isNewMessage) {
+      _lastRenderedMessageCount = messageCount;
       return;
     }
     _lastRenderedMessageCount = messageCount;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToBottom(animated: false);
-    });
+    // First attempt at layout time; follow-ups give async attachment
+    // previews (images/video thumbnails) a chance to render before we
+    // measure the final scroll extent.
+    _scrollToBottomWhenReady(animated: false);
+  }
+
+  void _scrollToBottomWhenReady({required bool animated}) {
+    const retryDelays = <Duration>[
+      Duration.zero,
+      Duration(milliseconds: 120),
+      Duration(milliseconds: 350),
+      Duration(milliseconds: 800),
+    ];
+    for (final delay in retryDelays) {
+      if (delay == Duration.zero) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _scrollToBottom(animated: animated);
+        });
+      } else {
+        Future<void>.delayed(delay, () {
+          if (!mounted) return;
+          _scrollToBottom(animated: animated);
+        });
+      }
+    }
   }
 
   void _scrollToBottom({required bool animated}) {
@@ -1499,9 +1525,13 @@ class _MessageBubble extends StatelessWidget {
   }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPress: _supportsLongPressAction(context)
-          ? () => _showMessageActions(context)
-          : null,
+      // Only fire the long-press sheet for media-only bubbles. Text bubbles
+      // rely on the SelectableText context menu (Reply/Quote is first) so
+      // long-press doesn't fight with the native text selection gesture.
+      onLongPress:
+          _supportsLongPressAction(context) && message.text.isEmpty
+              ? () => _showMessageActions(context)
+              : null,
       onSecondaryTapDown:
           _supportsSecondaryClickAction(context) && message.text.isEmpty
               ? (details) => _showMessageActions(
@@ -1606,117 +1636,98 @@ class _MessageBubble extends StatelessWidget {
                           .withValues(alpha: 0.28),
                 ),
               ),
-              child: _supportsLongPressAction(context)
-                  // Mobile: use Text.rich so long-press triggers the
-                  // action menu instead of selecting a word.
-                  ? Text.rich(
-                      _buildLinkedTextSpan(
-                        message.text,
-                        linkColor: isLocal
-                            ? Colors.white
-                            : Theme.of(context).colorScheme.primary,
+              // Use SelectableText on every platform so the platform's
+              // text-selection menu is our menu. Reply/Quote sits at the top
+              // so the user doesn't need a long-press → bottom sheet detour,
+              // which was fighting with the native text selection gesture on
+              // mobile.
+              child: SelectableText.rich(
+                _buildLinkedTextSpan(
+                  message.text,
+                  linkColor: isLocal
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.primary,
+                ),
+                contextMenuBuilder: (menuContext, editableTextState) {
+                  final platformExtras = editableTextState
+                      .contextMenuButtonItems
+                      .where(
+                        (item) =>
+                            item.type != ContextMenuButtonType.copy &&
+                            item.type != ContextMenuButtonType.selectAll &&
+                            item.type != ContextMenuButtonType.cut &&
+                            item.type != ContextMenuButtonType.paste,
+                      )
+                      .toList();
+                  return AdaptiveTextSelectionToolbar.buttonItems(
+                    anchors: editableTextState.contextMenuAnchors,
+                    buttonItems: [
+                      ContextMenuButtonItem(
+                        label: 'Reply/Quote',
+                        onPressed: () {
+                          ContextMenuController.removeAny();
+                          onReply();
+                        },
                       ),
-                    )
-                  // Desktop: use SelectableText for partial text
-                  // selection; right-click provides the context menu.
-                  : SelectableText.rich(
-                      _buildLinkedTextSpan(
-                        message.text,
-                        linkColor: isLocal
-                            ? Colors.white
-                            : Theme.of(context).colorScheme.primary,
+                      ContextMenuButtonItem(
+                        label: editableTextState
+                                .textEditingValue.selection.isCollapsed
+                            ? 'Copy Text'
+                            : 'Copy',
+                        onPressed: () {
+                          ContextMenuController.removeAny();
+                          final sel =
+                              editableTextState.textEditingValue.selection;
+                          final text = sel.isCollapsed
+                              ? message.text
+                              : editableTextState.textEditingValue.text
+                                  .substring(sel.start, sel.end);
+                          Clipboard.setData(ClipboardData(text: text));
+                        },
                       ),
-                      contextMenuBuilder:
-                          (menuContext, editableTextState) {
-                        final platformExtras = editableTextState
-                            .contextMenuButtonItems
-                            .where(
-                              (item) =>
-                                  item.type !=
-                                      ContextMenuButtonType.copy &&
-                                  item.type !=
-                                      ContextMenuButtonType.selectAll &&
-                                  item.type !=
-                                      ContextMenuButtonType.cut &&
-                                  item.type !=
-                                      ContextMenuButtonType.paste,
-                            )
-                            .toList();
-                        return AdaptiveTextSelectionToolbar.buttonItems(
-                          anchors:
-                              editableTextState.contextMenuAnchors,
-                          buttonItems: [
-                            ContextMenuButtonItem(
-                              label: editableTextState.textEditingValue
-                                      .selection.isCollapsed
-                                  ? 'Copy Text'
-                                  : 'Copy',
-                              onPressed: () {
-                                ContextMenuController.removeAny();
-                                final sel = editableTextState
-                                    .textEditingValue.selection;
-                                final text = sel.isCollapsed
-                                    ? message.text
-                                    : editableTextState
-                                        .textEditingValue.text
-                                        .substring(sel.start, sel.end);
-                                Clipboard.setData(
-                                  ClipboardData(text: text),
-                                );
-                              },
-                            ),
-                            ContextMenuButtonItem(
-                              label: 'Select All',
-                              onPressed: () {
-                                editableTextState.selectAll(
-                                  SelectionChangedCause.toolbar,
-                                );
-                              },
-                            ),
-                            for (final item in platformExtras)
-                              ContextMenuButtonItem(
-                                label: item.label ??
-                                    _platformItemLabel(item.type),
-                                onPressed: item.onPressed,
-                              ),
-                            ContextMenuButtonItem(
-                              label: 'Reply/Quote',
-                              onPressed: () {
-                                ContextMenuController.removeAny();
-                                onReply();
-                              },
-                            ),
-                            if (onSendAgain != null)
-                              ContextMenuButtonItem(
-                                label: 'Send Again',
-                                onPressed: () {
-                                  ContextMenuController.removeAny();
-                                  onSendAgain!();
-                                },
-                              ),
-                            for (final attachment
-                                in message.attachments)
-                              ContextMenuButtonItem(
-                                label: filesSaved
-                                        .contains(attachment.name)
-                                    ? 'Save Again'
-                                    : 'Save',
-                                onPressed: () {
-                                  ContextMenuController.removeAny();
-                                  onSaveAttachment(attachment);
-                                },
-                              ),
-                            ContextMenuButtonItem(
-                              label: 'Delete Message',
-                              onPressed: () {
-                                ContextMenuController.removeAny();
-                                onDelete();
-                              },
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                      ContextMenuButtonItem(
+                        label: 'Select All',
+                        onPressed: () {
+                          editableTextState.selectAll(
+                            SelectionChangedCause.toolbar,
+                          );
+                        },
+                      ),
+                      if (onSendAgain != null)
+                        ContextMenuButtonItem(
+                          label: 'Send Again',
+                          onPressed: () {
+                            ContextMenuController.removeAny();
+                            onSendAgain!();
+                          },
+                        ),
+                      for (final attachment in message.attachments)
+                        ContextMenuButtonItem(
+                          label: filesSaved.contains(attachment.name)
+                              ? 'Save Again'
+                              : 'Save',
+                          onPressed: () {
+                            ContextMenuController.removeAny();
+                            onSaveAttachment(attachment);
+                          },
+                        ),
+                      for (final item in platformExtras)
+                        ContextMenuButtonItem(
+                          label:
+                              item.label ?? _platformItemLabel(item.type),
+                          onPressed: item.onPressed,
+                        ),
+                      ContextMenuButtonItem(
+                        label: 'Delete Message',
+                        onPressed: () {
+                          ContextMenuController.removeAny();
+                          onDelete();
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         if (message.attachments.isNotEmpty) ...[

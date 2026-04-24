@@ -76,6 +76,12 @@ class _MainViewState extends ConsumerState<MainView> {
   String? _authKeyErrorText;
   bool _vpnPermissionRequestInFlight = false;
   bool _vpnPermissionAutoRequestScheduled = false;
+  DateTime? _connectingViewShownAt;
+
+  @override
+  void initState() {
+    super.initState();
+  }
 
   @override
   void dispose() {
@@ -350,6 +356,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final vpnState = ref.watch(vpnStateProvider);
     final errMessage = ref.watch(ipnErrMessageProvider);
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+
     if (errMessage != null) {
       return _buildCenteredWidget(
         _buildErrorWidget(
@@ -368,10 +375,15 @@ class _MainViewState extends ConsumerState<MainView> {
     }
     switch (state) {
       case BackendState.running:
+        _isSubmittingAuthKey = false;
+        _connectingViewShownAt = null;
         break;
       case BackendState.starting:
         return _buildCenteredWidget(_buildConnectingView(context, true));
       default:
+        if (_isSubmittingAuthKey) {
+          return _buildCenteredWidget(_buildConnectingView(context, true));
+        }
         return Padding(
           padding: const EdgeInsets.all(16),
           child: _buildCenteredWidget(_buildConnectView(context, ref)),
@@ -993,13 +1005,17 @@ class _MainViewState extends ConsumerState<MainView> {
     final ipnState = ref.watch(ipnStateNotifierProvider);
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     return ipnState.when(
-      loading: () => _buildConnectingView(context, true),
-      error: (error, stack) => _buildErrorWidget(
-        context,
-        ref,
-        "$error",
-        _resetIpnStateNotifier,
-      ),
+      loading: () {
+        return _buildConnectingView(context, true);
+      },
+      error: (error, stack) {
+        return _buildErrorWidget(
+          context,
+          ref,
+          "$error",
+          _resetIpnStateNotifier,
+        );
+      },
       data: (state) {
         if (state.browseToURL != null) {
           // Apple user to choose manually open the URL or sign in with apple.
@@ -1030,15 +1046,51 @@ class _MainViewState extends ConsumerState<MainView> {
     final health = ref.watch(healthProvider);
     final loginURL = ref.read(ipnStateProvider)?.browseToURL;
     final loginStateWarning = health?.warnings?[_loginStateWarnableCode];
-    if (loginStateWarning != null) {
-      _logger.d("Login state warning: $loginStateWarning");
-      return _buildLoginRequiredView(
-        context,
-        ref,
-        loginURL,
-        loginStateWarning: loginStateWarning,
-      );
+    if (loginStateWarning != null && !_isTransientLoginWarning(loginStateWarning)) {
+      if (_isSubmittingAuthKey) {
+        final authErr = _invalidAuthKeyError(loginStateWarning);
+        if (authErr != null) {
+          // Backend reported an auth-key-specific error (e.g. 401 invalid key).
+          // Reset the submitting flag so the user can edit and retry.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() {
+              _isSubmittingAuthKey = false;
+              _connectingViewShownAt = null;
+              _authKeyErrorText = _friendlyAuthKeyError(authErr);
+            });
+          });
+          return _buildLoginRequiredView(
+            context,
+            ref,
+            loginURL,
+            loginStateWarning: loginStateWarning,
+          );
+        }
+        // Generic "You are logged out" warning — expected during auth key
+        // submission while the backend is still processing.  Keep showing
+        // the connecting view instead of snapping back to the login form.
+      } else {
+        return _buildLoginRequiredView(
+          context,
+          ref,
+          loginURL,
+          loginStateWarning: loginStateWarning,
+        );
+      }
     }
+    _connectingViewShownAt ??= DateTime.now();
+    final elapsed = DateTime.now().difference(_connectingViewShownAt!);
+    final showRecoveryButtons = elapsed.inSeconds >= 10;
+
+    // Schedule a rebuild when the buttons should appear.
+    if (!showRecoveryButtons) {
+      final remaining = const Duration(seconds: 10) - elapsed;
+      Future.delayed(remaining, () {
+        if (mounted) setState(() {});
+      });
+    }
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 600),
       child: SingleChildScrollView(
@@ -1057,20 +1109,25 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
             ),
             const AdaptiveLoadingWidget(),
-            AdaptiveButton(
-              key: const ValueKey('connecting_cancel_retry_button'),
-              accessibilityLabel: 'Cancel and retry connection',
-              width: 250,
-              onPressed: () => _resetIpnStateNotifier(),
-              child: const Text('Cancel and Retry'),
-            ),
-            AdaptiveButton(
-              key: const ValueKey('connecting_start_signin_button'),
-              accessibilityLabel: 'Start sign in',
-              width: 250,
-              onPressed: () => _startSignin(context, ref),
-              child: const Text('Start Signin'),
-            ),
+            if (showRecoveryButtons) ...[
+              AdaptiveButton(
+                key: const ValueKey('connecting_cancel_retry_button'),
+                accessibilityLabel: 'Cancel and retry connection',
+                width: 250,
+                onPressed: () => _resetIpnStateNotifier(),
+                child: const Text('Cancel and Retry'),
+              ),
+              GestureDetector(
+                onTap: () => _startSignin(context, ref),
+                child: Text(
+                  'or start signin',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                      ),
+                ),
+              ),
+            ],
             const HealthWarningList(color: CupertinoColors.systemBackground),
           ],
         ),
@@ -1105,7 +1162,6 @@ class _MainViewState extends ConsumerState<MainView> {
     }
     if (state.browseToURL != null ||
         state.backendState == BackendState.needsLogin) {
-      _logger.d("Build LoginRequiredView browse URL: ${state.browseToURL}");
       return _buildLoginRequiredView(context, ref, state.browseToURL);
     }
     if (state.loggedInUser != null) {
@@ -1503,6 +1559,17 @@ class _MainViewState extends ConsumerState<MainView> {
     }
   }
 
+  void _switchToAuthKeySignin(WidgetRef ref) {
+    ref.read(ipnStateNotifierProvider.notifier).clearBrowseToURL();
+    setState(() {
+      _showAuthKeyEntry = true;
+      _waitingForURL = false;
+      _signingInWithApple = false;
+      _signInWithAppleSuccess = false;
+      _signInWithWebSuccess = false;
+    });
+  }
+
   void _startSignin(BuildContext context, WidgetRef ref) async {
     FocusScope.of(context).unfocus();
     setState(() {
@@ -1548,14 +1615,9 @@ class _MainViewState extends ConsumerState<MainView> {
       _logger.e("Failed to sign in with auth key: $e");
       if (!mounted) return;
       setState(() {
+        _isSubmittingAuthKey = false;
         _authKeyErrorText = _friendlyAuthKeyError('$e');
       });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmittingAuthKey = false;
-        });
-      }
     }
   }
 
@@ -1592,7 +1654,7 @@ class _MainViewState extends ConsumerState<MainView> {
         : colorScheme.outlineVariant;
 
     return Container(
-      constraints: const BoxConstraints(maxWidth: 420),
+      constraints: const BoxConstraints(maxWidth: 520),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cardColor,
@@ -1634,12 +1696,15 @@ class _MainViewState extends ConsumerState<MainView> {
             labelText: isApple() ? null : 'Auth Key',
             errorText: inlineErrorText,
             autofocus: true,
-            keyboardType: TextInputType.visiblePassword,
+            keyboardType: TextInputType.multiline,
             textInputAction: TextInputAction.done,
+            minLines: 2,
+            maxLines: 4,
             onChanged: (_) {
-              if (_authKeyErrorText != null) {
+              if (_authKeyErrorText != null || _isSubmittingAuthKey) {
                 setState(() {
                   _authKeyErrorText = null;
+                  _isSubmittingAuthKey = false;
                 });
               }
             },
@@ -1699,7 +1764,7 @@ class _MainViewState extends ConsumerState<MainView> {
     return Column(
       children: [
         if (!isAndroidTV) ...[
-          if (!_showAuthKeyEntry)
+          if (!_showAuthKeyEntry) ...[
             SizedBox(
               width: 300,
               height: 40,
@@ -1716,6 +1781,16 @@ class _MainViewState extends ConsumerState<MainView> {
                 child: const Text('Sign in with Auth Key'),
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Use an auth key from your admin to join the network',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isApple()
+                        ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
           if (_showAuthKeyEntry)
             _buildAuthKeySignInCard(
               context,
@@ -1727,7 +1802,7 @@ class _MainViewState extends ConsumerState<MainView> {
             ),
           const SizedBox(height: 20),
         ],
-        if (!_waitingForURL)
+        if (!_waitingForURL) ...[
           SizedBox(
             width: 300,
             height: 40,
@@ -1738,6 +1813,16 @@ class _MainViewState extends ConsumerState<MainView> {
               child: const Text('Sign In with Other Methods'),
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Sign in with your browser using SSO, Google, or Apple',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: isApple()
+                      ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
         if (_waitingForURL) ...[
           const SizedBox(height: 4),
           Text(
@@ -1977,9 +2062,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     final invalidAuthKeyError = _invalidAuthKeyError(loginStateWarning);
     final isInvalidAuthKey = invalidAuthKeyError != null;
-    _logger.d("urlLaunched1: $urlLaunched, loginURL: $loginURL");
     urlLaunched = ref.read(ipnStateNotifierProvider.notifier).urlBrowsed;
-    _logger.d("urlLaunched2: $urlLaunched, loginURL: $loginURL");
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -2048,6 +2131,15 @@ class _MainViewState extends ConsumerState<MainView> {
                 height: 40,
                 onPressed: () => _launchUrl(loginURL, force: true),
                 child: const Text('Sign in with more methods'),
+              ),
+              AdaptiveButton(
+                key: const ValueKey('signin_auth_key_from_url_button'),
+                accessibilityLabel: 'Sign in with auth key',
+                width: 300,
+                height: 40,
+                textButton: true,
+                onPressed: () => _switchToAuthKeySignin(ref),
+                child: const Text('Sign in with Auth Key'),
               ),
             ],
           ],
@@ -2135,6 +2227,13 @@ class _MainViewState extends ConsumerState<MainView> {
               onPressed: () => _launchUrl(loginURL, force: true),
               child: const Text('Go to Signin Page'),
             ),
+            AdaptiveButton(
+              key: const ValueKey('signin_auth_key_from_url_button_nonapple'),
+              accessibilityLabel: 'Sign in with auth key',
+              textButton: true,
+              onPressed: () => _switchToAuthKeySignin(ref),
+              child: const Text('Sign in with Auth Key'),
+            ),
           ],
           if (profiles.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -2189,6 +2288,14 @@ class _MainViewState extends ConsumerState<MainView> {
       padding: const EdgeInsets.all(16),
       child: AdaptiveErrorWidget(error: error, onRetry: onRetry),
     );
+  }
+
+  /// Returns true if the login-state health warning is a transient artifact
+  /// of the backend stop/restart cycle (e.g. "context canceled") rather than
+  /// a real login failure that the user should see.
+  bool _isTransientLoginWarning(UnhealthyState warning) {
+    final rawError = warning.args?[_healthArgErrorKey] ?? warning.text ?? '';
+    return rawError.toLowerCase().contains('context canceled');
   }
 
   String? _invalidAuthKeyError(UnhealthyState? warning) {

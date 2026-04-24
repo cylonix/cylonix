@@ -814,6 +814,8 @@ class AdaptiveTextFormField extends StatelessWidget {
   final FormFieldValidator<String>? validator;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
+  final int? maxLines;
+  final int? minLines;
 
   const AdaptiveTextFormField({
     super.key,
@@ -832,6 +834,8 @@ class AdaptiveTextFormField extends StatelessWidget {
     this.keyboardType,
     this.textInputAction,
     this.suffixIcon,
+    this.maxLines,
+    this.minLines,
   });
 
   @override
@@ -861,6 +865,8 @@ class AdaptiveTextFormField extends StatelessWidget {
             validator: validator,
             keyboardType: keyboardType,
             textInputAction: textInputAction,
+            maxLines: maxLines ?? 1,
+            minLines: minLines,
             padding: const EdgeInsets.symmetric(
               vertical: 12,
               horizontal: 16,
@@ -886,6 +892,8 @@ class AdaptiveTextFormField extends StatelessWidget {
                 validator: validator,
                 keyboardType: keyboardType,
                 textInputAction: textInputAction,
+                maxLines: maxLines ?? 1,
+                minLines: minLines,
               )
             : TextFormField(
                 autofocus: autofocus,
@@ -906,6 +914,8 @@ class AdaptiveTextFormField extends StatelessWidget {
                 validator: validator,
                 keyboardType: keyboardType,
                 textInputAction: textInputAction,
+                maxLines: maxLines ?? 1,
+                minLines: minLines,
               );
     return _wrapAccessibleControl(
       child: field,

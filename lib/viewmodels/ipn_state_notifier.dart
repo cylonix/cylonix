@@ -114,6 +114,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         currentState.copyWith(
           backendState: backendState,
           vpnState: _vpnStateForBackendState(backendState),
+          isMeshMode: !status.tun,
           loggedInUser: shouldClearSessionData ? null : currentState.loggedInUser,
           selfNode: shouldClearSessionData ? null : currentState.selfNode,
           netmap: shouldClearSessionData ? null : currentState.netmap,
@@ -537,8 +538,9 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       "\n\n***Logging in with authKey: $authKey, controlURL: $controlURL. "
       "Set ipn state to connecting***\n\n",
     );
+    final previousState = state.valueOrNull ?? const IpnState();
     state = AsyncValue.data(
-      (state.valueOrNull ?? const IpnState()).copyWith(
+      previousState.copyWith(
         vpnState: VpnState.connecting,
       ),
     );
@@ -546,7 +548,11 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       await _ipnService.login(authKey: authKey, controlURL: controlURL);
       loginSent = true;
     } catch (error, stack) {
-      state = AsyncValue.error(error, stack);
+      _logger.e("login() caught error: $error");
+      // Restore previous state instead of AsyncValue.error so derived
+      // providers keep their values and the UI doesn't flash to a
+      // disconnected/reconnect view.
+      state = AsyncValue.data(previousState);
       rethrow;
     }
   }
@@ -595,22 +601,14 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       _logger.e("Failed to add profile: $error, stackTrace: $stack");
       rethrow;
     }
-    try {
-      _logger.d(
-        "Added profile with controlURL: $controlURL. "
-        "Set ipn state to connecting",
-      );
-      state = AsyncValue.data(
-        const IpnState().copyWith(
-          vpnState: VpnState.connecting,
-        ),
-      );
-      await _ipnService.login(controlURL: controlURL);
-      loginSent = true;
-      await _ipnService.startVpn();
-    } catch (error, stack) {
-      state = AsyncValue.error(error, stack);
-    }
+    _logger.d("Added profile, entering needsLogin state");
+    final currentState = state.valueOrNull ?? const IpnState();
+    state = AsyncValue.data(
+      currentState.copyWith(
+        backendState: BackendState.needsLogin,
+        browseToURL: null,
+      ),
+    );
   }
 
   Future<void> deleteProfile(String profileID) async {

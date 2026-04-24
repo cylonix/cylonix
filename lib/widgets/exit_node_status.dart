@@ -21,6 +21,11 @@ class ExitNodeStatusWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isMeshMode = ref.watch(isMeshModeProvider);
+    if (isMeshMode) {
+      return _buildMeshModeTile(context);
+    }
+
     final nodeState = ref.watch(nodeStateProvider);
     final exitNodeID = ref.watch(exitNodeIDProvider);
     final exitNode = ref.watch(exitNodeProvider);
@@ -41,6 +46,34 @@ class ExitNodeStatusWidget extends ConsumerWidget {
           exitNodeID,
           isRunningExitNode,
           ref,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMeshModeTile(BuildContext context) {
+    return AdaptiveListSection.insetGrouped(
+      children: [
+        AdaptiveListTile.notched(
+          title: const Text('Mesh Mode'),
+          subtitle: Text(
+            'Direct peer-to-peer connections only',
+            style: TextStyle(
+              color: isApple()
+                  ? CupertinoColors.systemGrey.resolveFrom(context)
+                  : Theme.of(context).textTheme.bodySmall?.color,
+            ),
+          ),
+          leading: isApple()
+              ? Icon(
+                  CupertinoIcons.link,
+                  color:
+                      CupertinoColors.activeBlue.resolveFrom(context),
+                )
+              : Icon(
+                  Icons.hub,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
         ),
       ],
     );

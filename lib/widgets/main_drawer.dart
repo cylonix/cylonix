@@ -58,7 +58,8 @@ class MainDrawer extends ConsumerWidget {
                       onNavigateToSettings(),
                     },
                   ),
-                  if (onNavigateToExitNodes != null)
+                  if (onNavigateToExitNodes != null &&
+                      !ref.watch(isMeshModeProvider))
                     _buildDrawerItem(
                       context,
                       title: 'Exit Nodes',

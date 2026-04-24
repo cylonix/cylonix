@@ -630,16 +630,23 @@ import UserNotifications
             }
             // wg_log(.debug, message: "Last processed notification index: \(idx)")
             if idx >= 0 {
+                let nowUs = floor(Date().timeIntervalSince1970 * 1_000_000)
                 for index in idx ..< queue.count {
                     let item = queue[index]
                     if let notification = item["notification"] as? String {
-                        // Truncate notification for debug logging
-                        // let maxLength = 256
-                        // let truncated = notification.count > maxLength ?
-                        //    notification.prefix(maxLength) + "..." :
-                        //    notification
-                        // wg_log(.debug, message: "Processing notification: \(truncated)")
-                        invokeMethod("notification", arguments: notification)
+                        let caller = (item["caller"] as? String) ?? "unknown"
+                        let enqueuedAtUs = (item["timestamp"] as? Double) ?? 0
+                        let id = (item["id"] as? String) ?? ""
+                        let ageUs = nowUs - enqueuedAtUs
+                        if ageUs > 1_000_000 {
+                            wg_log(.info, message: "Draining stale notification id=\(id) caller=\(caller) ageUs=\(Int64(ageUs))")
+                        }
+                        invokeMethod("notification", arguments: [
+                            "notification": notification,
+                            "caller": caller,
+                            "enqueuedAtUs": enqueuedAtUs,
+                            "id": id,
+                        ])
                     }
                 }
             }

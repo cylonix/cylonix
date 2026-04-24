@@ -35,6 +35,9 @@ class IpnService {
   static final _pendingPeerMessagingEvents = <PeerMessagingEvent>[];
 
   StreamSubscription<BackendNotifyEvent>? _startEngineBackendNotifySub;
+  static Timer? _tunnelInactiveDebounceTimer;
+  static const _tunnelInactiveDebounce = Duration(milliseconds: 1000);
+  static String? _lastReceivedTunnelStatus;
   static const _localBaseURL = "http://local-tailscaled.sock/localapi/v0";
   static const _localApiHost = "local-tailscaled.sock";
   static const _localApiPrefix = "/localapi/v0";
@@ -65,14 +68,25 @@ class IpnService {
       _logger.d("Received tunnel status ${onData.status}");
       // If tunnel status changed to inactive we may not receive a notification
       // from the backend as it is being disposed for network extension, we need
-      // to send it manually.
+      // to send it manually. Debounce transient inactive blips caused by
+      // fresh-loaded NETunnelProviderManager status reads (see Fix 2 in
+      // TunnelsManager.swift) before synthesizing the backend-down event.
       if (onData.status == TunnelStatus.inactive) {
-        _logger.d("Tunnel status changed to inactive");
-        final n = IpnNotification(
-          state: BackendState.noState.value,
-        );
-        _logger.d("Sending notification: $n");
-        _notificationController.add(n);
+        _tunnelInactiveDebounceTimer?.cancel();
+        _tunnelInactiveDebounceTimer = Timer(_tunnelInactiveDebounce, () {
+          _tunnelInactiveDebounceTimer = null;
+          _logger.d(
+            "Tunnel status stayed inactive (caller=local-tunnel-inactive)",
+          );
+          final n = IpnNotification(
+            state: BackendState.noState.value,
+          );
+          _logger.d("Sending notification: $n");
+          _notificationController.add(n);
+        });
+      } else {
+        _tunnelInactiveDebounceTimer?.cancel();
+        _tunnelInactiveDebounceTimer = null;
       }
     });
   }
@@ -164,9 +178,50 @@ class IpnService {
           break;
         case "notification":
           try {
-            final s = call.arguments as String;
+            final args = call.arguments;
+            String s;
+            String caller = "unknown";
+            int? enqueuedAtUs;
+            String? id;
+            if (args is String) {
+              s = args;
+            } else if (args is Map) {
+              s = args["notification"] as String;
+              caller = (args["caller"] as String?) ?? "unknown";
+              final ts = args["enqueuedAtUs"];
+              if (ts is int) {
+                enqueuedAtUs = ts;
+              } else if (ts is double) {
+                enqueuedAtUs = ts.toInt();
+              }
+              id = args["id"] as String?;
+            } else {
+              _logger.e(
+                "Invalid notification arguments: ${args.runtimeType}",
+              );
+              break;
+            }
             final json = jsonDecode(s);
             final v = IpnNotification.fromJson(json);
+            if (v.state != null) {
+              if (enqueuedAtUs != null) {
+                final nowUs = DateTime.now().microsecondsSinceEpoch;
+                final ageUs = nowUs - enqueuedAtUs;
+                if (ageUs > 1000000) {
+                  _logger.w(
+                    "Stale notification state=${v.state} caller=$caller id=$id ageUs=$ageUs",
+                  );
+                } else {
+                  _logger.d(
+                    "Notification state=${v.state} caller=$caller id=$id ageUs=$ageUs",
+                  );
+                }
+              } else {
+                _logger.d(
+                  "Notification state=${v.state} caller=$caller",
+                );
+              }
+            }
             eventBus.fire(BackendNotifyEvent(v));
           } catch (e, trace) {
             _logger.e("Failed to handle notification: $e: $trace");
@@ -191,6 +246,15 @@ class IpnService {
             if (status == null) {
               throw Exception("missing tunnel status value");
             }
+            // Dedupe based on what this app has actually received: the native
+            // side may emit the same status repeatedly (e.g. refreshStatus
+            // fired by multiple observers), but the app only needs to see a
+            // transition. Errors always pass through so they are not lost.
+            if (error == null && _lastReceivedTunnelStatus == status) {
+              _logger.d("Skipping duplicate tunnel status: $status");
+              break;
+            }
+            _lastReceivedTunnelStatus = status;
             _logger.d("Broadcasting tunnel status event");
             eventBus.fire(
               TunnelStatusEvent(TunnelStatus(status), error: error),
@@ -380,32 +444,59 @@ class IpnService {
     }
   }
 
-  Future<List<String>> getLogs() async {
-    if (Platform.isWindows) {
-      return await WindowsServiceLogReader.readLatestServiceLog();
+  Future<String> getDebugStateTraces() async {
+    if (_useHttpLocalApi) {
+      return await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/debug-state-traces'),
+        'GET',
+      );
     }
-    if (Platform.isLinux) {
-      return await LinuxServiceLogReader.readLatestServiceLog();
-    }
-    final completer = Completer<List<String>>();
-    final id = const Uuid().v4();
-    _commandCompleters[id] = completer;
-    final String result = await _channel.invokeMethod(
-      'getLogs',
-      id,
-    );
-    if (result != "Success") {
-      throw Exception(result);
-    }
+    return await _sendCommand('debug_state_traces', '');
+  }
 
-    const timeout = Duration(seconds: 3);
+  Future<List<String>> _getDebugStateTraceLines() async {
     try {
-      final ret = await completer.future.timeout(timeout);
-      return ret;
+      final raw = await getDebugStateTraces();
+      if (raw.trim().isEmpty) return const [];
+      const header = '===== IPN state-send trace ring buffer =====';
+      return [header, ...raw.split('\n')];
     } catch (e) {
-      _logger.e("failed to get logs: $e");
-      rethrow;
+      _logger.w("failed to get IPN state-send traces: $e");
+      return ['===== IPN state-send trace fetch failed: $e ====='];
     }
+  }
+
+  Future<List<String>> getLogs() async {
+    List<String> base;
+    if (Platform.isWindows) {
+      base = await WindowsServiceLogReader.readLatestServiceLog();
+    } else if (Platform.isLinux) {
+      base = await LinuxServiceLogReader.readLatestServiceLog();
+    } else if (isDirectDistribution) {
+      base = await MacOSDirectServiceLogReader.readLatestServiceLog();
+    } else {
+      final completer = Completer<List<String>>();
+      final id = const Uuid().v4();
+      _commandCompleters[id] = completer;
+      final String result = await _channel.invokeMethod(
+        'getLogs',
+        id,
+      );
+      if (result != "Success") {
+        throw Exception(result);
+      }
+
+      const timeout = Duration(seconds: 3);
+      try {
+        base = await completer.future.timeout(timeout);
+      } catch (e) {
+        _logger.e("failed to get logs: $e");
+        rethrow;
+      }
+    }
+    final traces = await _getDebugStateTraceLines();
+    if (traces.isEmpty) return base;
+    return [...base, '', ...traces];
   }
 
   Future<String> _sendCommand(
@@ -1406,7 +1497,7 @@ class IpnService {
   Future<bool> getLocalDiscoveryRelay() async {
     final result = await (_useHttpLocalApi
         ? _sendCommandOverHttp(
-            Uri.parse('$_localBaseURL/status'),
+            Uri.parse('$_localBaseURL/status?peers=false'),
             'GET',
             timeoutMilliseconds: 2000,
           )
@@ -1421,7 +1512,7 @@ class IpnService {
       final capMap = selfNode?['CapMap'] as Map<String, dynamic>?;
       return capMap?.containsKey(_capRelayL2Discovery) ?? false;
     } catch (e) {
-      throw Exception("Failed to get local discovery relay: $result");
+      throw Exception("Failed to get local discovery relay: $e");
     }
   }
 
@@ -1678,7 +1769,7 @@ class IpnService {
           'POST',
           Uri.parse('$_localBaseURL/log'),
         );
-        request.write(log);
+        request.add(utf8.encode(log));
         await request.close();
       } catch (e) {
         _logger.e('Failed to send log over stream: $e', sendToIpn: false);
@@ -1845,32 +1936,21 @@ class IpnService {
     int timeoutMilliseconds = 10000,
     String endpoint = "",
   }) async {
-    Completer? completer;
-    completer = Completer();
+    final completer = Completer<String>();
+    final buffer = StringBuffer();
     response.transform(utf8.decoder).listen(
       (data) {
-        if (completer == null || (completer?.isCompleted ?? false)) {
-          _logger.e(
-            "$endpoint: Completer is null or completed, "
-            "cannot set http response",
-            sendToIpn: false,
-          );
-          return;
-        }
-        completer?.complete(data);
-        completer = null;
+        buffer.write(data);
       },
       onError: (error, stack) {
         _logger.e('$endpoint: Stream error: $error', sendToIpn: false);
-        if (completer != null && !(completer?.isCompleted ?? false)) {
-          completer?.completeError(error);
-          completer = null;
+        if (!completer.isCompleted) {
+          completer.completeError(error);
         }
       },
       onDone: () {
-        if (completer != null && !(completer?.isCompleted ?? false)) {
-          completer?.complete("");
-          completer = null;
+        if (!completer.isCompleted) {
+          completer.complete(buffer.toString());
         }
         if (endpoint.contains('/log')) {
           _logger.d("$endpoint: Stream done", sendToIpn: false);
@@ -1878,15 +1958,9 @@ class IpnService {
       },
       cancelOnError: true,
     );
-    final result = await completer?.future.timeout(Duration(
+    return completer.future.timeout(Duration(
       milliseconds: timeoutMilliseconds,
     ));
-    completer = null;
-    if (result is! String) {
-      _logger.e("$endpoint: HTTP request failed: $result", sendToIpn: false);
-      throw Exception("HTTP request failed: $result");
-    }
-    return result;
   }
 
   Future<String> _sendCommandOverHttp(

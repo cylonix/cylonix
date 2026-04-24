@@ -208,3 +208,15 @@ class LinuxServiceLogReader extends ServiceLogReader {
     return await ServiceLogReader.readLastLines(file, lines, match: 'cylonixd');
   }
 }
+
+class MacOSDirectServiceLogReader extends ServiceLogReader {
+  static Future<List<String>> readLatestServiceLog({int lines = 5000}) async {
+    final file = File('/var/log/cylonix/cylonixd.log');
+
+    if (!await file.exists()) {
+      throw Exception('Daemon log not found: ${file.path}');
+    }
+
+    return await ServiceLogReader.readLastLines(file, lines);
+  }
+}

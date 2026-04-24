@@ -34,6 +34,7 @@ mixin _$IpnState {
   LoginProfile? get currentProfile => throw _privateConstructorUsedError;
   List<LoginProfile> get loginProfiles => throw _privateConstructorUsedError;
   bool get isRunningExitNode => throw _privateConstructorUsedError;
+  bool get isMeshMode => throw _privateConstructorUsedError;
 
   /// Serializes this IpnState to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -64,7 +65,8 @@ abstract class $IpnStateCopyWith<$Res> {
       List<AwaitingFile>? filesWaiting,
       LoginProfile? currentProfile,
       List<LoginProfile> loginProfiles,
-      bool isRunningExitNode});
+      bool isRunningExitNode,
+      bool isMeshMode});
 
   $UserProfileCopyWith<$Res>? get loggedInUser;
   $NodeCopyWith<$Res>? get selfNode;
@@ -103,6 +105,7 @@ class _$IpnStateCopyWithImpl<$Res, $Val extends IpnState>
     Object? currentProfile = freezed,
     Object? loginProfiles = null,
     Object? isRunningExitNode = null,
+    Object? isMeshMode = null,
   }) {
     return _then(_value.copyWith(
       backendState: null == backendState
@@ -160,6 +163,10 @@ class _$IpnStateCopyWithImpl<$Res, $Val extends IpnState>
       isRunningExitNode: null == isRunningExitNode
           ? _value.isRunningExitNode
           : isRunningExitNode // ignore: cast_nullable_to_non_nullable
+              as bool,
+      isMeshMode: null == isMeshMode
+          ? _value.isMeshMode
+          : isMeshMode // ignore: cast_nullable_to_non_nullable
               as bool,
     ) as $Val);
   }
@@ -271,7 +278,8 @@ abstract class _$$IpnStateImplCopyWith<$Res>
       List<AwaitingFile>? filesWaiting,
       LoginProfile? currentProfile,
       List<LoginProfile> loginProfiles,
-      bool isRunningExitNode});
+      bool isRunningExitNode,
+      bool isMeshMode});
 
   @override
   $UserProfileCopyWith<$Res>? get loggedInUser;
@@ -314,6 +322,7 @@ class __$$IpnStateImplCopyWithImpl<$Res>
     Object? currentProfile = freezed,
     Object? loginProfiles = null,
     Object? isRunningExitNode = null,
+    Object? isMeshMode = null,
   }) {
     return _then(_$IpnStateImpl(
       backendState: null == backendState
@@ -372,6 +381,10 @@ class __$$IpnStateImplCopyWithImpl<$Res>
           ? _value.isRunningExitNode
           : isRunningExitNode // ignore: cast_nullable_to_non_nullable
               as bool,
+      isMeshMode: null == isMeshMode
+          ? _value.isMeshMode
+          : isMeshMode // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
@@ -393,7 +406,8 @@ class _$IpnStateImpl implements _IpnState {
       final List<AwaitingFile>? filesWaiting,
       this.currentProfile,
       final List<LoginProfile> loginProfiles = const [],
-      this.isRunningExitNode = false})
+      this.isRunningExitNode = false,
+      this.isMeshMode = false})
       : _outgoingFiles = outgoingFiles,
         _filesWaiting = filesWaiting,
         _loginProfiles = loginProfiles;
@@ -455,10 +469,13 @@ class _$IpnStateImpl implements _IpnState {
   @override
   @JsonKey()
   final bool isRunningExitNode;
+  @override
+  @JsonKey()
+  final bool isMeshMode;
 
   @override
   String toString() {
-    return 'IpnState(backendState: $backendState, vpnState: $vpnState, loggedInUser: $loggedInUser, selfNode: $selfNode, netmap: $netmap, prefs: $prefs, health: $health, browseToURL: $browseToURL, errMessage: $errMessage, outgoingFiles: $outgoingFiles, filesWaiting: $filesWaiting, currentProfile: $currentProfile, loginProfiles: $loginProfiles, isRunningExitNode: $isRunningExitNode)';
+    return 'IpnState(backendState: $backendState, vpnState: $vpnState, loggedInUser: $loggedInUser, selfNode: $selfNode, netmap: $netmap, prefs: $prefs, health: $health, browseToURL: $browseToURL, errMessage: $errMessage, outgoingFiles: $outgoingFiles, filesWaiting: $filesWaiting, currentProfile: $currentProfile, loginProfiles: $loginProfiles, isRunningExitNode: $isRunningExitNode, isMeshMode: $isMeshMode)';
   }
 
   @override
@@ -490,7 +507,9 @@ class _$IpnStateImpl implements _IpnState {
             const DeepCollectionEquality()
                 .equals(other._loginProfiles, _loginProfiles) &&
             (identical(other.isRunningExitNode, isRunningExitNode) ||
-                other.isRunningExitNode == isRunningExitNode));
+                other.isRunningExitNode == isRunningExitNode) &&
+            (identical(other.isMeshMode, isMeshMode) ||
+                other.isMeshMode == isMeshMode));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -510,7 +529,8 @@ class _$IpnStateImpl implements _IpnState {
       const DeepCollectionEquality().hash(_filesWaiting),
       currentProfile,
       const DeepCollectionEquality().hash(_loginProfiles),
-      isRunningExitNode);
+      isRunningExitNode,
+      isMeshMode);
 
   /// Create a copy of IpnState
   /// with the given fields replaced by the non-null parameter values.
@@ -543,7 +563,8 @@ abstract class _IpnState implements IpnState {
       final List<AwaitingFile>? filesWaiting,
       final LoginProfile? currentProfile,
       final List<LoginProfile> loginProfiles,
-      final bool isRunningExitNode}) = _$IpnStateImpl;
+      final bool isRunningExitNode,
+      final bool isMeshMode}) = _$IpnStateImpl;
 
   factory _IpnState.fromJson(Map<String, dynamic> json) =
       _$IpnStateImpl.fromJson;
@@ -576,6 +597,8 @@ abstract class _IpnState implements IpnState {
   List<LoginProfile> get loginProfiles;
   @override
   bool get isRunningExitNode;
+  @override
+  bool get isMeshMode;
 
   /// Create a copy of IpnState
   /// with the given fields replaced by the non-null parameter values.

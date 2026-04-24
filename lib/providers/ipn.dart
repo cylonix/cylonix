@@ -45,6 +45,11 @@ final vpnStateProvider = Provider<VpnState>((ref) {
   return ipnState?.vpnState ?? VpnState.disconnected;
 });
 
+final isMeshModeProvider = Provider<bool>((ref) {
+  final ipnState = ref.watch(ipnStateProvider);
+  return ipnState?.isMeshMode ?? false;
+});
+
 final netmapProvider = Provider<NetworkMap?>((ref) {
   final ipnState = ref.watch(ipnStateProvider);
   return ipnState?.netmap;
@@ -128,7 +133,7 @@ final stateTextProvider = Provider<String>((ref) {
 
   switch (ipnState.vpnState) {
     case VpnState.connected:
-      return 'Connected';
+      return ipnState.isMeshMode ? 'Connected (Mesh)' : 'Connected';
     case VpnState.connecting:
       return 'Connecting...';
     case VpnState.error:

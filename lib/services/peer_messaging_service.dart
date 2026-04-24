@@ -598,8 +598,17 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               event.type == PeerMessagingEventType.messageReceived ||
                   event.type == PeerMessagingEventType.approvalRequested ||
                   event.type == PeerMessagingEventType.menuRequested;
+          final rawFromPeerId = event.payload['from_peer_id'] as String?;
+          final selfPeerId =
+              _ref.read(selfNodeProvider)?.stableID ?? '';
+          final isFromSelf = isInboundEvent &&
+              (rawFromPeerId ?? '').isNotEmpty &&
+              rawFromPeerId == selfPeerId;
+          // Backend echoes our own peer messages back via messageReceived. Treat
+          // them as local so they render as our own and don't bump unread.
+          final isRealInbound = isInboundEvent && !isFromSelf;
           final inboundPeerId =
-              isInboundEvent ? event.payload['from_peer_id'] as String? : null;
+              isInboundEvent ? rawFromPeerId : null;
           final localConversationId = inboundPeerId?.isNotEmpty == true
               ? inboundPeerId!
               : event.conversationId;
@@ -607,10 +616,10 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             ...Map<String, dynamic>.from(
               messageJson['metadata'] as Map? ?? const {},
             ),
-            if (isInboundEvent) 'is_inbound': true,
-            if (isInboundEvent && event.payload['from_peer_id'] != null)
+            if (isRealInbound) 'is_inbound': true,
+            if (isRealInbound && event.payload['from_peer_id'] != null)
               'from_peer_id': event.payload['from_peer_id'],
-            if (isInboundEvent && event.payload['from_peer_name'] != null)
+            if (isRealInbound && event.payload['from_peer_name'] != null)
               'from_peer_name': event.payload['from_peer_name'],
           };
           final message = PeerMessagingMessage.fromJson({
@@ -618,7 +627,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             'conversation_id': localConversationId,
             if (mergedMetadata.isNotEmpty) 'metadata': mergedMetadata,
           });
-          final incomingPeerName = isInboundEvent
+          final incomingPeerName = isRealInbound
               ? event.payload['from_peer_name'] as String?
               : null;
           final conversationTitle = incomingPeerName?.isNotEmpty == true
@@ -626,7 +635,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               : event.payload['conversation_title'] as String? ??
                   'Peer Conversation';
           _logger.i(
-            'handleBridgeEvent: applying message id=${message.id} localConversation=$localConversationId inbound=$isInboundEvent attachments=${message.attachments.length} isDirectDistribution=${IpnService.isDirectDistribution}',
+            'handleBridgeEvent: applying message id=${message.id} localConversation=$localConversationId inbound=$isRealInbound fromSelf=$isFromSelf attachments=${message.attachments.length} isDirectDistribution=${IpnService.isDirectDistribution}',
           );
           _upsertConversationMessage(
             profileId,
@@ -634,14 +643,11 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             message,
             title: conversationTitle,
             subtitle: event.payload['subtitle'] as String? ?? '',
-            incrementUnread:
-                event.type == PeerMessagingEventType.messageReceived ||
-                    event.type == PeerMessagingEventType.approvalRequested ||
-                    event.type == PeerMessagingEventType.menuRequested,
+            incrementUnread: isRealInbound,
           );
           if ((Platform.isMacOS || Platform.isIOS) &&
               message.attachments.isNotEmpty) {
-            if (IpnService.isDirectDistribution && isInboundEvent) {
+            if (IpnService.isDirectDistribution && isRealInbound) {
               // Direct/PKG distribution: download attachments from daemon
               // via HTTP and save to Downloads, then update attachment paths.
               for (var attempt = 0; attempt < 5; attempt++) {
@@ -668,7 +674,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             }
           }
           if (Platform.isIOS &&
-              isInboundEvent &&
+              isRealInbound &&
               message.attachments.isNotEmpty) {
             await _consumePendingAttachmentFiles();
           }

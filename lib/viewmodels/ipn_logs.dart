@@ -13,7 +13,7 @@ class IpnLogsViewModel extends StateNotifier<AsyncValue<List<String>>> {
   final IpnService _ipnService;
   final _logger = logger.Logger(tag: "IpnLogsViewModel");
   final timestampRegex =
-      RegExp(r'^(\[[\d\-]+T[\d:\.]+Z\]|\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2})');
+      RegExp(r'^(\[[\d\-]+T[\d:\.]+Z\]|\d{4}[-/]\d{2}[-/]\d{2}\s\d{2}:\d{2}:\d{2})');
 
   IpnLogsViewModel(this._ipnService) : super(const AsyncValue.data([]));
 
@@ -48,7 +48,7 @@ class IpnLogsViewModel extends StateNotifier<AsyncValue<List<String>>> {
 
         final timestampMatch = timestampRegex.firstMatch(line);
 
-        if (Platform.isLinux || Platform.isWindows || timestampMatch != null) {
+        if (Platform.isLinux || Platform.isWindows || IpnService.isDirectDistribution || timestampMatch != null) {
           // New log entry starts
           if (currentLogEvent != null) {
             // Add previous log entry

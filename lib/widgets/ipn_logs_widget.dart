@@ -12,6 +12,7 @@ import 'adaptive_widgets.dart';
 import '../models/log_file.dart';
 import '../utils/logger.dart' as logger;
 import '../utils/utils.dart';
+import '../services/ipn.dart';
 import '../viewmodels/ipn_logs.dart';
 import '../viewmodels/state_notifier.dart';
 
@@ -24,13 +25,14 @@ class IpnLogsWidget extends ConsumerWidget {
     this.onNavigateToLogConsole,
   });
   static final _logger = logger.Logger(tag: "IpnLogsWidget");
+  static bool get _isExtension => isApple() && !IpnService.isDirectDistribution;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(ipnLogsProvider);
     return logs.when(
       data: (_) => AdaptiveListTile.notched(
-        title: Text(isApple()
+        title: Text(_isExtension
             ? "View Network Extension Logs"
             : "View Network Service Logs"),
         trailing: const AdaptiveListTileChevron(),
@@ -38,13 +40,13 @@ class IpnLogsWidget extends ConsumerWidget {
         onTap: () => _showLogConsole(context, ref),
       ),
       loading: () => AdaptiveListTile.notched(
-        title: Text(isApple()
+        title: Text(_isExtension
             ? "Loading Network Extension Logs"
             : "Loading Network Service Logs"),
         trailing: const AdaptiveLoadingWidget(),
       ),
       error: (error, stackTrace) => AdaptiveListTile.notched(
-        title: Text(isApple()
+        title: Text(_isExtension
             ? "Error Loading Network Extension Logs"
             : "Error Loading Network Service Logs"),
         subtitle: Text(
