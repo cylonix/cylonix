@@ -116,7 +116,7 @@ _$IpnNotificationImpl _$$IpnNotificationImplFromJson(
           ? null
           : ClientVersion.fromJson(
               json['ClientVersion'] as Map<String, dynamic>),
-      tailFSShares: (json['TailFSShares'] as List<dynamic>?)
+      driveShares: (json['DriveShares'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
       health: json['Health'] == null
@@ -142,7 +142,7 @@ Map<String, dynamic> _$$IpnNotificationImplToJson(
       'LocalTCPPort': instance.localTCPPort,
       'IncomingFiles': instance.incomingFiles,
       'ClientVersion': instance.clientVersion,
-      'TailFSShares': instance.tailFSShares,
+      'DriveShares': instance.driveShares,
       'Health': instance.health,
       'PeerMessageEvent': instance.peerMessageEvent,
     };
@@ -342,16 +342,17 @@ Map<String, dynamic> _$$PersistConfigImplToJson(_$PersistConfigImpl instance) =>
 _$NetworkMapImpl _$$NetworkMapImplFromJson(Map<String, dynamic> json) =>
     _$NetworkMapImpl(
       selfNode: Node.fromJson(json['SelfNode'] as Map<String, dynamic>),
-      nodeKey: json['NodeKey'] as String,
+      nodeKey: json['NodeKey'] as String? ?? '',
       peers: (json['Peers'] as List<dynamic>?)
           ?.map((e) => Node.fromJson(e as Map<String, dynamic>))
           .toList(),
-      expiry: DateTime.parse(json['Expiry'] as String),
-      domain: json['Domain'] as String,
-      userProfiles: (json['UserProfiles'] as Map<String, dynamic>).map(
-        (k, e) => MapEntry(k, UserProfile.fromJson(e as Map<String, dynamic>)),
-      ),
-      tkaEnabled: json['TKAEnabled'] as bool,
+      domain: json['Domain'] as String? ?? '',
+      userProfiles: (json['UserProfiles'] as Map<String, dynamic>?)?.map(
+            (k, e) =>
+                MapEntry(k, UserProfile.fromJson(e as Map<String, dynamic>)),
+          ) ??
+          const {},
+      tkaEnabled: json['TKAEnabled'] as bool? ?? false,
       dns: json['DNS'] == null
           ? null
           : DNSConfig.fromJson(json['DNS'] as Map<String, dynamic>),
@@ -362,7 +363,6 @@ Map<String, dynamic> _$$NetworkMapImplToJson(_$NetworkMapImpl instance) =>
       'SelfNode': instance.selfNode,
       'NodeKey': instance.nodeKey,
       'Peers': instance.peers,
-      'Expiry': instance.expiry.toIso8601String(),
       'Domain': instance.domain,
       'UserProfiles': instance.userProfiles,
       'TKAEnabled': instance.tkaEnabled,
@@ -376,13 +376,16 @@ _$NodeImpl _$$NodeImplFromJson(Map<String, dynamic> json) => _$NodeImpl(
       userID: (json['User'] as num).toInt(),
       sharer: (json['Sharer'] as num?)?.toInt(),
       key: json['Key'] as String,
-      keyExpiry: json['KeyExpiry'] as String,
-      machine: json['Machine'] as String,
-      addresses:
-          (json['Addresses'] as List<dynamic>).map((e) => e as String).toList(),
-      allowedIPs: (json['AllowedIPs'] as List<dynamic>)
-          .map((e) => e as String)
-          .toList(),
+      keyExpiry: json['KeyExpiry'] as String? ?? '',
+      machine: json['Machine'] as String? ?? '',
+      addresses: (json['Addresses'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      allowedIPs: (json['AllowedIPs'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
       endpoints: (json['Endpoints'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),

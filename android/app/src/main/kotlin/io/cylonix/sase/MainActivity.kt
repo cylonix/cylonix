@@ -42,6 +42,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 import com.tailscale.ipn.R as IPNR
+import com.tailscale.ipn.addUserDisallowedPackageName
+import com.tailscale.ipn.removeUserDisallowedPackageName
 import com.tailscale.ipn.setIpnStateChangeCallback
 import com.tailscale.ipn.setNotificationCallback
 import com.tailscale.ipn.getLogContent
@@ -49,7 +51,7 @@ import com.tailscale.ipn.sendCommand
 import com.tailscale.ipn.ui.model.Ipn
 import com.tailscale.ipn.ui.model.Ipn.Notify
 import com.tailscale.ipn.ui.model.Netmap
-import com.tailscale.ipn.ui.viewModel.VpnViewModel
+import com.tailscale.ipn.ui.viewModel.AppViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModelFactory
 
@@ -156,7 +158,7 @@ class MainActivity: FlutterFragmentActivity() {
       vpnViewModel = app.getAppScopedViewModel()
       ViewModelProvider(this, MainViewModelFactory(vpnViewModel)).get(MainViewModel::class.java)
     }
-    private lateinit var vpnViewModel: VpnViewModel
+    private lateinit var vpnViewModel: AppViewModel
 
     // Must be called BEFORE activity reaches STARTED state
     private fun registerVpnPermissionLauncher() {
@@ -190,7 +192,7 @@ class MainActivity: FlutterFragmentActivity() {
 
     // Called after App.get() is initialized
     private fun initializeVpnViewModel() {
-        vpnViewModel = ViewModelProvider(App.get()).get(VpnViewModel::class.java)
+        vpnViewModel = ViewModelProvider(App.get()).get(AppViewModel::class.java)
         viewModel.setVpnPermissionLauncher(vpnPermissionLauncher)
     }
 

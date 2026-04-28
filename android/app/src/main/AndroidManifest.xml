@@ -39,7 +39,7 @@
         </intent>
     </queries>
     <application
-        tools:replace="android:allowBackup, android:icon, android:label, android:name, anroid:theme"
+        tools:replace="android:allowBackup, android:banner, android:icon, android:label, android:name, anroid:theme"
         android:name=".App"
         android:allowBackup="false"
         android:hasFragileUserData="true"
@@ -125,5 +125,16 @@
             android:value="2"
 			/>
         <profileable android:shell="true"/>
+
+        <!-- Suppress upstream tailscale launcher activities pulled in via the
+             ipn_app.aar so the launcher only shows cylonix's own MainActivity.
+             Cylonix uses tailscale-android as a Go bridge AAR and does not
+             ship its UI. -->
+        <activity
+            android:name="com.tailscale.ipn.MainActivity"
+            tools:node="remove" />
+        <activity
+            android:name="com.tailscale.ipn.IntroActivity"
+            tools:node="remove" />
     </application>
 </manifest>

@@ -96,34 +96,56 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> _syncStateFromBackendStatus() async {
-    try {
-      final status = await _ipnService.status(light: true, fast: true);
-      final backendState = BackendState.fromString(status.backendState);
-      final currentState = state.valueOrNull ?? const IpnState();
-      final shouldSync =
-          currentState.backendState == BackendState.noState ||
-              currentState.vpnState == VpnState.connecting;
+    // Cold-start sync: don't pass fast:true. The 500ms fast-path timeout
+    // races libtailscale's runBackend cold start (lb.Start holds b.mu while
+    // the LocalAPI status handler waits for it); using the regular 5s
+    // timeout lets the call succeed once the backend reaches its first
+    // steady state. If we still time out, retry a few times with
+    // exponential backoff before giving up — the notification stream will
+    // eventually deliver state transitions, but a successful status read
+    // here lets the UI move past the "connecting" placeholder immediately.
+    const maxAttempts = 4;
+    var delayMs = 500;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final status = await _ipnService.status(light: true);
+        final backendState = BackendState.fromString(status.backendState);
+        final currentState = state.valueOrNull ?? const IpnState();
+        final shouldSync =
+            currentState.backendState == BackendState.noState ||
+                currentState.vpnState == VpnState.connecting;
 
-      if (!shouldSync) {
+        if (!shouldSync) {
+          return;
+        }
+
+        final shouldClearSessionData =
+            backendState.index <= BackendState.needsLogin.index;
+        state = AsyncValue.data(
+          currentState.copyWith(
+            backendState: backendState,
+            vpnState: _vpnStateForBackendState(backendState),
+            isMeshMode: !status.tun,
+            loggedInUser:
+                shouldClearSessionData ? null : currentState.loggedInUser,
+            selfNode: shouldClearSessionData ? null : currentState.selfNode,
+            netmap: shouldClearSessionData ? null : currentState.netmap,
+            currentProfile:
+                shouldClearSessionData ? null : currentState.currentProfile,
+          ),
+        );
         return;
+      } catch (error) {
+        if (attempt == maxAttempts) {
+          _logger.w(
+              "Failed to sync backend status after $maxAttempts attempts: $error");
+          return;
+        }
+        _logger.d(
+            "Sync backend status attempt $attempt/$maxAttempts failed ($error); retrying in ${delayMs}ms");
+        await Future.delayed(Duration(milliseconds: delayMs));
+        delayMs = (delayMs * 2).clamp(500, 4000);
       }
-
-      final shouldClearSessionData =
-          backendState.index <= BackendState.needsLogin.index;
-      state = AsyncValue.data(
-        currentState.copyWith(
-          backendState: backendState,
-          vpnState: _vpnStateForBackendState(backendState),
-          isMeshMode: !status.tun,
-          loggedInUser: shouldClearSessionData ? null : currentState.loggedInUser,
-          selfNode: shouldClearSessionData ? null : currentState.selfNode,
-          netmap: shouldClearSessionData ? null : currentState.netmap,
-          currentProfile:
-              shouldClearSessionData ? null : currentState.currentProfile,
-        ),
-      );
-    } catch (error) {
-      _logger.w("Failed to sync backend status after initialization: $error");
     }
   }
 

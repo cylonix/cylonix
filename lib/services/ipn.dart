@@ -37,7 +37,9 @@ class IpnService {
   StreamSubscription<BackendNotifyEvent>? _startEngineBackendNotifySub;
   static Timer? _tunnelInactiveDebounceTimer;
   static const _tunnelInactiveDebounce = Duration(milliseconds: 1000);
+  static const _peerMessagingTransportErrorGrace = Duration(seconds: 30);
   static String? _lastReceivedTunnelStatus;
+  static DateTime? _lastPeerMessagingTransportErrorAt;
   static const _localBaseURL = "http://local-tailscaled.sock/localapi/v0";
   static const _localApiHost = "local-tailscaled.sock";
   static const _localApiPrefix = "/localapi/v0";
@@ -73,8 +75,27 @@ class IpnService {
       // TunnelsManager.swift) before synthesizing the backend-down event.
       if (onData.status == TunnelStatus.inactive) {
         _tunnelInactiveDebounceTimer?.cancel();
-        _tunnelInactiveDebounceTimer = Timer(_tunnelInactiveDebounce, () {
+        _tunnelInactiveDebounceTimer = Timer(_tunnelInactiveDebounce, () async {
           _tunnelInactiveDebounceTimer = null;
+          if (Platform.isIOS && _recentPeerMessagingTransportError()) {
+            try {
+              final status = await this.status(light: true, fast: true);
+              final backendState = BackendState.fromString(status.backendState);
+              if (backendState == BackendState.running) {
+                _logger.w(
+                  "Ignoring transient tunnel inactive after peer messaging "
+                  "transport error; backend still reports running",
+                );
+                return;
+              }
+            } catch (e) {
+              _logger.w(
+                "Ignoring tunnel inactive after recent peer messaging "
+                "transport error; backend status check failed: $e",
+              );
+              return;
+            }
+          }
           _logger.d(
             "Tunnel status stayed inactive (caller=local-tunnel-inactive)",
           );
@@ -89,6 +110,14 @@ class IpnService {
         _tunnelInactiveDebounceTimer = null;
       }
     });
+  }
+
+  static bool _recentPeerMessagingTransportError() {
+    final at = _lastPeerMessagingTransportErrorAt;
+    if (at == null) {
+      return false;
+    }
+    return DateTime.now().difference(at) < _peerMessagingTransportErrorGrace;
   }
 
   Stream<IpnNotification> get notificationStream =>
@@ -499,7 +528,46 @@ class IpnService {
     return [...base, '', ...traces];
   }
 
+  // _sendCommand sends `cmd` with `args` to the native libtailscale bridge
+  // and waits for its result. If the native side reports the libtailscale
+  // App global is not yet initialized (returned as the literal string
+  // "App not initialized"), this retries with exponential backoff: that
+  // race happens between flutter engine startup and libtailscale init in
+  // App.kt / WireGuardAdapter.swift, and is short-lived in practice.
   Future<String> _sendCommand(
+    String cmd,
+    String args, {
+    int timeoutMilliseconds = 10000,
+    Completer? completer,
+    void Function()? onSetTimeout,
+  }) async {
+    const maxAttempts = 10;
+    var delayMs = 50;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await _sendCommandOnce(
+          cmd,
+          args,
+          timeoutMilliseconds: timeoutMilliseconds,
+          completer: completer,
+          onSetTimeout: onSetTimeout,
+        );
+      } on _AppNotInitializedException {
+        if (attempt == maxAttempts) {
+          _logger.e(
+              "command '$cmd': App still not initialized after $maxAttempts retries");
+          rethrow;
+        }
+        _logger.d(
+            "command '$cmd': App not initialized yet, retry $attempt/$maxAttempts in ${delayMs}ms");
+        await Future.delayed(Duration(milliseconds: delayMs));
+        delayMs = (delayMs * 2).clamp(50, 500);
+      }
+    }
+    throw StateError("unreachable");
+  }
+
+  Future<String> _sendCommandOnce(
     String cmd,
     String args, {
     int timeoutMilliseconds = 10000,
@@ -546,9 +614,16 @@ class IpnService {
       if (response is! String) {
         throw Exception("Invalid result: $response");
       }
+      if (response == "App not initialized") {
+        // Race between flutter engine startup and libtailscale init.
+        // _sendCommand will catch this and retry.
+        throw _AppNotInitializedException();
+      }
       return response;
     } catch (e) {
-      _logger.e("failed to wait for command '$cmd' result: $e");
+      if (e is! _AppNotInitializedException) {
+        _logger.e("failed to wait for command '$cmd' result: $e");
+      }
       rethrow;
     } finally {
       timeoutTimer?.cancel();
@@ -1043,10 +1118,26 @@ class IpnService {
         deliveryStatus: PeerMessagingDeliveryStatus.delivered,
       );
     }
-    final result = await _sendCommand(
-      'send_peer_message',
-      jsonEncode(payload),
-    );
+    String result;
+    try {
+      if (Platform.isIOS) {
+        _lastPeerMessagingTransportErrorAt = DateTime.now();
+      }
+      result = await _sendCommand(
+        'send_peer_message',
+        jsonEncode(payload),
+      );
+    } catch (_) {
+      if (Platform.isIOS) {
+        _lastPeerMessagingTransportErrorAt = DateTime.now();
+      }
+      rethrow;
+    }
+    if (Platform.isIOS && result.startsWith("Error sending peerMessage:")) {
+      _lastPeerMessagingTransportErrorAt = DateTime.now();
+    } else if (Platform.isIOS) {
+      _lastPeerMessagingTransportErrorAt = null;
+    }
     if (result == "Success") {
       return const PeerMessagingSendResult(
         accepted: true,
@@ -1654,6 +1745,9 @@ class IpnService {
     Function(Object error, StackTrace stack) onError,
   ) async {
     _logger.d("Starting engine...");
+    // Reset so the dedup filter in _initMethodChannel won't suppress the
+    // "active" status that createTunnelsManager is about to emit.
+    _lastReceivedTunnelStatus = null;
     final completer = Completer<TunnelStatusEvent>();
     final id = const Uuid().v4();
     _commandCompleters[id] = completer;
@@ -1692,8 +1786,14 @@ class IpnService {
         }
       }
       _logger.d("Starting VPN engine...");
+      // Don't use fast:true here — the 500ms timeout races libtailscale's
+      // cold start (lb.Start holds b.mu while serveStatus waits for it).
+      // The regular 5s timeout gives the backend time to settle. If the
+      // status read still fails, fall through and call _start() anyway:
+      // we'd otherwise be stuck waiting for a notification that requires
+      // the backend to be started in the first place.
       try {
-        final ret = await status(light: true, fast: true);
+        final ret = await status(light: true);
         final s = ret.toString().length > 256
             ? ret.toString().substring(0, 256) + "..."
             : ret.toString();
@@ -1713,10 +1813,23 @@ class IpnService {
         }
         return;
       } catch (e) {
-        _logger.e("Failed to get status: $e. Wait for notification to start.");
+        _logger.e(
+            "Failed to get status: $e. Starting tunnel anyway and watching notifications.");
       }
-      _logger.d("Tunnel started. Waiting for notification to start VPN.");
+      _logger.d("Status unknown; starting tunnel and watching notifications.");
       await watchNotifications(onError);
+      // Without a successful status read we don't know what state the
+      // backend is in, but the only state from which we'd want to skip
+      // _start is "already running past needsLogin". If the backend was
+      // already past that, _start is a no-op-ish; if it wasn't, we need
+      // _start to drive the state machine forward (otherwise no
+      // notifications are emitted and the UI stays at "connecting"
+      // forever).
+      try {
+        await _start(const IpnOptions());
+      } catch (e) {
+        _logger.w("Fallback _start after status failure also failed: $e");
+      }
       _startEngineBackendNotifySub?.cancel();
       _startEngineBackendNotifySub =
           eventBus.on<BackendNotifyEvent>().listen((_) async {
@@ -2249,4 +2362,13 @@ class EventBusSender {
     final EventBus eventBus = args[1];
     eventBus.fire(BackendNotifyEvent(notification));
   }
+}
+
+// Thrown when libtailscale's native bridge reports that the App global
+// is not yet initialized. _sendCommand catches this internally and
+// retries with backoff via _sendCommandWithInitRetry; callers should
+// not see it.
+class _AppNotInitializedException implements Exception {
+  @override
+  String toString() => '_AppNotInitializedException';
 }

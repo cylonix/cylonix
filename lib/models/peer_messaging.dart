@@ -318,6 +318,7 @@ class PeerMessagingMessage {
   }
 
   PeerMessagingMessage copyWith({
+    String? conversationId,
     PeerMessagingDeliveryStatus? deliveryStatus,
     String? text,
     String? replyToMessageId,
@@ -329,7 +330,7 @@ class PeerMessagingMessage {
   }) {
     return PeerMessagingMessage(
       id: id,
-      conversationId: conversationId,
+      conversationId: conversationId ?? this.conversationId,
       role: role,
       kind: kind,
       deliveryStatus: deliveryStatus ?? this.deliveryStatus,

@@ -48,7 +48,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
-    _logger.i('PeerMessagingService init [build:20260412B] isDirectDistribution=${IpnService.isDirectDistribution}');
+    _logger.i(
+        'PeerMessagingService init [build:20260412B] isDirectDistribution=${IpnService.isDirectDistribution}');
 
     final storedState = await _loadState();
     _activeProfileId = await _resolveCurrentProfileId();
@@ -56,10 +57,11 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       storedState,
       profileId: _activeProfileId,
     );
+    final normalizedState = _mergeDuplicateConversations(migratedState);
     final authToken = await _loadOrCreateAuthToken();
-    state = migratedState.copyWith(
+    state = normalizedState.copyWith(
       initialized: true,
-      proxy: migratedState.proxy.copyWith(
+      proxy: normalizedState.proxy.copyWith(
         authToken: authToken,
         url: _proxyUrl,
       ),
@@ -87,8 +89,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       return;
     }
     _activeProfileId = nextProfileId;
-    final migratedState =
-        _adoptLegacyConversations(state, profileId: nextProfileId);
+    final migratedState = _mergeDuplicateConversations(
+      _adoptLegacyConversations(state, profileId: nextProfileId),
+    );
     if (!identical(migratedState, state)) {
       state = migratedState;
       await _persistState();
@@ -145,6 +148,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String? replyToMessageId,
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     final now = DateTime.now().toUtc();
     final messageId = const Uuid().v4();
     final normalizedText = text.trim();
@@ -212,6 +216,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required String messageId,
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     final existingMessage = _findMessage(
       profileId: profileId,
       conversationId: conversationId,
@@ -279,6 +284,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required String resolvedPath,
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     if (resolvedPath.isEmpty) {
       return;
     }
@@ -319,6 +325,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String subtitle = '',
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     _upsertConversation(
       profileId,
       conversationId,
@@ -331,6 +338,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
   Future<void> hideConversation(String conversationId) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     final nextConversations = state.conversations.map((conversation) {
       if (!_matchesConversation(
         conversation,
@@ -351,6 +359,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     bool broadcast = true,
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     await _deleteConversationForProfile(
       profileId: profileId,
       conversationId: conversationId,
@@ -364,6 +373,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     bool broadcast = true,
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     await _deleteMessageForProfile(
       profileId: profileId,
       conversationId: conversationId,
@@ -429,6 +439,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String? note,
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     final action = PeerMessagingApprovalAction(
       id: const Uuid().v4(),
       title: approved ? 'Approved' : 'Rejected',
@@ -495,6 +506,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String? title,
   }) async {
     final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
     final now = DateTime.now().toUtc();
     final message = PeerMessagingMessage(
       id: const Uuid().v4(),
@@ -556,9 +568,10 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     );
     switch (event.type) {
       case PeerMessagingEventType.conversationUpsert:
+        final conversationId = _canonicalConversationId(event.conversationId);
         _upsertConversation(
           profileId,
-          event.conversationId,
+          conversationId,
           title: event.payload['title'] as String? ?? 'Peer Conversation',
           subtitle: event.payload['subtitle'] as String? ?? '',
           updatedAt: event.timestamp,
@@ -567,7 +580,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       case PeerMessagingEventType.conversationDeleted:
         await _deleteConversationForProfile(
           profileId: profileId,
-          conversationId: event.conversationId,
+          conversationId: _canonicalConversationId(event.conversationId),
           broadcast: false,
         );
         break;
@@ -584,7 +597,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           if (targetMessageId != null && targetMessageId.isNotEmpty) {
             await _deleteMessageForProfile(
               profileId: profileId,
-              conversationId: event.conversationId,
+              conversationId: _canonicalConversationId(event.conversationId),
               messageId: targetMessageId,
               broadcast: false,
             );
@@ -599,19 +612,17 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
                   event.type == PeerMessagingEventType.approvalRequested ||
                   event.type == PeerMessagingEventType.menuRequested;
           final rawFromPeerId = event.payload['from_peer_id'] as String?;
-          final selfPeerId =
-              _ref.read(selfNodeProvider)?.stableID ?? '';
+          final selfPeerId = _ref.read(selfNodeProvider)?.stableID ?? '';
           final isFromSelf = isInboundEvent &&
               (rawFromPeerId ?? '').isNotEmpty &&
               rawFromPeerId == selfPeerId;
           // Backend echoes our own peer messages back via messageReceived. Treat
           // them as local so they render as our own and don't bump unread.
           final isRealInbound = isInboundEvent && !isFromSelf;
-          final inboundPeerId =
-              isInboundEvent ? rawFromPeerId : null;
+          final inboundPeerId = isInboundEvent ? rawFromPeerId : null;
           final localConversationId = inboundPeerId?.isNotEmpty == true
-              ? inboundPeerId!
-              : event.conversationId;
+              ? _canonicalConversationId(inboundPeerId!)
+              : _canonicalConversationId(event.conversationId);
           final mergedMetadata = <String, dynamic>{
             ...Map<String, dynamic>.from(
               messageJson['metadata'] as Map? ?? const {},
@@ -627,9 +638,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             'conversation_id': localConversationId,
             if (mergedMetadata.isNotEmpty) 'metadata': mergedMetadata,
           });
-          final incomingPeerName = isRealInbound
-              ? event.payload['from_peer_name'] as String?
-              : null;
+          final incomingPeerName =
+              isRealInbound ? event.payload['from_peer_name'] as String? : null;
           final conversationTitle = incomingPeerName?.isNotEmpty == true
               ? incomingPeerName!
               : event.payload['conversation_title'] as String? ??
@@ -656,8 +666,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
                     const Duration(seconds: 2),
                   );
                 }
-                final resolved =
-                    await _consumeDirectModeAttachmentFiles(
+                final resolved = await _consumeDirectModeAttachmentFiles(
                   conversationId: localConversationId,
                   messageId: message.id,
                 );
@@ -685,8 +694,10 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           event.payload['delivery_status'] as String?,
         );
         final targetConversationId = event.conversationId.isNotEmpty
-            ? event.conversationId
-            : (event.payload['conversation_id'] as String? ?? '');
+            ? _canonicalConversationId(event.conversationId)
+            : _canonicalConversationId(
+                event.payload['conversation_id'] as String? ?? '',
+              );
         final targetMessageId = event.messageId ??
             event.payload['message_id'] as String? ??
             (event.payload['message'] as Map?)?['id'] as String?;
@@ -703,8 +714,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         final snapshot = PeerMessagingState.fromJson(
           Map<String, dynamic>.from(event.payload['state'] as Map? ?? {}),
         );
-        state =
-            _adoptLegacyConversations(snapshot, profileId: profileId).copyWith(
+        state = _mergeDuplicateConversations(
+          _adoptLegacyConversations(snapshot, profileId: profileId),
+        ).copyWith(
           initialized: true,
           proxy: state.proxy,
         );
@@ -744,6 +756,14 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }
 
   Future<void> _handleIpnNotification(IpnNotification notification) async {
+    if (notification.netMap != null) {
+      final mergedState = _mergeDuplicateConversations(state);
+      if (!identical(mergedState, state)) {
+        state = mergedState;
+        await _persistState();
+        await _broadcast(_syncSnapshotEvent());
+      }
+    }
     if (notification.outgoingFiles != null &&
         notification.outgoingFiles!.isNotEmpty) {
       await _consumeOutgoingAttachmentProgress(notification.outgoingFiles!);
@@ -1254,7 +1274,6 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     return true;
   }
 
-
   AwaitingFile? _matchWaitingFileForAttachment(
     PeerMessagingAttachment attachment, {
     Set<String> excludeNames = const {},
@@ -1611,6 +1630,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String subtitle = '',
     DateTime? updatedAt,
   }) {
+    conversationId = _canonicalConversationId(conversationId);
     final existingIndex = state.conversations.indexWhere(
       (c) => _matchesConversation(
         c,
@@ -1658,6 +1678,10 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String subtitle = '',
     required bool incrementUnread,
   }) {
+    conversationId = _canonicalConversationId(conversationId);
+    if (message.conversationId != conversationId) {
+      message = message.copyWith(conversationId: conversationId);
+    }
     final conversations = [...state.conversations];
     final index = conversations.indexWhere(
       (c) => _matchesConversation(
@@ -1685,7 +1709,10 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final messages = [...conversation.messages];
     final existingMessageIndex = messages.indexWhere((m) => m.id == message.id);
     if (existingMessageIndex >= 0) {
-      messages[existingMessageIndex] = message;
+      messages[existingMessageIndex] = _mergeMessageUpdate(
+        messages[existingMessageIndex],
+        message,
+      );
     } else {
       messages.add(message);
     }
@@ -1712,12 +1739,53 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     unawaited(_persistState());
   }
 
+  PeerMessagingMessage _mergeMessageUpdate(
+    PeerMessagingMessage existing,
+    PeerMessagingMessage incoming,
+  ) {
+    final attachmentsById = {
+      for (final attachment in existing.attachments) attachment.id: attachment,
+    };
+    for (final attachment in incoming.attachments) {
+      final previous = attachmentsById[attachment.id];
+      attachmentsById[attachment.id] = previous == null
+          ? attachment
+          : attachment.copyWith(
+              transferId: attachment.transferId ?? previous.transferId,
+              path: (attachment.path ?? '').isNotEmpty
+                  ? attachment.path
+                  : previous.path,
+            );
+    }
+    final attachments = attachmentsById.values.toList();
+    final deliveryStatus =
+        incoming.deliveryStatus == PeerMessagingDeliveryStatus.pending &&
+                existing.deliveryStatus != PeerMessagingDeliveryStatus.pending
+            ? existing.deliveryStatus
+            : incoming.deliveryStatus;
+    final failureMessage = incoming.failureMessage ?? existing.failureMessage;
+    final metadata = <String, dynamic>{
+      ...existing.metadata,
+      ...incoming.metadata,
+      if (attachments.isNotEmpty)
+        'attachments': attachments.map((item) => item.toJson()).toList(),
+      if (failureMessage != null) 'failure_message': failureMessage,
+    };
+    return incoming.copyWith(
+      deliveryStatus: deliveryStatus,
+      failureMessage: failureMessage,
+      attachments: attachments,
+      metadata: metadata,
+    );
+  }
+
   Future<void> _applyDeliveryStatus(
     String conversationId,
     String messageId,
     PeerMessagingDeliveryStatus deliveryStatus, {
     required String profileId,
   }) async {
+    conversationId = _canonicalConversationId(conversationId);
     var changed = false;
     final conversations = state.conversations.map((conversation) {
       if (conversation.profileId != profileId) {
@@ -1750,6 +1818,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required Map<String, dynamic> payload,
     required List<PeerMessagingAttachment> attachments,
   }) async {
+    conversationId = _canonicalConversationId(conversationId);
     try {
       final filePayloads = attachments
           .where((item) => (item.path ?? '').isNotEmpty)
@@ -1841,6 +1910,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required String conversationId,
     required String messageId,
   }) {
+    conversationId = _canonicalConversationId(conversationId);
     for (final conversation in state.conversations) {
       if (!_matchesConversation(
         conversation,
@@ -1862,6 +1932,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required String profileId,
     required String conversationId,
   }) {
+    conversationId = _canonicalConversationId(conversationId);
     for (final conversation in state.conversations) {
       if (_matchesConversation(
         conversation,
@@ -1881,6 +1952,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required PeerMessagingMessage Function(PeerMessagingMessage current)
         transform,
   }) async {
+    conversationId = _canonicalConversationId(conversationId);
     var changed = false;
     final conversations = state.conversations.map((conversation) {
       if (!_matchesConversation(
@@ -1918,8 +1990,38 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required String conversationId,
     required String profileId,
   }) {
-    return conversation.id == conversationId &&
+    return conversation.id == _canonicalConversationId(conversationId) &&
         conversation.profileId == profileId;
+  }
+
+  String _canonicalConversationId(String value) {
+    final normalizedRef = _normalizePeerRef(value);
+    if (normalizedRef.isEmpty) {
+      return value;
+    }
+    final netmap = _ref.read(netmapProvider);
+    final nodes = <Node>[
+      if (netmap?.selfNode != null) netmap!.selfNode,
+      ...?netmap?.peers,
+    ];
+    for (final node in nodes) {
+      if (_nodeMatchesPeerRef(node, normalizedRef)) {
+        return node.stableID;
+      }
+    }
+    return value.trim();
+  }
+
+  bool _nodeMatchesPeerRef(Node node, String normalizedRef) {
+    return _normalizePeerRef(node.stableID) == normalizedRef ||
+        _normalizePeerRef(node.name) == normalizedRef ||
+        _normalizePeerRef(node.computedName ?? '') == normalizedRef ||
+        _normalizePeerRef(node.computedNameWithHost ?? '') == normalizedRef ||
+        _normalizePeerRef(node.displayName) == normalizedRef;
+  }
+
+  String _normalizePeerRef(String value) {
+    return value.trim().toLowerCase().replaceFirst(RegExp(r'\.$'), '');
   }
 
   String _attachmentScopeFolderName(String profileId) {
@@ -1968,9 +2070,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       return payloadProfileId;
     }
 
+    final conversationId = _canonicalConversationId(event.conversationId);
     for (final conversation in state.conversations) {
-      if ((event.conversationId.isNotEmpty &&
-              conversation.id == event.conversationId) ||
+      if ((conversationId.isNotEmpty && conversation.id == conversationId) ||
           ((event.messageId ?? '').isNotEmpty &&
               conversation.messages.any(
                 (message) => message.id == event.messageId,
@@ -2003,11 +2105,82 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     );
   }
 
+  PeerMessagingState _mergeDuplicateConversations(PeerMessagingState source) {
+    final merged = <String, PeerMessagingConversation>{};
+    var changed = false;
+    for (final conversation in source.conversations) {
+      final canonicalId = _canonicalConversationId(conversation.id);
+      if (canonicalId != conversation.id) {
+        changed = true;
+      }
+      final key = '${conversation.profileId}|$canonicalId';
+      final normalizedMessages = conversation.messages.map(
+        (message) {
+          if (message.conversationId == canonicalId) {
+            return message;
+          }
+          changed = true;
+          return message.copyWith(conversationId: canonicalId);
+        },
+      ).toList();
+      final normalized = PeerMessagingConversation(
+        id: canonicalId,
+        profileId: conversation.profileId,
+        title: conversation.title,
+        subtitle: conversation.subtitle,
+        updatedAt: conversation.updatedAt,
+        unreadCount: conversation.unreadCount,
+        hidden: conversation.hidden,
+        messages: normalizedMessages,
+      );
+      final existing = merged[key];
+      if (existing == null) {
+        merged[key] = normalized;
+        continue;
+      }
+
+      changed = true;
+      final messagesById = {
+        for (final message in existing.messages) message.id: message,
+      };
+      for (final message in normalized.messages) {
+        final previous = messagesById[message.id];
+        if (previous == null) {
+          messagesById[message.id] = message;
+          continue;
+        }
+        messagesById[message.id] = _mergeMessageUpdate(previous, message);
+      }
+      final messages = messagesById.values.toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      final newer = normalized.updatedAt.isAfter(existing.updatedAt)
+          ? normalized
+          : existing;
+      merged[key] = PeerMessagingConversation(
+        id: canonicalId,
+        profileId: existing.profileId,
+        title: newer.title,
+        subtitle: newer.subtitle,
+        updatedAt: newer.updatedAt,
+        unreadCount: existing.unreadCount + normalized.unreadCount,
+        hidden: existing.hidden && normalized.hidden,
+        messages: messages,
+      );
+    }
+    if (!changed) {
+      return source;
+    }
+    return source.copyWith(
+      conversations: _sortConversations(merged.values.toList()),
+    );
+  }
+
   Future<void> _deleteConversationForProfile({
     required String profileId,
     required String conversationId,
     required bool broadcast,
   }) async {
+    conversationId = _canonicalConversationId(conversationId);
     final nextConversations = state.conversations
         .where(
           (conversation) => !_matchesConversation(

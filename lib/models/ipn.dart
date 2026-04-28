@@ -92,7 +92,7 @@ class IpnNotification with _$IpnNotification {
     @JsonKey(name: 'LocalTCPPort') int? localTCPPort,
     @JsonKey(name: 'IncomingFiles') List<PartialFile>? incomingFiles,
     @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
-    @JsonKey(name: 'TailFSShares') List<String>? tailFSShares,
+    @JsonKey(name: 'DriveShares') List<String>? driveShares,
     @JsonKey(name: 'Health') HealthState? health,
     @JsonKey(name: 'PeerMessageEvent') Map<String, dynamic>? peerMessageEvent,
   }) = _IpnNotification;
@@ -342,13 +342,15 @@ class PersistConfig with _$PersistConfig {
 class NetworkMap with _$NetworkMap {
   const factory NetworkMap({
     @JsonKey(name: 'SelfNode') required Node selfNode,
-    @JsonKey(name: 'NodeKey') required KeyNodePublic nodeKey,
+    // NodeKey/Domain/UserProfiles/TKAEnabled used to be required; tailscale
+    // v1.96+ omits some of these in incremental Notify deltas, so keep them
+    // optional with empty defaults to avoid throwing during parsing.
+    @JsonKey(name: 'NodeKey') @Default('') KeyNodePublic nodeKey,
     @JsonKey(name: 'Peers') List<Node>? peers,
-    @JsonKey(name: 'Expiry') required DateTime expiry,
-    @JsonKey(name: 'Domain') required String domain,
+    @JsonKey(name: 'Domain') @Default('') String domain,
     @JsonKey(name: 'UserProfiles')
-    required Map<String, UserProfile> userProfiles,
-    @JsonKey(name: 'TKAEnabled') required bool tkaEnabled,
+    @Default({}) Map<String, UserProfile> userProfiles,
+    @JsonKey(name: 'TKAEnabled') @Default(false) bool tkaEnabled,
     @JsonKey(name: 'DNS') DNSConfig? dns,
   }) = _NetworkMap;
 
@@ -374,10 +376,10 @@ class Node with _$Node {
     @JsonKey(name: 'User') required UserID userID,
     @JsonKey(name: 'Sharer') UserID? sharer,
     @JsonKey(name: 'Key') required KeyNodePublic key,
-    @JsonKey(name: 'KeyExpiry') required String keyExpiry,
-    @JsonKey(name: 'Machine') required MachineKey machine,
-    @JsonKey(name: 'Addresses') required List<Prefix> addresses,
-    @JsonKey(name: 'AllowedIPs') required List<Prefix> allowedIPs,
+    @JsonKey(name: 'KeyExpiry') @Default('') String keyExpiry,
+    @JsonKey(name: 'Machine') @Default('') MachineKey machine,
+    @JsonKey(name: 'Addresses') @Default([]) List<Prefix> addresses,
+    @JsonKey(name: 'AllowedIPs') @Default([]) List<Prefix> allowedIPs,
     @JsonKey(name: 'Endpoints') List<String>? endpoints,
     @JsonKey(name: 'Hostinfo') Hostinfo? hostinfo,
     @JsonKey(name: 'Created') Time? created,

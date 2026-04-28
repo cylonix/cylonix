@@ -642,8 +642,8 @@ mixin _$IpnNotification {
   List<PartialFile>? get incomingFiles => throw _privateConstructorUsedError;
   @JsonKey(name: 'ClientVersion')
   ClientVersion? get clientVersion => throw _privateConstructorUsedError;
-  @JsonKey(name: 'TailFSShares')
-  List<String>? get tailFSShares => throw _privateConstructorUsedError;
+  @JsonKey(name: 'DriveShares')
+  List<String>? get driveShares => throw _privateConstructorUsedError;
   @JsonKey(name: 'Health')
   HealthState? get health => throw _privateConstructorUsedError;
   @JsonKey(name: 'PeerMessageEvent')
@@ -681,7 +681,7 @@ abstract class $IpnNotificationCopyWith<$Res> {
       @JsonKey(name: 'LocalTCPPort') int? localTCPPort,
       @JsonKey(name: 'IncomingFiles') List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
-      @JsonKey(name: 'TailFSShares') List<String>? tailFSShares,
+      @JsonKey(name: 'DriveShares') List<String>? driveShares,
       @JsonKey(name: 'Health') HealthState? health,
       @JsonKey(name: 'PeerMessageEvent')
       Map<String, dynamic>? peerMessageEvent});
@@ -722,7 +722,7 @@ class _$IpnNotificationCopyWithImpl<$Res, $Val extends IpnNotification>
     Object? localTCPPort = freezed,
     Object? incomingFiles = freezed,
     Object? clientVersion = freezed,
-    Object? tailFSShares = freezed,
+    Object? driveShares = freezed,
     Object? health = freezed,
     Object? peerMessageEvent = freezed,
   }) {
@@ -783,9 +783,9 @@ class _$IpnNotificationCopyWithImpl<$Res, $Val extends IpnNotification>
           ? _value.clientVersion
           : clientVersion // ignore: cast_nullable_to_non_nullable
               as ClientVersion?,
-      tailFSShares: freezed == tailFSShares
-          ? _value.tailFSShares
-          : tailFSShares // ignore: cast_nullable_to_non_nullable
+      driveShares: freezed == driveShares
+          ? _value.driveShares
+          : driveShares // ignore: cast_nullable_to_non_nullable
               as List<String>?,
       health: freezed == health
           ? _value.health
@@ -892,7 +892,7 @@ abstract class _$$IpnNotificationImplCopyWith<$Res>
       @JsonKey(name: 'LocalTCPPort') int? localTCPPort,
       @JsonKey(name: 'IncomingFiles') List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
-      @JsonKey(name: 'TailFSShares') List<String>? tailFSShares,
+      @JsonKey(name: 'DriveShares') List<String>? driveShares,
       @JsonKey(name: 'Health') HealthState? health,
       @JsonKey(name: 'PeerMessageEvent')
       Map<String, dynamic>? peerMessageEvent});
@@ -936,7 +936,7 @@ class __$$IpnNotificationImplCopyWithImpl<$Res>
     Object? localTCPPort = freezed,
     Object? incomingFiles = freezed,
     Object? clientVersion = freezed,
-    Object? tailFSShares = freezed,
+    Object? driveShares = freezed,
     Object? health = freezed,
     Object? peerMessageEvent = freezed,
   }) {
@@ -997,9 +997,9 @@ class __$$IpnNotificationImplCopyWithImpl<$Res>
           ? _value.clientVersion
           : clientVersion // ignore: cast_nullable_to_non_nullable
               as ClientVersion?,
-      tailFSShares: freezed == tailFSShares
-          ? _value._tailFSShares
-          : tailFSShares // ignore: cast_nullable_to_non_nullable
+      driveShares: freezed == driveShares
+          ? _value._driveShares
+          : driveShares // ignore: cast_nullable_to_non_nullable
               as List<String>?,
       health: freezed == health
           ? _value.health
@@ -1031,7 +1031,7 @@ class _$IpnNotificationImpl implements _IpnNotification {
       @JsonKey(name: 'LocalTCPPort') this.localTCPPort,
       @JsonKey(name: 'IncomingFiles') final List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') this.clientVersion,
-      @JsonKey(name: 'TailFSShares') final List<String>? tailFSShares,
+      @JsonKey(name: 'DriveShares') final List<String>? driveShares,
       @JsonKey(name: 'Health') this.health,
       @JsonKey(name: 'PeerMessageEvent')
       final Map<String, dynamic>? peerMessageEvent})
@@ -1039,7 +1039,7 @@ class _$IpnNotificationImpl implements _IpnNotification {
         _filesWaiting = filesWaiting,
         _outgoingFiles = outgoingFiles,
         _incomingFiles = incomingFiles,
-        _tailFSShares = tailFSShares,
+        _driveShares = driveShares,
         _peerMessageEvent = peerMessageEvent;
 
   factory _$IpnNotificationImpl.fromJson(Map<String, dynamic> json) =>
@@ -1119,13 +1119,13 @@ class _$IpnNotificationImpl implements _IpnNotification {
   @override
   @JsonKey(name: 'ClientVersion')
   final ClientVersion? clientVersion;
-  final List<String>? _tailFSShares;
+  final List<String>? _driveShares;
   @override
-  @JsonKey(name: 'TailFSShares')
-  List<String>? get tailFSShares {
-    final value = _tailFSShares;
+  @JsonKey(name: 'DriveShares')
+  List<String>? get driveShares {
+    final value = _driveShares;
     if (value == null) return null;
-    if (_tailFSShares is EqualUnmodifiableListView) return _tailFSShares;
+    if (_driveShares is EqualUnmodifiableListView) return _driveShares;
     // ignore: implicit_dynamic_type
     return EqualUnmodifiableListView(value);
   }
@@ -1146,7 +1146,7 @@ class _$IpnNotificationImpl implements _IpnNotification {
 
   @override
   String toString() {
-    return 'IpnNotification(version: $version, errMessage: $errMessage, loginFinished: $loginFinished, filesWaiting: $filesWaiting, outgoingFiles: $outgoingFiles, state: $state, prefs: $prefs, netMap: $netMap, engine: $engine, browseToURL: $browseToURL, backendLogId: $backendLogId, localTCPPort: $localTCPPort, incomingFiles: $incomingFiles, clientVersion: $clientVersion, tailFSShares: $tailFSShares, health: $health, peerMessageEvent: $peerMessageEvent)';
+    return 'IpnNotification(version: $version, errMessage: $errMessage, loginFinished: $loginFinished, filesWaiting: $filesWaiting, outgoingFiles: $outgoingFiles, state: $state, prefs: $prefs, netMap: $netMap, engine: $engine, browseToURL: $browseToURL, backendLogId: $backendLogId, localTCPPort: $localTCPPort, incomingFiles: $incomingFiles, clientVersion: $clientVersion, driveShares: $driveShares, health: $health, peerMessageEvent: $peerMessageEvent)';
   }
 
   @override
@@ -1178,7 +1178,7 @@ class _$IpnNotificationImpl implements _IpnNotification {
             (identical(other.clientVersion, clientVersion) ||
                 other.clientVersion == clientVersion) &&
             const DeepCollectionEquality()
-                .equals(other._tailFSShares, _tailFSShares) &&
+                .equals(other._driveShares, _driveShares) &&
             (identical(other.health, health) || other.health == health) &&
             const DeepCollectionEquality()
                 .equals(other._peerMessageEvent, _peerMessageEvent));
@@ -1202,7 +1202,7 @@ class _$IpnNotificationImpl implements _IpnNotification {
       localTCPPort,
       const DeepCollectionEquality().hash(_incomingFiles),
       clientVersion,
-      const DeepCollectionEquality().hash(_tailFSShares),
+      const DeepCollectionEquality().hash(_driveShares),
       health,
       const DeepCollectionEquality().hash(_peerMessageEvent));
 
@@ -1239,7 +1239,7 @@ abstract class _IpnNotification implements IpnNotification {
       @JsonKey(name: 'LocalTCPPort') final int? localTCPPort,
       @JsonKey(name: 'IncomingFiles') final List<PartialFile>? incomingFiles,
       @JsonKey(name: 'ClientVersion') final ClientVersion? clientVersion,
-      @JsonKey(name: 'TailFSShares') final List<String>? tailFSShares,
+      @JsonKey(name: 'DriveShares') final List<String>? driveShares,
       @JsonKey(name: 'Health') final HealthState? health,
       @JsonKey(name: 'PeerMessageEvent')
       final Map<String, dynamic>? peerMessageEvent}) = _$IpnNotificationImpl;
@@ -1290,8 +1290,8 @@ abstract class _IpnNotification implements IpnNotification {
   @JsonKey(name: 'ClientVersion')
   ClientVersion? get clientVersion;
   @override
-  @JsonKey(name: 'TailFSShares')
-  List<String>? get tailFSShares;
+  @JsonKey(name: 'DriveShares')
+  List<String>? get driveShares;
   @override
   @JsonKey(name: 'Health')
   HealthState? get health;
@@ -3632,13 +3632,14 @@ NetworkMap _$NetworkMapFromJson(Map<String, dynamic> json) {
 /// @nodoc
 mixin _$NetworkMap {
   @JsonKey(name: 'SelfNode')
-  Node get selfNode => throw _privateConstructorUsedError;
+  Node get selfNode =>
+      throw _privateConstructorUsedError; // NodeKey/Domain/UserProfiles/TKAEnabled used to be required; tailscale
+// v1.96+ omits some of these in incremental Notify deltas, so keep them
+// optional with empty defaults to avoid throwing during parsing.
   @JsonKey(name: 'NodeKey')
   String get nodeKey => throw _privateConstructorUsedError;
   @JsonKey(name: 'Peers')
   List<Node>? get peers => throw _privateConstructorUsedError;
-  @JsonKey(name: 'Expiry')
-  DateTime get expiry => throw _privateConstructorUsedError;
   @JsonKey(name: 'Domain')
   String get domain => throw _privateConstructorUsedError;
   @JsonKey(name: 'UserProfiles')
@@ -3669,7 +3670,6 @@ abstract class $NetworkMapCopyWith<$Res> {
       {@JsonKey(name: 'SelfNode') Node selfNode,
       @JsonKey(name: 'NodeKey') String nodeKey,
       @JsonKey(name: 'Peers') List<Node>? peers,
-      @JsonKey(name: 'Expiry') DateTime expiry,
       @JsonKey(name: 'Domain') String domain,
       @JsonKey(name: 'UserProfiles') Map<String, UserProfile> userProfiles,
       @JsonKey(name: 'TKAEnabled') bool tkaEnabled,
@@ -3697,7 +3697,6 @@ class _$NetworkMapCopyWithImpl<$Res, $Val extends NetworkMap>
     Object? selfNode = null,
     Object? nodeKey = null,
     Object? peers = freezed,
-    Object? expiry = null,
     Object? domain = null,
     Object? userProfiles = null,
     Object? tkaEnabled = null,
@@ -3716,10 +3715,6 @@ class _$NetworkMapCopyWithImpl<$Res, $Val extends NetworkMap>
           ? _value.peers
           : peers // ignore: cast_nullable_to_non_nullable
               as List<Node>?,
-      expiry: null == expiry
-          ? _value.expiry
-          : expiry // ignore: cast_nullable_to_non_nullable
-              as DateTime,
       domain: null == domain
           ? _value.domain
           : domain // ignore: cast_nullable_to_non_nullable
@@ -3776,7 +3771,6 @@ abstract class _$$NetworkMapImplCopyWith<$Res>
       {@JsonKey(name: 'SelfNode') Node selfNode,
       @JsonKey(name: 'NodeKey') String nodeKey,
       @JsonKey(name: 'Peers') List<Node>? peers,
-      @JsonKey(name: 'Expiry') DateTime expiry,
       @JsonKey(name: 'Domain') String domain,
       @JsonKey(name: 'UserProfiles') Map<String, UserProfile> userProfiles,
       @JsonKey(name: 'TKAEnabled') bool tkaEnabled,
@@ -3804,7 +3798,6 @@ class __$$NetworkMapImplCopyWithImpl<$Res>
     Object? selfNode = null,
     Object? nodeKey = null,
     Object? peers = freezed,
-    Object? expiry = null,
     Object? domain = null,
     Object? userProfiles = null,
     Object? tkaEnabled = null,
@@ -3823,10 +3816,6 @@ class __$$NetworkMapImplCopyWithImpl<$Res>
           ? _value._peers
           : peers // ignore: cast_nullable_to_non_nullable
               as List<Node>?,
-      expiry: null == expiry
-          ? _value.expiry
-          : expiry // ignore: cast_nullable_to_non_nullable
-              as DateTime,
       domain: null == domain
           ? _value.domain
           : domain // ignore: cast_nullable_to_non_nullable
@@ -3852,13 +3841,12 @@ class __$$NetworkMapImplCopyWithImpl<$Res>
 class _$NetworkMapImpl extends _NetworkMap {
   const _$NetworkMapImpl(
       {@JsonKey(name: 'SelfNode') required this.selfNode,
-      @JsonKey(name: 'NodeKey') required this.nodeKey,
+      @JsonKey(name: 'NodeKey') this.nodeKey = '',
       @JsonKey(name: 'Peers') final List<Node>? peers,
-      @JsonKey(name: 'Expiry') required this.expiry,
-      @JsonKey(name: 'Domain') required this.domain,
+      @JsonKey(name: 'Domain') this.domain = '',
       @JsonKey(name: 'UserProfiles')
-      required final Map<String, UserProfile> userProfiles,
-      @JsonKey(name: 'TKAEnabled') required this.tkaEnabled,
+      final Map<String, UserProfile> userProfiles = const {},
+      @JsonKey(name: 'TKAEnabled') this.tkaEnabled = false,
       @JsonKey(name: 'DNS') this.dns})
       : _peers = peers,
         _userProfiles = userProfiles,
@@ -3870,6 +3858,9 @@ class _$NetworkMapImpl extends _NetworkMap {
   @override
   @JsonKey(name: 'SelfNode')
   final Node selfNode;
+// NodeKey/Domain/UserProfiles/TKAEnabled used to be required; tailscale
+// v1.96+ omits some of these in incremental Notify deltas, so keep them
+// optional with empty defaults to avoid throwing during parsing.
   @override
   @JsonKey(name: 'NodeKey')
   final String nodeKey;
@@ -3884,9 +3875,6 @@ class _$NetworkMapImpl extends _NetworkMap {
     return EqualUnmodifiableListView(value);
   }
 
-  @override
-  @JsonKey(name: 'Expiry')
-  final DateTime expiry;
   @override
   @JsonKey(name: 'Domain')
   final String domain;
@@ -3908,7 +3896,7 @@ class _$NetworkMapImpl extends _NetworkMap {
 
   @override
   String toString() {
-    return 'NetworkMap(selfNode: $selfNode, nodeKey: $nodeKey, peers: $peers, expiry: $expiry, domain: $domain, userProfiles: $userProfiles, tkaEnabled: $tkaEnabled, dns: $dns)';
+    return 'NetworkMap(selfNode: $selfNode, nodeKey: $nodeKey, peers: $peers, domain: $domain, userProfiles: $userProfiles, tkaEnabled: $tkaEnabled, dns: $dns)';
   }
 
   @override
@@ -3920,7 +3908,6 @@ class _$NetworkMapImpl extends _NetworkMap {
                 other.selfNode == selfNode) &&
             (identical(other.nodeKey, nodeKey) || other.nodeKey == nodeKey) &&
             const DeepCollectionEquality().equals(other._peers, _peers) &&
-            (identical(other.expiry, expiry) || other.expiry == expiry) &&
             (identical(other.domain, domain) || other.domain == domain) &&
             const DeepCollectionEquality()
                 .equals(other._userProfiles, _userProfiles) &&
@@ -3936,7 +3923,6 @@ class _$NetworkMapImpl extends _NetworkMap {
       selfNode,
       nodeKey,
       const DeepCollectionEquality().hash(_peers),
-      expiry,
       domain,
       const DeepCollectionEquality().hash(_userProfiles),
       tkaEnabled,
@@ -3961,13 +3947,12 @@ class _$NetworkMapImpl extends _NetworkMap {
 abstract class _NetworkMap extends NetworkMap {
   const factory _NetworkMap(
       {@JsonKey(name: 'SelfNode') required final Node selfNode,
-      @JsonKey(name: 'NodeKey') required final String nodeKey,
+      @JsonKey(name: 'NodeKey') final String nodeKey,
       @JsonKey(name: 'Peers') final List<Node>? peers,
-      @JsonKey(name: 'Expiry') required final DateTime expiry,
-      @JsonKey(name: 'Domain') required final String domain,
+      @JsonKey(name: 'Domain') final String domain,
       @JsonKey(name: 'UserProfiles')
-      required final Map<String, UserProfile> userProfiles,
-      @JsonKey(name: 'TKAEnabled') required final bool tkaEnabled,
+      final Map<String, UserProfile> userProfiles,
+      @JsonKey(name: 'TKAEnabled') final bool tkaEnabled,
       @JsonKey(name: 'DNS') final DNSConfig? dns}) = _$NetworkMapImpl;
   const _NetworkMap._() : super._();
 
@@ -3976,16 +3961,16 @@ abstract class _NetworkMap extends NetworkMap {
 
   @override
   @JsonKey(name: 'SelfNode')
-  Node get selfNode;
+  Node
+      get selfNode; // NodeKey/Domain/UserProfiles/TKAEnabled used to be required; tailscale
+// v1.96+ omits some of these in incremental Notify deltas, so keep them
+// optional with empty defaults to avoid throwing during parsing.
   @override
   @JsonKey(name: 'NodeKey')
   String get nodeKey;
   @override
   @JsonKey(name: 'Peers')
   List<Node>? get peers;
-  @override
-  @JsonKey(name: 'Expiry')
-  DateTime get expiry;
   @override
   @JsonKey(name: 'Domain')
   String get domain;
@@ -4417,10 +4402,10 @@ class _$NodeImpl extends _Node {
       @JsonKey(name: 'User') required this.userID,
       @JsonKey(name: 'Sharer') this.sharer,
       @JsonKey(name: 'Key') required this.key,
-      @JsonKey(name: 'KeyExpiry') required this.keyExpiry,
-      @JsonKey(name: 'Machine') required this.machine,
-      @JsonKey(name: 'Addresses') required final List<String> addresses,
-      @JsonKey(name: 'AllowedIPs') required final List<String> allowedIPs,
+      @JsonKey(name: 'KeyExpiry') this.keyExpiry = '',
+      @JsonKey(name: 'Machine') this.machine = '',
+      @JsonKey(name: 'Addresses') final List<String> addresses = const [],
+      @JsonKey(name: 'AllowedIPs') final List<String> allowedIPs = const [],
       @JsonKey(name: 'Endpoints') final List<String>? endpoints,
       @JsonKey(name: 'Hostinfo') this.hostinfo,
       @JsonKey(name: 'Created') this.created,
@@ -4639,10 +4624,10 @@ abstract class _Node extends Node {
       @JsonKey(name: 'User') required final int userID,
       @JsonKey(name: 'Sharer') final int? sharer,
       @JsonKey(name: 'Key') required final String key,
-      @JsonKey(name: 'KeyExpiry') required final String keyExpiry,
-      @JsonKey(name: 'Machine') required final String machine,
-      @JsonKey(name: 'Addresses') required final List<String> addresses,
-      @JsonKey(name: 'AllowedIPs') required final List<String> allowedIPs,
+      @JsonKey(name: 'KeyExpiry') final String keyExpiry,
+      @JsonKey(name: 'Machine') final String machine,
+      @JsonKey(name: 'Addresses') final List<String> addresses,
+      @JsonKey(name: 'AllowedIPs') final List<String> allowedIPs,
       @JsonKey(name: 'Endpoints') final List<String>? endpoints,
       @JsonKey(name: 'Hostinfo') final Hostinfo? hostinfo,
       @JsonKey(name: 'Created') final String? created,

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'models/const.dart';
 import 'models/ipn.dart';
 import 'providers/ipn.dart';
 import 'utils/logger.dart';
@@ -242,8 +243,9 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
               style: adaptiveGroupedFooterStyle(context),
             ),
             children: [
-              ...cylonixUsers
-                  .map((user) => _buildUserTile(context, user, loginProfile)),
+              ...cylonixUsers.map((user) => _buildUserTile(
+                  context, user, loginProfile,
+                  showControlURL: user.controlURL != cylonixURL)),
             ],
           ),
         ],
@@ -357,14 +359,15 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
     if (isApplePrivateRelay) {
       subtitle = u.displayName.split('@').first;
     }
-    subtitle += showControlURL
-        ? subtitle.isEmpty
-            ? "Server: ${user.controlURL}"
-            : "\nServer: ${user.controlURL}"
-        : '';
+    if (showControlURL && user.controlURL.isNotEmpty) {
+      final host = Uri.tryParse(user.controlURL)?.host ?? user.controlURL;
+      subtitle += subtitle.isEmpty ? host : '\n$host';
+    }
     return AdaptiveListTile(
       title: Text(isApplePrivateRelay ? 'Apple Private Relay' : u.displayName),
-      subtitle: subtitle.isEmpty ? null : Text(subtitle),
+      subtitle: subtitle.isEmpty
+          ? null
+          : Text(subtitle, maxLines: 3, overflow: TextOverflow.ellipsis),
       leading: AdaptiveAvatar(user: u, radius: isApple() ? 20 : 12),
       trailing: isSwitching || _deletingProfileID == user.id
           ? const AdaptiveLoadingWidget(maxWidth: 18)
@@ -464,12 +467,15 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   }
 
   void _showSwitchOrDeleteProfileModal(LoginProfile profile) async {
+    final controlHost =
+        Uri.tryParse(profile.controlURL)?.host ?? profile.controlURL;
     await AdaptiveModalPopup(
       maxWidth: 800,
       child: Column(mainAxisSize: MainAxisSize.min, spacing: 16, children: [
         AdaptiveListTile(
           backgroundColor: Colors.transparent,
           title: Text('Profile: ${profile.name}'),
+          subtitle: controlHost.isNotEmpty ? Text(controlHost) : null,
           trailing: AdaptiveButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
