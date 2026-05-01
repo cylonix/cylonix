@@ -25,6 +25,7 @@ import 'services/ipn.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
+import 'widgets/link_preview.dart';
 import 'utils/logger.dart';
 
 class PeerMessagingThreadView extends ConsumerStatefulWidget {
@@ -55,6 +56,8 @@ class _PeerMessagingThreadViewState
   PeerMessagingMessage? _replyToMessage;
   bool _sending = false;
   int _lastRenderedMessageCount = 0;
+  int _scrollToBottomRequest = 0;
+  PeerMessagingConversation? _lastSeenConversation;
 
   bool get _useDesktopEnterToSend =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -80,6 +83,10 @@ class _PeerMessagingThreadViewState
   void _dismissKeyboard() {
     _composerFocusNode.unfocus();
     FocusScope.of(context).unfocus();
+  }
+
+  bool _isConnected() {
+    return ref.read(vpnStateProvider) == VpnState.connected;
   }
 
   Future<void> _pickAttachments() async {
@@ -200,6 +207,14 @@ class _PeerMessagingThreadViewState
     if (text.isEmpty && _pendingAttachments.isEmpty) {
       return;
     }
+    if (!_isConnected()) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text('Cannot send: not connected'),
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _sending = true;
@@ -220,9 +235,7 @@ class _PeerMessagingThreadViewState
           _pendingAttachments.clear();
           _replyToMessage = null;
         });
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottom(animated: true);
-        });
+        _scrollToBottomWhenReady(animated: true);
       }
     } catch (e) {
       _logger.w('Send failed and was stored on the message: $e');
@@ -414,9 +427,7 @@ class _PeerMessagingThreadViewState
         if (srcPath == null) {
           if (IpnService.isDirectDistribution && waitingFile != null) {
             // Download from daemon via HTTP local API directly to target
-            await ref
-                .read(ipnServiceProvider)
-                .saveFile(sourceFileName, toPath);
+            await ref.read(ipnServiceProvider).saveFile(sourceFileName, toPath);
             srcPath = toPath;
           } else {
             srcPath = await ref
@@ -944,63 +955,79 @@ class _PeerMessagingThreadViewState
   void _scheduleInitialOrNewMessageScroll(int messageCount) {
     final isFirstLayout = _lastRenderedMessageCount == 0 && messageCount > 0;
     final isNewMessage = messageCount > _lastRenderedMessageCount;
-    if (!isFirstLayout && !isNewMessage) {
-      _lastRenderedMessageCount = messageCount;
+    _lastRenderedMessageCount = messageCount;
+    if (isFirstLayout) {
       return;
     }
-    _lastRenderedMessageCount = messageCount;
-    // First attempt at layout time; follow-ups give async attachment
-    // previews (images/video thumbnails) a chance to render before we
-    // measure the final scroll extent.
-    _scrollToBottomWhenReady(animated: false);
+    if (isNewMessage && _isNearNewestMessage()) {
+      _scrollToBottomWhenReady(animated: true);
+    }
+  }
+
+  bool _isNearNewestMessage() {
+    if (!_messagesScrollController.hasClients) {
+      return true;
+    }
+    final position = _messagesScrollController.position;
+    return (position.pixels - position.minScrollExtent).abs() <= 120;
+  }
+
+  void _prefetchLinkPreviews(PeerMessagingConversation conversation) {
+    // Walk the most-recent messages (reverse-chronological) and queue their
+    // URLs into the cache; the cache caps concurrent fetches so a long
+    // history doesn't blast dozens of parallel HTTP requests on open.
+    const maxScan = 40;
+    final messages = conversation.messages;
+    final start =
+        messages.length > maxScan ? messages.length - maxScan : 0;
+    for (var i = messages.length - 1; i >= start; i--) {
+      final message = messages[i];
+      if (message.text.isEmpty) continue;
+      final url = _firstHttpUrl(message.text);
+      if (url == null) continue;
+      if (LinkPreviewCache.isCachedOrInFlight(url)) continue;
+      LinkPreviewCache.fetch(url);
+    }
   }
 
   void _scrollToBottomWhenReady({required bool animated}) {
-    const retryDelays = <Duration>[
-      Duration.zero,
-      Duration(milliseconds: 120),
-      Duration(milliseconds: 350),
-      Duration(milliseconds: 800),
-    ];
-    for (final delay in retryDelays) {
-      if (delay == Duration.zero) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _scrollToBottom(animated: animated);
-        });
-      } else {
-        Future<void>.delayed(delay, () {
-          if (!mounted) return;
-          _scrollToBottom(animated: animated);
-        });
+    final request = ++_scrollToBottomRequest;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          request != _scrollToBottomRequest ||
+          !_messagesScrollController.hasClients) {
+        return;
       }
-    }
-  }
-
-  void _scrollToBottom({required bool animated}) {
-    if (!_messagesScrollController.hasClients) {
-      return;
-    }
-
-    final position = _messagesScrollController.position.maxScrollExtent;
-    if (animated) {
-      _messagesScrollController.animateTo(
-        position,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-      return;
-    }
-    _messagesScrollController.jumpTo(position);
+      final position = _messagesScrollController.position;
+      final target = position.minScrollExtent;
+      if (animated) {
+        _messagesScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _messagesScrollController.jumpTo(target);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     ref.watch(peerMessagingBootstrapProvider);
-    final conversation =
+    final liveConversation =
         ref.watch(peerMessagingConversationProvider(widget.conversationId));
     final waitingFiles = ref.watch(filesWaitingProvider);
     final filesSaved = ref.watch(filesSavedProvider);
+    final vpnState = ref.watch(vpnStateProvider);
+    final isConnected = vpnState == VpnState.connected;
+    // Cache the most recent non-null conversation so transient disconnects
+    // (which can clear the active profile id and the conversation list) do
+    // not blank out an open thread the user is reading.
+    if (liveConversation != null) {
+      _lastSeenConversation = liveConversation;
+    }
+    final conversation = liveConversation ?? _lastSeenConversation;
     if (conversation == null) {
       return AdaptiveScaffold(
         title: const Text('Peer Conversation'),
@@ -1010,12 +1037,21 @@ class _PeerMessagingThreadViewState
     }
 
     _scheduleInitialOrNewMessageScroll(conversation.messages.length);
+    _prefetchLinkPreviews(conversation);
+    final renderedMessages = conversation.messages.reversed.toList(
+      growable: false,
+    );
     final messagesById = {
       for (final message in conversation.messages) message.id: message,
     };
+    final outgoingFiles =
+        ref.watch(ipnStateProvider)?.outgoingFiles ?? const [];
 
     return AdaptiveScaffold(
-      title: Text(conversation.title),
+      title: _ThreadTitle(
+        title: conversation.title,
+        vpnState: vpnState,
+      ),
       onGoBack: widget.onNavigateBack,
       body: Column(
         children: [
@@ -1031,23 +1067,18 @@ class _PeerMessagingThreadViewState
                   onTap: _dismissKeyboard,
                   child: ListView.separated(
                     controller: _messagesScrollController,
-                    reverse: false,
+                    reverse: true,
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.all(16),
                     itemBuilder: (context, index) {
-                      final message = conversation.messages[index];
-                      final previous =
-                          index > 0 ? conversation.messages[index - 1] : null;
-                      final next = index + 1 < conversation.messages.length
-                          ? conversation.messages[index + 1]
+                      final message = renderedMessages[index];
+                      final previous = index + 1 < renderedMessages.length
+                          ? renderedMessages[index + 1]
                           : null;
-                      final laterMessages = conversation.messages.sublist(
-                        index + 1,
-                      );
-                      final outgoingFiles =
-                          ref.watch(ipnStateProvider)?.outgoingFiles ??
-                              const [];
+                      final next =
+                          index > 0 ? renderedMessages[index - 1] : null;
+                      final laterMessages = renderedMessages.take(index);
                       return KeyedSubtree(
                         key: _messageKeyFor(message.id),
                         child: _MessageBubble(
@@ -1128,12 +1159,12 @@ class _PeerMessagingThreadViewState
                       );
                     },
                     separatorBuilder: (_, index) {
-                      final current = conversation.messages[index];
-                      final next = conversation.messages[index + 1];
-                      final sameRun = _messagesBelongToSameRun(current, next);
+                      final newer = renderedMessages[index];
+                      final older = renderedMessages[index + 1];
+                      final sameRun = _messagesBelongToSameRun(older, newer);
                       return SizedBox(height: sameRun ? 3 : 14);
                     },
-                    itemCount: conversation.messages.length,
+                    itemCount: renderedMessages.length,
                   ),
                 ),
               ),
@@ -1261,8 +1292,10 @@ class _PeerMessagingThreadViewState
                                         textInputAction:
                                             TextInputAction.newline,
                                         onTapOutside: (_) => _dismissKeyboard(),
-                                        decoration: const InputDecoration(
-                                          hintText: 'Reply…',
+                                        decoration: InputDecoration(
+                                          hintText: isConnected
+                                              ? 'Reply…'
+                                              : 'Reply… (disconnected)',
                                           alignLabelWithHint: true,
                                           isCollapsed: true,
                                           border: InputBorder.none,
@@ -1277,11 +1310,40 @@ class _PeerMessagingThreadViewState
                             ),
                           ),
                           Positioned(
+                            right: 96,
+                            bottom: 8,
+                            child: ListenableBuilder(
+                              listenable: _controller,
+                              builder: (context, _) {
+                                if (_controller.text.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                return IconButton(
+                                  tooltip: 'Clear',
+                                  onPressed: _sending
+                                      ? null
+                                      : () {
+                                          _controller.clear();
+                                        },
+                                  icon: Icon(
+                                    isApple()
+                                        ? CupertinoIcons.clear_circled_solid
+                                        : Icons.cancel,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          Positioned(
                             right: 56,
                             bottom: 8,
                             child: IconButton(
-                              tooltip: 'Add attachment',
-                              onPressed: _sending ? null : _pickAttachments,
+                              tooltip: isConnected
+                                  ? 'Add attachment'
+                                  : 'Disconnected',
+                              onPressed: (_sending || !isConnected)
+                                  ? null
+                                  : _pickAttachments,
                               icon: Icon(
                                 isApple()
                                     ? CupertinoIcons.paperclip
@@ -1293,7 +1355,7 @@ class _PeerMessagingThreadViewState
                             padding:
                                 const EdgeInsets.only(right: 10, bottom: 10),
                             child: FilledButton(
-                              onPressed: _sending
+                              onPressed: (_sending || !isConnected)
                                   ? null
                                   : () => _sendMessage(conversation),
                               style: FilledButton.styleFrom(
@@ -1445,30 +1507,18 @@ class _MessageBubble extends StatelessWidget {
               const defaultMaxBubbleWidth = 460.0;
               double bubbleMaxWidth = defaultMaxBubbleWidth;
               if (isCrossSideReply) {
-                final mediaOnlyPreview = replyTarget!.attachments.isNotEmpty &&
-                    replyTarget!.text.isEmpty;
-                final previewWidth = mediaOnlyPreview ? 88.0 : 246.0;
-                const elbowRoom = 48.0; // 2 * cornerRadius + margin
-                final previewCenter = replyTargetIsLocal
-                    ? availableWidth - (previewWidth / 2)
-                    : previewWidth / 2;
-                if (isLocal) {
-                  // target bubble on right — needs left edge right of
-                  // previewCenter + elbowRoom
-                  final maxWidth = availableWidth - previewCenter - elbowRoom;
-                  if (maxWidth < defaultMaxBubbleWidth) {
-                    bubbleMaxWidth =
-                        maxWidth.clamp(120.0, defaultMaxBubbleWidth);
-                  }
-                } else {
-                  // target bubble on left — needs right edge left of
-                  // previewCenter - elbowRoom
-                  final maxWidth = previewCenter - elbowRoom;
-                  if (maxWidth < defaultMaxBubbleWidth) {
-                    bubbleMaxWidth =
-                        maxWidth.clamp(120.0, defaultMaxBubbleWidth);
-                  }
-                }
+                // The reply line anchors at 1/8 from the screen edge, so the
+                // bubble can extend almost the full opposite side. Cap at
+                // 3/4 of the available width.
+                const elbowRoom = 24.0; // cornerRadius + margin
+                final anchor = isLocal
+                    ? availableWidth / 8
+                    : availableWidth - availableWidth / 8;
+                final maxFromAnchor = isLocal
+                    ? availableWidth - anchor - elbowRoom
+                    : anchor - elbowRoom;
+                final crossReplyCap = availableWidth * 0.75;
+                bubbleMaxWidth = maxFromAnchor.clamp(120.0, crossReplyCap);
               }
               return Column(
                 crossAxisAlignment: align,
@@ -1523,17 +1573,21 @@ class _MessageBubble extends StatelessWidget {
     required ButtonStyle actionStyle,
     required double bubbleMaxWidth,
   }) {
+    final hasLinkPreview = _firstHttpUrl(message.text) != null;
+    // Fire the long-press / right-click sheet for media-only bubbles and for
+    // bubbles that carry a link preview (so the padding around the preview
+    // is also actionable). Text-only bubbles still rely on the SelectableText
+    // context menu so long-press doesn't fight with the native text-selection
+    // gesture; on text bubbles with a preview, SelectableText still wins on
+    // the text region, and the bubble handler covers the rest.
+    final showsBubbleActionMenu = message.text.isEmpty || hasLinkPreview;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      // Only fire the long-press sheet for media-only bubbles. Text bubbles
-      // rely on the SelectableText context menu (Reply/Quote is first) so
-      // long-press doesn't fight with the native text selection gesture.
-      onLongPress:
-          _supportsLongPressAction(context) && message.text.isEmpty
-              ? () => _showMessageActions(context)
-              : null,
+      onLongPress: _supportsLongPressAction(context) && showsBubbleActionMenu
+          ? () => _showMessageActions(context)
+          : null,
       onSecondaryTapDown:
-          _supportsSecondaryClickAction(context) && message.text.isEmpty
+          _supportsSecondaryClickAction(context) && showsBubbleActionMenu
               ? (details) => _showMessageActions(
                     context,
                     globalPosition: details.globalPosition,
@@ -1547,8 +1601,7 @@ class _MessageBubble extends StatelessWidget {
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color:
-                      isMediaOnlyMessage ? Colors.transparent : bubbleColor,
+                  color: isMediaOnlyMessage ? Colors.transparent : bubbleColor,
                   borderRadius: isMediaOnlyMessage ? null : borderRadius,
                 ),
                 child: DefaultTextStyle.merge(
@@ -1593,9 +1646,9 @@ class _MessageBubble extends StatelessWidget {
               ),
               if (_showsTail && !isMediaOnlyMessage)
                 Positioned(
-                  bottom: -1,
-                  right: isLocal ? -6 : null,
-                  left: isLocal ? null : -6,
+                  bottom: -6,
+                  right: isLocal ? -2 : null,
+                  left: isLocal ? null : -2,
                   child: _BubbleTail(
                     color: bubbleColor,
                     isLocal: isLocal,
@@ -1616,6 +1669,11 @@ class _MessageBubble extends StatelessWidget {
     required Color secondaryForegroundColor,
     required ButtonStyle actionStyle,
   }) {
+    final theme = Theme.of(context);
+    final previewUrl = _firstHttpUrl(message.text);
+    final previewBorderColor = isLocal
+        ? Colors.white.withValues(alpha: 0.28)
+        : theme.colorScheme.outlineVariant;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1649,16 +1707,16 @@ class _MessageBubble extends StatelessWidget {
                       : Theme.of(context).colorScheme.primary,
                 ),
                 contextMenuBuilder: (menuContext, editableTextState) {
-                  final platformExtras = editableTextState
-                      .contextMenuButtonItems
-                      .where(
-                        (item) =>
-                            item.type != ContextMenuButtonType.copy &&
-                            item.type != ContextMenuButtonType.selectAll &&
-                            item.type != ContextMenuButtonType.cut &&
-                            item.type != ContextMenuButtonType.paste,
-                      )
-                      .toList();
+                  final platformExtras =
+                      editableTextState.contextMenuButtonItems
+                          .where(
+                            (item) =>
+                                item.type != ContextMenuButtonType.copy &&
+                                item.type != ContextMenuButtonType.selectAll &&
+                                item.type != ContextMenuButtonType.cut &&
+                                item.type != ContextMenuButtonType.paste,
+                          )
+                          .toList();
                   return AdaptiveTextSelectionToolbar.buttonItems(
                     anchors: editableTextState.contextMenuAnchors,
                     buttonItems: [
@@ -1713,8 +1771,7 @@ class _MessageBubble extends StatelessWidget {
                         ),
                       for (final item in platformExtras)
                         ContextMenuButtonItem(
-                          label:
-                              item.label ?? _platformItemLabel(item.type),
+                          label: item.label ?? _platformItemLabel(item.type),
                           onPressed: item.onPressed,
                         ),
                       ContextMenuButtonItem(
@@ -1728,6 +1785,28 @@ class _MessageBubble extends StatelessWidget {
                   );
                 },
               ),
+            ),
+          ),
+        if (previewUrl != null)
+          Padding(
+            padding: message.attachments.isNotEmpty
+                ? const EdgeInsets.symmetric(horizontal: 14)
+                : EdgeInsets.zero,
+            child: LinkPreview(
+              key: ValueKey('link-preview-${message.id}-$previewUrl'),
+              url: previewUrl,
+              foregroundColor: foregroundColor,
+              secondaryColor: secondaryForegroundColor,
+              borderColor: previewBorderColor,
+              onLongPress: _supportsLongPressAction(context)
+                  ? () => _showMessageActions(context)
+                  : null,
+              onSecondaryTapDown: _supportsSecondaryClickAction(context)
+                  ? (globalPosition) => _showMessageActions(
+                        context,
+                        globalPosition: globalPosition,
+                      )
+                  : null,
             ),
           ),
         if (message.attachments.isNotEmpty) ...[
@@ -1798,9 +1877,9 @@ class _MessageBubble extends StatelessWidget {
   BorderRadius _bubbleBorderRadius(bool isLocal) {
     const outer = Radius.circular(19);
     const inner = Radius.circular(5);
-    // The tail-side bottom corner uses a near-zero radius so the
-    // custom-painted tail blends seamlessly into the bubble edge.
-    const tailCorner = Radius.circular(2);
+    // iMessage-style: the tail-side bottom corner stays fully rounded;
+    // the painted tail overlaps the rounded corner instead of replacing it.
+    const tailCorner = outer;
     final position = _groupPosition;
     final hasTail = position == _BubbleGroupPosition.single ||
         position == _BubbleGroupPosition.bottom;
@@ -2570,7 +2649,7 @@ class _BubbleTail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: const Size(11, 12),
+      size: const Size(10, 11),
       painter: _BubbleTailPainter(
         color: color,
         isLocal: isLocal,
@@ -2597,12 +2676,15 @@ class _BubbleTailPainter extends CustomPainter {
       canvas.translate(size.width, 0);
       canvas.scale(-1, 1);
     }
+    // iMessage-style comma tail: top-left blends into the bubble's rounded
+    // corner; the path bulges out to a rounded tip at the bottom-right and
+    // curves back along the underside of the bubble.
+    final w = size.width;
+    final h = size.height;
     path
-      ..moveTo(0, 0)
-      ..cubicTo(0.6, 0.1, 3.9, 1.0, 7.2, 4.9)
-      ..cubicTo(9.6, 7.8, 10.2, 10.0, 10.3, 12.0)
-      ..cubicTo(7.5, 11.5, 5.0, 10.0, 3.4, 7.8)
-      ..cubicTo(2.1, 6.0, 1.5, 3.8, 0, 0)
+      ..moveTo(w * 0.8, -10)
+      ..cubicTo(w * 0.30, h * 0.05, w * 0.55, h * 0.5, w, h)
+      ..cubicTo(w * 0.55, h * 0.85, -w * 0.45, h * 0.45, -w * 0.6, 4)
       ..close();
     canvas.drawPath(path, paint);
     if (!isLocal) {
@@ -2635,6 +2717,24 @@ final _urlRegExp = RegExp(
   r'https?://[^\s<>\[\]()]+',
   caseSensitive: false,
 );
+
+String? _firstHttpUrl(String text) {
+  if (text.isEmpty) return null;
+  final match = _urlRegExp.firstMatch(text);
+  if (match == null) return null;
+  // Trim common trailing punctuation that the regex can swallow.
+  var url = match.group(0)!;
+  while (url.isNotEmpty &&
+      (url.endsWith('.') ||
+          url.endsWith(',') ||
+          url.endsWith(';') ||
+          url.endsWith(':') ||
+          url.endsWith('!') ||
+          url.endsWith('?'))) {
+    url = url.substring(0, url.length - 1);
+  }
+  return url.isEmpty ? null : url;
+}
 
 TextSpan _buildLinkedTextSpan(String text, {required Color linkColor}) {
   final matches = _urlRegExp.allMatches(text).toList();
@@ -2694,9 +2794,14 @@ class _ReplyLinkTrail extends StatelessWidget {
         Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.28);
     final mediaOnlyPreview =
         message.attachments.isNotEmpty && message.text.isEmpty;
+    final textOnly = message.attachments.isEmpty;
     final previewWidth = mediaOnlyPreview ? 88.0 : 246.0;
-    final previewHeight = mediaOnlyPreview ? 88.0 : 76.0;
-    const trailHeight = 62.0;
+    final previewHeight = mediaOnlyPreview
+        ? 88.0
+        : textOnly
+            ? 40.0
+            : 96.0;
+    const trailHeight = 32.0;
 
     return SizedBox(
       width: double.infinity,
@@ -2704,18 +2809,6 @@ class _ReplyLinkTrail extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Positioned(
-            top: 0,
-            left: replyTargetIsLocal ? null : 0,
-            right: replyTargetIsLocal ? 0 : null,
-            child: SizedBox(
-              width: previewWidth,
-              child: _ReplyTrailPreviewCard(
-                message: message,
-                resolveAttachmentPath: resolveAttachmentPath,
-              ),
-            ),
-          ),
           Positioned.fill(
             child: CustomPaint(
               painter: _ReplyLinkIndicatorPainter(
@@ -2727,6 +2820,21 @@ class _ReplyLinkTrail extends StatelessWidget {
                 targetBubbleHeight: _estimatedReplyBubbleHeight(targetMessage),
                 previewWidth: previewWidth,
                 previewHeight: previewHeight,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: replyTargetIsLocal ? null : 0,
+            right: replyTargetIsLocal ? 0 : null,
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: previewWidth,
+                minWidth: previewWidth * 0.5,
+              ),
+              child: _ReplyTrailPreviewCard(
+                message: message,
+                resolveAttachmentPath: resolveAttachmentPath,
               ),
             ),
           ),
@@ -2752,8 +2860,7 @@ class _ReplyTrailPreviewCard extends StatelessWidget {
     final mediaOnly = message.attachments.isNotEmpty && message.text.isEmpty;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color:
-            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 1.0),
         borderRadius: BorderRadius.circular(mediaOnly ? 18 : 14),
       ),
       child: Padding(
@@ -2846,11 +2953,12 @@ class _ReplyLinkIndicatorPainter extends CustomPainter {
     final targetCenterY = size.height + (targetBubbleHeight * 0.5);
 
     if (!sourceOnRight && !targetOnRight) {
-      final startX = previewRight;
+      final startX = previewRight * 0.1;
       final startY = previewHeight * 0.5;
-      final endX = targetRight;
+      final endX = targetRight * 0.1;
       final endY = targetCenterY;
-      final laneX = (startX > endX ? startX : endX) + 18.0;
+      final laneX =
+          (previewRight > targetRight ? previewRight : targetRight) + 18.0;
       path
         ..moveTo(startX, startY)
         ..lineTo(laneX - cornerRadius, startY)
@@ -2867,11 +2975,12 @@ class _ReplyLinkIndicatorPainter extends CustomPainter {
         )
         ..lineTo(endX, endY);
     } else if (sourceOnRight && targetOnRight) {
-      final startX = previewLeft;
+      final startX = size.width - 10;
       final startY = previewHeight * 0.5;
-      final endX = targetLeft;
+      final endX = size.width - 10;
       final endY = targetCenterY;
-      final laneX = (startX < endX ? startX : endX) - 18.0;
+      final laneX =
+          (previewLeft < targetLeft ? previewLeft : targetLeft) - 18.0;
       path
         ..moveTo(startX, startY)
         ..lineTo(laneX + cornerRadius, startY)
@@ -2889,9 +2998,12 @@ class _ReplyLinkIndicatorPainter extends CustomPainter {
         ..lineTo(endX, endY);
     } else if (!sourceOnRight && targetOnRight) {
       // Local replying to peer: elbow turns right, needs startX < endX.
-      final idealStartX = previewLeft + (previewWidth / 2);
-      final idealEndX = targetLeft;
-      final startY = previewHeight;
+      // Anchor the line ~1/8 from the left edge of the canvas, instead of at
+      // the center of the (wide) preview card, so the elbow drops cleanly
+      // off the left side of the layout.
+      final idealStartX = size.width / 8;
+      final idealEndX = size.width - 10;
+      final startY = previewHeight * 0.1;
       final endY = targetCenterY;
       final gap = idealEndX - idealStartX;
       const needed = 2 * cornerRadius;
@@ -2916,9 +3028,10 @@ class _ReplyLinkIndicatorPainter extends CustomPainter {
         ..lineTo(endX, endY);
     } else {
       // Peer replying to local: elbow turns left, needs startX > endX.
-      final idealStartX = previewLeft + (previewWidth / 2);
-      final idealEndX = targetRight;
-      final startY = previewHeight;
+      // Anchor the line ~1/8 from the right edge of the canvas.
+      final idealStartX = size.width - size.width / 8;
+      const idealEndX = 10.0;
+      final startY = previewHeight * 0.1;
       final endY = targetCenterY;
       final gap = idealStartX - idealEndX;
       const needed = 2 * cornerRadius;
@@ -3313,4 +3426,71 @@ String _replySnippet(PeerMessagingMessage message) {
     return '${message.attachments.length} attachments';
   }
   return 'Message';
+}
+
+class _ThreadTitle extends StatelessWidget {
+  final String title;
+  final VpnState vpnState;
+
+  const _ThreadTitle({
+    required this.title,
+    required this.vpnState,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = _statusSubtitle(vpnState);
+    final titleStyle = isApple()
+        ? CupertinoTheme.of(context).textTheme.navTitleTextStyle
+        : Theme.of(context).textTheme.titleLarge;
+    if (subtitle == null) {
+      return Text(
+        title,
+        style: titleStyle,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+      );
+    }
+    final subtitleColor = vpnState == VpnState.error
+        ? Theme.of(context).colorScheme.error
+        : (isApple()
+            ? CupertinoColors.secondaryLabel.resolveFrom(context)
+            : Theme.of(context).colorScheme.onSurfaceVariant);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          title,
+          style: titleStyle,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+        const SizedBox(height: 1),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: subtitleColor,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String? _statusSubtitle(VpnState state) {
+    switch (state) {
+      case VpnState.connected:
+        return null;
+      case VpnState.connecting:
+        return 'Connecting…';
+      case VpnState.disconnecting:
+        return 'Disconnecting…';
+      case VpnState.disconnected:
+        return 'Disconnected';
+      case VpnState.error:
+        return 'Connection error';
+    }
+  }
 }
