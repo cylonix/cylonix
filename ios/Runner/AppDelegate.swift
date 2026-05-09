@@ -79,8 +79,14 @@ import UserNotifications
             if tunnel.isActivateOnDemandEnabled {
                 // Name matched and on-demand enabled. All set.
                 let status = tunnel.status
-                wg_log(.info, message: "Tunnel '\(tunnel.name)' on demand is already enabled. Current status '\(status)'.")
-                invokeMethod("tunnelStatus", arguments: ["status": "\(status)"])
+                let systemStatus = tunnel.systemStatus
+                wg_log(.info, message: "Tunnel '\(tunnel.name)' on demand is already enabled. Current status '\(status)' systemStatus='\(systemStatus)'.")
+                invokeMethod("tunnelStatus", arguments: [
+                    "status": "\(status)",
+                    "source": "setup-on-demand-current",
+                    "previousStatus": "\(status)",
+                    "systemStatus": "\(systemStatus)",
+                ])
                 if status == .inactive {
                     wg_log(.info, message: "Tunnel '\(tunnel.name)' is inactive. Start the tunnel.")
                     tunnelsManager!.start(tunnel.name)
@@ -98,7 +104,10 @@ import UserNotifications
                 }
                 let status = TunnelStatus.waiting
                 self.tunnelsManager!.start(tunnel.name)
-                self.invokeMethod("tunnelStatus", arguments: ["status": "\(status)"])
+                self.invokeMethod("tunnelStatus", arguments: [
+                    "status": "\(status)",
+                    "source": "setup-enable-on-demand",
+                ])
             }
             return
         }
@@ -114,7 +123,10 @@ import UserNotifications
                 status = TunnelStatus.waiting
             }
             self.tunnelsManager!.start(tunnelConfig.name!)
-            self.invokeMethod("tunnelStatus", arguments: ["status": "\(status)"])
+            self.invokeMethod("tunnelStatus", arguments: [
+                "status": "\(status)",
+                "source": "setup-add-tunnel",
+            ])
         }
     }
 
@@ -131,8 +143,8 @@ import UserNotifications
             invokeMethod("tunnelCreated", arguments: ["id": id, "isCreated": true])
             tunnelsManager = tunnelsMgr
 
-            TunnelsManager.onTunnelStatusChange { tunnelName, status in
-                wg_log(.info, message: "Tunnel '\(tunnelName)' status changed to '\(status)'.")
+            TunnelsManager.onTunnelStatusChange { tunnelName, status, context in
+                wg_log(.info, message: "Tunnel '\(tunnelName)' status changed to '\(status)' source=\(context.source) previous=\(context.previousStatus) system=\(context.systemStatus).")
                 if tunnelName != self.tunnelName {
                     wg_log(.debug, message: "Tunnel '\(tunnelName)' is not ours '\(self.tunnelName)', ignoring status change.")
                     if let tunnel = self.tunnelsManager?.tunnel(named: tunnelName) {
@@ -147,7 +159,12 @@ import UserNotifications
                     }
                     return
                 }
-                self.invokeMethod("tunnelStatus", arguments: ["status": status])
+                self.invokeMethod("tunnelStatus", arguments: [
+                    "status": status,
+                    "source": context.source,
+                    "previousStatus": context.previousStatus,
+                    "systemStatus": context.systemStatus,
+                ])
             }
 
             setupOrUpdateTunnel()
@@ -336,6 +353,12 @@ import UserNotifications
                     result("Success")
                     return
                 }
+                #if os(iOS)
+                if call.method == "probeBackendLiveness" {
+                    self.probeBackendLiveness(call.arguments, result: result)
+                    return
+                }
+                #endif
                 #if os(macOS)
                 if call.method == "startWebAuth" {
                     guard let url = call.arguments as? String else {
@@ -395,6 +418,85 @@ import UserNotifications
                 }
         }
     }
+
+    #if os(iOS)
+        private func probeBackendLiveness(_ arguments: Any?, result: @escaping FlutterResult) {
+            guard let appGroupId = FileManager.appGroupId,
+                  let defaults = UserDefaults(suiteName: appGroupId)
+            else {
+                result([
+                    "alive": false,
+                    "error": "app_group_defaults_unavailable",
+                ])
+                return
+            }
+
+            let args = arguments as? [String: Any]
+            let timeoutMilliseconds = args?["timeoutMilliseconds"] as? Int ?? 700
+            let requestID = UUID().uuidString
+            let requestAtUs = floor(Date().timeIntervalSince1970 * 1_000_000)
+
+            defaults.set(requestID, forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeRequestID)
+            defaults.set(requestAtUs, forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeRequestAtUs)
+            defaults.removeObject(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeResponseID)
+            defaults.removeObject(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeResponseAtUs)
+            defaults.removeObject(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeAlive)
+            defaults.removeObject(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeBackendState)
+            defaults.removeObject(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeError)
+            defaults.removeObject(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeProviderStopping)
+            defaults.synchronize()
+
+            wg_log(.info, message: "app backend liveness probe request id=\(requestID) timeoutMs=\(timeoutMilliseconds)")
+            CFNotificationCenterPostNotification(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                CFNotificationName(PacketTunnelMessage.backendLivenessProbe as CFString),
+                nil,
+                nil,
+                true
+            )
+
+            let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000.0)
+            var completed = false
+            func finish(_ response: [String: Any]) {
+                if completed {
+                    return
+                }
+                completed = true
+                wg_log(.info, message: "app backend liveness probe result id=\(requestID) response=\(response)")
+                result(response)
+            }
+
+            func poll() {
+                if defaults.string(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeResponseID) == requestID {
+                    let responseAtUs = defaults.double(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeResponseAtUs)
+                    finish([
+                        "alive": defaults.bool(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeAlive),
+                        "backendState": defaults.string(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeBackendState) ?? "",
+                        "providerStopping": defaults.bool(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeProviderStopping),
+                        "error": defaults.string(forKey: PacketTunnelUserDefaultsKey.backendLivenessProbeError) ?? "",
+                        "requestID": requestID,
+                        "responseAgeMs": Int((floor(Date().timeIntervalSince1970 * 1_000_000) - responseAtUs) / 1000),
+                    ])
+                    return
+                }
+
+                if Date() >= deadline {
+                    finish([
+                        "alive": false,
+                        "timeout": true,
+                        "requestID": requestID,
+                    ])
+                    return
+                }
+
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(50)) {
+                    poll()
+                }
+            }
+
+            poll()
+        }
+    #endif
 
     private func setupUserNotifications() {
         let center = UNUserNotificationCenter.current()
@@ -631,9 +733,25 @@ import UserNotifications
             // wg_log(.debug, message: "Last processed notification index: \(idx)")
             if idx >= 0 {
                 let nowUs = floor(Date().timeIntervalSince1970 * 1_000_000)
+                let payloadDir = url.appendingPathComponent("ipn_notification_payloads")
                 for index in idx ..< queue.count {
                     let item = queue[index]
-                    if let notification = item["notification"] as? String {
+                    var notification = item["notification"] as? String
+                    var payloadURL: URL?
+                    if notification == nil,
+                       let payloadFile = item["payloadFile"] as? String
+                    {
+                        let fileURL = payloadDir.appendingPathComponent(payloadFile)
+                        payloadURL = fileURL
+                        if let data = try? Data(contentsOf: fileURL),
+                           let payload = String(data: data, encoding: .utf8)
+                        {
+                            notification = payload
+                        } else {
+                            wg_log(.error, message: "Failed to read notification payload file \(payloadFile)")
+                        }
+                    }
+                    if let notification = notification {
                         let caller = (item["caller"] as? String) ?? "unknown"
                         let enqueuedAtUs = (item["timestamp"] as? Double) ?? 0
                         let id = (item["id"] as? String) ?? ""
@@ -647,6 +765,9 @@ import UserNotifications
                             "enqueuedAtUs": enqueuedAtUs,
                             "id": id,
                         ])
+                        if let payloadURL = payloadURL {
+                            try? FileManager.default.removeItem(at: payloadURL)
+                        }
                     }
                 }
             }

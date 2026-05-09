@@ -18,6 +18,11 @@
 		<string>--port</string>
 		<string>41741</string>
 	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>CYLONIX_TAILDROP_DEFAULT_DOWNLOADS</key>
+		<string>1</string>
+	</dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>

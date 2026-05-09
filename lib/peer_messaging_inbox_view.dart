@@ -10,13 +10,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/ipn.dart';
 import 'models/peer_messaging.dart';
+import 'peer_messaging_thread_view.dart';
 import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/share_peer_device_list.dart';
 
-class PeerMessagingInboxView extends ConsumerWidget {
+const double _splitViewMinWidth = 760;
+const double _splitViewListWidth = 360;
+
+class PeerMessagingInboxView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateBack;
 
   const PeerMessagingInboxView({
@@ -25,7 +29,37 @@ class PeerMessagingInboxView extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PeerMessagingInboxView> createState() =>
+      _PeerMessagingInboxViewState();
+}
+
+class _PeerMessagingInboxViewState
+    extends ConsumerState<PeerMessagingInboxView> {
+  String? _selectedConversationId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(peerMessagingInboxOpenedProvider.notifier).state++;
+    });
+  }
+
+  void _selectConversation(String conversationId) {
+    setState(() {
+      _selectedConversationId = conversationId;
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedConversationId = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     ref.watch(peerMessagingBootstrapProvider);
     final conversations = ref.watch(peerMessagingConversationsProvider);
     final proxy = ref.watch(peerMessagingProxyProvider);
@@ -33,28 +67,143 @@ class PeerMessagingInboxView extends ConsumerWidget {
     return AdaptiveScaffold(
       title: const Text('Peer Messages'),
       heroTag: 'peer-messaging-inbox',
-      onGoBack: onNavigateBack,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
-          child: ListView(
+      onGoBack: widget.onNavigateBack,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final useSplit = constraints.maxWidth >= _splitViewMinWidth;
+          if (useSplit &&
+              _selectedConversationId != null &&
+              !conversations
+                  .any((c) => c.id == _selectedConversationId)) {
+            // The selected conversation no longer exists (e.g., deleted).
+            // Reset selection to avoid showing a stale empty thread.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _clearSelection();
+            });
+          }
+
+          final list = _InboxList(
+            conversations: conversations,
+            proxy: proxy,
+            embedded: useSplit,
+            selectedConversationId:
+                useSplit ? _selectedConversationId : null,
+            onSelectConversation: useSplit ? _selectConversation : null,
+          );
+
+          if (!useSplit) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: list,
+              ),
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 32),
-              const _ComposeCard(),
-              if (isDesktop()) ...[
-                const SizedBox(height: 16),
-                _ProxyCard(proxy: proxy),
-              ],
-              const SizedBox(height: 16),
-              if (conversations.isEmpty)
-                const _EmptyState()
-              else
-                ...conversations.map(
-                  (conversation) =>
-                      _ConversationTile(conversation: conversation),
-                ),
+              SizedBox(
+                width: _splitViewListWidth,
+                child: list,
+              ),
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: isApple() ? CupertinoColors.separator : null,
+              ),
+              Expanded(
+                child: _selectedConversationId == null
+                    ? const _SelectThreadPlaceholder()
+                    : PeerMessagingThreadView(
+                        key: ValueKey(_selectedConversationId),
+                        conversationId: _selectedConversationId!,
+                        embedded: true,
+                      ),
+              ),
             ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _InboxList extends StatelessWidget {
+  final List<PeerMessagingConversation> conversations;
+  final PeerMessagingProxyInfo proxy;
+  final bool embedded;
+  final String? selectedConversationId;
+  final ValueChanged<String>? onSelectConversation;
+
+  const _InboxList({
+    required this.conversations,
+    required this.proxy,
+    required this.embedded,
+    required this.selectedConversationId,
+    required this.onSelectConversation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        const SizedBox(height: 32),
+        _ComposeCard(onConversationOpened: onSelectConversation),
+        if (isDesktop() && !embedded) ...[
+          const SizedBox(height: 16),
+          _ProxyCard(proxy: proxy),
+        ],
+        const SizedBox(height: 16),
+        if (conversations.isEmpty)
+          const _EmptyState()
+        else
+          ...conversations.map(
+            (conversation) => _ConversationTile(
+              conversation: conversation,
+              isSelected: conversation.id == selectedConversationId,
+              onSelect: onSelectConversation,
+            ),
           ),
+      ],
+    );
+  }
+}
+
+class _SelectThreadPlaceholder extends StatelessWidget {
+  const _SelectThreadPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isApple()
+                  ? CupertinoIcons.chat_bubble_2
+                  : Icons.forum_outlined,
+              size: 48,
+              color: color,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Select a conversation',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Pick a thread on the left to start chatting, '
+              'or start a new message.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: color,
+                  ),
+            ),
+          ],
         ),
       ),
     );
@@ -62,7 +211,9 @@ class PeerMessagingInboxView extends ConsumerWidget {
 }
 
 class _ComposeCard extends ConsumerWidget {
-  const _ComposeCard();
+  final ValueChanged<String>? onConversationOpened;
+
+  const _ComposeCard({this.onConversationOpened});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -183,7 +334,12 @@ class _ComposeCard extends ConsumerWidget {
                   : null) ??
               '',
         );
-    if (context.mounted) {
+    if (!context.mounted) {
+      return;
+    }
+    if (onConversationOpened != null) {
+      onConversationOpened!(selectedPeer.stableID);
+    } else {
       Navigator.pushNamed(
         context,
         '/peer-messaging/thread',
@@ -282,8 +438,14 @@ class _ProxyCardState extends State<_ProxyCard> {
 
 class _ConversationTile extends ConsumerWidget {
   final PeerMessagingConversation conversation;
+  final bool isSelected;
+  final ValueChanged<String>? onSelect;
 
-  const _ConversationTile({required this.conversation});
+  const _ConversationTile({
+    required this.conversation,
+    this.isSelected = false,
+    this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -329,6 +491,10 @@ class _ConversationTile extends ConsumerWidget {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
         onTap: () {
+          if (onSelect != null) {
+            onSelect!(conversation.id);
+            return;
+          }
           Navigator.pushNamed(
             context,
             '/peer-messaging/thread',
@@ -360,6 +526,9 @@ class _ConversationTile extends ConsumerWidget {
       clipBehavior: Clip.antiAlias,
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 20),
+      color: isSelected
+          ? Theme.of(context).colorScheme.secondaryContainer
+          : null,
       child: content,
     );
   }

@@ -8,6 +8,7 @@
 
 #include <charset_converter/charset_converter_plugin.h>
 #include <downloadsfolder/downloadsfolder_plugin_c_api.h>
+#include <file_selector_windows/file_selector_windows.h>
 #include <screen_retriever/screen_retriever_plugin.h>
 #include <share_plus/share_plus_windows_plugin_c_api.h>
 #include <system_tray/system_tray_plugin.h>
@@ -19,6 +20,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("CharsetConverterPlugin"));
   DownloadsfolderPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("DownloadsfolderPluginCApi"));
+  FileSelectorWindowsRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("FileSelectorWindows"));
   ScreenRetrieverPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("ScreenRetrieverPlugin"));
   SharePlusWindowsPluginCApiRegisterWithRegistrar(

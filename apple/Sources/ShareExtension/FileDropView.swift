@@ -324,7 +324,13 @@ public struct FileDropView: View {
                     ($0.os?.lowercased().contains(lower) ?? false)
             }
         }
-        return peers
+        return peers.sorted { lhs, rhs in
+            let nameOrder = lhs.sortName.localizedStandardCompare(rhs.sortName)
+            if nameOrder != .orderedSame {
+                return nameOrder == .orderedAscending
+            }
+            return lhs.listID < rhs.listID
+        }
     }
 
     public var body: some View {
@@ -410,10 +416,10 @@ public struct FileDropView: View {
                         .foregroundColor(.secondary)
                     Spacer()
                 } else {
-                    List(filteredPeers) { peer in
+                    List(filteredPeers, id: \.listID) { peer in
                         PeerRow(
                             peer: peer,
-                            transfer: viewModel.transfers[peer.id],
+                            transfer: viewModel.transfers[peer.transferID],
                             onSend: { viewModel.sendFiles(to: peer, files: sharedFiles) },
                             onRetry: { viewModel.retryFailedFiles(for: peer) }
                         )
@@ -1060,7 +1066,7 @@ struct PeerRow: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                 }
-            } else if peer.online {
+            } else if peer.canReceiveFiles {
                 #if os(macOS)
                 if isHovered {
                     Button("Send", action: onSend)
@@ -1123,20 +1129,64 @@ struct Status: Codable {
 }
 
 struct PeerStatus: Identifiable, Codable {
+    private static let unavailableStableID = "00000000-0000-0000-0000-000000000000"
+    private static let taildropTargetAvailable = 1
+
     let id: String
+    let publicKey: String
     let userID: Int
     let hostName: String
     let dnsName: String
     let online: Bool
     let os: String?
+    let peerAPIURL: [String]?
+    let taildropTarget: Int
 
     enum CodingKeys: String, CodingKey {
         case id = "ID"
+        case publicKey = "PublicKey"
         case hostName = "HostName"
         case dnsName = "DNSName"
         case online = "Online"
         case os = "OS"
+        case peerAPIURL = "PeerAPIURL"
+        case taildropTarget = "TaildropTarget"
         case userID = "UserID"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        publicKey = try container.decodeIfPresent(String.self, forKey: .publicKey) ?? ""
+        userID = try container.decodeIfPresent(Int.self, forKey: .userID) ?? 0
+        hostName = try container.decodeIfPresent(String.self, forKey: .hostName) ?? ""
+        dnsName = try container.decodeIfPresent(String.self, forKey: .dnsName) ?? hostName
+        online = try container.decodeIfPresent(Bool.self, forKey: .online) ?? false
+        os = try container.decodeIfPresent(String.self, forKey: .os)
+        peerAPIURL = try container.decodeIfPresent([String].self, forKey: .peerAPIURL)
+        taildropTarget = try container.decodeIfPresent(Int.self, forKey: .taildropTarget) ?? 0
+    }
+
+    var listID: String {
+        if !publicKey.isEmpty { return publicKey }
+        if !id.isEmpty { return id }
+        return dnsName
+    }
+
+    var transferID: String {
+        id
+    }
+
+    var canReceiveFiles: Bool {
+        online &&
+            taildropTarget == Self.taildropTargetAvailable &&
+            !id.isEmpty &&
+            id != Self.unavailableStableID &&
+            !(peerAPIURL?.isEmpty ?? true)
+    }
+
+    var sortName: String {
+        dnsName.components(separatedBy: ".").first ?? dnsName
     }
 }
 

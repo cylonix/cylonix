@@ -67,18 +67,12 @@ extension ShareViewController {
         fileInfos = []
         sharedFiles = []
 
-        #if os(iOS)
-            let types: [UTType] = [
-                UTType.video,
-                UTType.audio,
-                UTType.image,
-                UTType.fileURL,
-            ]
-        #else
-            let types: [UTType] = [
-                UTType.fileURL,
-            ]
-        #endif
+        let types: [UTType] = [
+            UTType.video,
+            UTType.audio,
+            UTType.image,
+            UTType.fileURL,
+        ]
 
         for attachment in attachments {
             debugLog("Processing attachment \(attachment)")
@@ -119,40 +113,140 @@ extension ShareViewController {
                 self.copyToTempFolder(url)
                 return
             }
+            if let url = data as? NSURL {
+                self.copyToTempFolder(url as URL)
+                return
+            }
 
             #if os(iOS)
-                // Handle UIImage type
                 if let image = data as? UIImage {
-                    guard let tempFolder = sharedTempFolder() else {
-                        debugLog("Failed to locate shared temp folder")
+                    if let imageData = image.pngData() {
+                        self.writeSharedData(imageData, attachment, UTType.png.identifier, fallbackExtension: "png")
+                    } else {
+                        debugLog("Failed to encode UIImage as PNG")
+                    }
+                    return
+                }
+            #elseif os(macOS)
+                if let image = data as? NSImage {
+                    guard let tiffData = image.tiffRepresentation,
+                          let bitmap = NSBitmapImageRep(data: tiffData),
+                          let imageData = bitmap.representation(using: .png, properties: [:])
+                    else {
+                        debugLog("Failed to encode NSImage as PNG")
                         return
                     }
-
-                    let fileName = "\(UUID().uuidString).png"
-                    let destURL = tempFolder.appendingPathComponent(fileName)
-
-                    if let imageData = image.pngData() {
-                        do {
-                            try imageData.write(to: destURL)
-                            debugLog("Saved image to \(destURL.path)")
-                            self.appendSharedFile(fileName, destURL)
-                        } catch {
-                            debugLog("Failed to save image: \(error)")
-                        }
-                    }
+                    self.writeSharedData(imageData, attachment, UTType.png.identifier, fallbackExtension: "png")
                     return
                 }
             #endif
 
-            // Convert NSData to URL string then URL
-            if let data = data as? Data, let urlString = String(data: data, encoding: .utf8),
-               let url = URL(string: urlString)
-            {
+            if let urlString = data as? String, let url = URL(string: urlString) {
                 self.copyToTempFolder(url)
-            } else {
-                debugLog("Failed to create URL from data: \(data)")
+                return
+            }
+
+            if let data = data as? Data {
+                if let url = self.fileURL(from: data) {
+                    self.copyToTempFolder(url)
+                    return
+                }
+                self.writeSharedData(data, attachment, identifier, fallbackExtension: "dat")
+                return
+            }
+
+            debugLog("Unsupported loaded item value: \(type(of: data))")
+        }
+    }
+
+    private func fileURL(from data: Data) -> URL? {
+        if let url = URL(dataRepresentation: data, relativeTo: nil), url.isFileURL {
+            return url
+        }
+        if let urlString = String(data: data, encoding: .utf8),
+           let url = URL(string: urlString),
+           url.isFileURL
+        {
+            return url
+        }
+        return nil
+    }
+
+    private func writeSharedData(
+        _ data: Data,
+        _ attachment: NSItemProvider,
+        _ identifier: String,
+        fallbackExtension: String
+    ) {
+        guard let tempFolder = sharedTempFolder() else {
+            debugLog("Failed to locate shared temp folder")
+            return
+        }
+
+        let fileName = sharedFileName(for: attachment,
+                                      identifier: identifier,
+                                      data: data,
+                                      fallbackExtension: fallbackExtension)
+        let destURL = tempFolder.appendingPathComponent(fileName)
+
+        do {
+            try data.write(to: destURL)
+            debugLog("Saved shared data to \(destURL.path)")
+            appendSharedFile(fileName, destURL)
+        } catch {
+            debugLog("Failed to save shared data: \(error)")
+        }
+    }
+
+    private func sharedFileName(
+        for attachment: NSItemProvider,
+        identifier: String,
+        data: Data?,
+        fallbackExtension: String
+    ) -> String {
+        let fileExtension = filenameExtension(for: identifier,
+                                              data: data,
+                                              fallbackExtension: fallbackExtension)
+        if let suggestedName = attachment.suggestedName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !suggestedName.isEmpty
+        {
+            let lastPathComponent = URL(fileURLWithPath: suggestedName).lastPathComponent
+            if URL(fileURLWithPath: lastPathComponent).pathExtension.isEmpty {
+                return "\(lastPathComponent).\(fileExtension)"
+            }
+            return lastPathComponent
+        }
+        return "\(UUID().uuidString).\(fileExtension)"
+    }
+
+    private func filenameExtension(
+        for identifier: String,
+        data: Data?,
+        fallbackExtension: String
+    ) -> String {
+        if let type = UTType(identifier),
+           let fileExtension = type.preferredFilenameExtension,
+           !fileExtension.isEmpty
+        {
+            return fileExtension
+        }
+        if let data = data {
+            if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+                return "png"
+            }
+            if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+                return "jpg"
+            }
+            if data.starts(with: [0x47, 0x49, 0x46]) {
+                return "gif"
+            }
+            if data.starts(with: [0x49, 0x49, 0x2A, 0x00]) ||
+                data.starts(with: [0x4D, 0x4D, 0x00, 0x2A])
+            {
+                return "tiff"
             }
         }
+        return fallbackExtension
     }
 
     private func copyToTempFolder(_ url: URL) {

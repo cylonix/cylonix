@@ -24,13 +24,17 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_dotenv: ^5.1.0
+  flutter_image_compress: ^2.3.0
   flutter_localizations:
     sdk: flutter
   flutter_local_notifications: ^17.2.2
+  html: ^0.15.0
+  http: ^1.2.0
   flutter_logger:
     path: "plugins/flutter_logger"
   flutter_riverpod: ^2.4.9
   freezed_annotation: ^2.4.1
+  image_picker: ^1.1.2
   installed_apps: ^1.6.0
   introduction_screen: ^3.1.17
   json_annotation: ^4.9.0
@@ -50,6 +54,8 @@ dependencies:
       ref: cylonix2
   url_launcher: ^6.3.0
   uuid: ^3.0.5
+  video_compress: ^3.1.2
+  video_thumbnail: ^0.5.3
   ffi: ^2.1.4
   win32: ^5.14.0
   window_manager: ^0.3.7

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -23,9 +24,11 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
   static const _protocolVersion = 'v1';
   static const _preferredListenPort = 50321;
-  static const _storageFolderName = 'openclaw';
+  static const _storageFolderName = 'peer_messaging';
+  static const _legacyStorageFolderName = 'openclaw';
   static const _storageFileName = 'state.json';
-  static const _authTokenKey = 'openclaw_proxy_auth_token';
+  static const _authTokenKey = 'peer_messaging_proxy_auth_token';
+  static const _legacyAuthTokenKey = 'openclaw_proxy_auth_token';
   static final _logger = Logger(tag: 'PeerMessaging');
 
   final IpnService _ipnService;
@@ -42,19 +45,41 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   List<AwaitingFile> _lastWaitingFiles = const [];
   final Map<String, String> _pendingAutoSavedPaths = {};
 
+  // Active-thread tracking: while one or more peer-message threads are visible
+  // in the UI, we tell the daemon to keep their network paths warm so the next
+  // outbound message doesn't pay XRay+DERP+WG+TCP+HTTP cold-start latency.
+  // Multiple windows / split-screen support is handled by counting registrations.
+  final Map<String, int> _activeThreadRefs = {};
+  Timer? _activePeersHeartbeatTimer;
+  static const _activePeersHeartbeatInterval = Duration(seconds: 60);
+
+  // Per-peer warm status reported by the daemon (warm_status events). UI
+  // widgets read this via warmStatusProvider; the service is the source of
+  // truth and emits a stream when entries change.
+  final Map<String, PeerMessagingWarmStatus> _warmStatus = {};
+  final _warmStatusController =
+      StreamController<Map<String, PeerMessagingWarmStatus>>.broadcast();
+  Map<String, PeerMessagingWarmStatus> get warmStatusSnapshot =>
+      Map.unmodifiable(_warmStatus);
+  Stream<Map<String, PeerMessagingWarmStatus>> get warmStatusStream =>
+      _warmStatusController.stream;
+
+  // Tracks the previously-seen IPN state so we can detect the
+  // disconnected-then-Running transition and re-push the active-peer set
+  // immediately, without waiting up to 60s for the heartbeat.
+  int? _lastSeenIpnState;
+
   bool get _supportsLocalProxy =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
-    _logger.i(
-        'PeerMessagingService init [build:20260412B] isDirectDistribution=${IpnService.isDirectDistribution}');
 
     final storedState = await _loadState();
     _activeProfileId = await _resolveCurrentProfileId();
     final migratedState = _adoptLegacyConversations(
-      storedState,
+      _rewriteLegacyAttachmentPaths(storedState),
       profileId: _activeProfileId,
     );
     final normalizedState = _mergeDuplicateConversations(migratedState);
@@ -109,11 +134,122 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   Future<void> disposeService() async {
     await _bridgeSubscription?.cancel();
     await _notificationSubscription?.cancel();
+    _activePeersHeartbeatTimer?.cancel();
+    _activePeersHeartbeatTimer = null;
+    _activeThreadRefs.clear();
+    _warmStatus.clear();
+    await _warmStatusController.close();
+    try {
+      await _ipnService.clearActivePeers();
+    } catch (_) {
+      // Best effort — daemon will time out the global session anyway.
+    }
     for (final client in _clients.toList()) {
       await client.close();
     }
     _clients.clear();
     await _server?.close(force: true);
+  }
+
+  // registerActiveThread is called by a thread view when it becomes visible.
+  // Refcounted so multiple simultaneous opens of the same conversation (e.g.
+  // re-opens during navigation transitions) don't drop the warm state.
+  Future<void> registerActiveThread(String peerRef) async {
+    if (peerRef.isEmpty) return;
+    final wasEmpty = _activeThreadRefs.isEmpty;
+    _activeThreadRefs.update(peerRef, (n) => n + 1, ifAbsent: () => 1);
+    try {
+      await _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
+    } catch (e) {
+      _logger.w('setActivePeers failed: $e');
+    }
+    if (wasEmpty && _activeThreadRefs.isNotEmpty) {
+      _activePeersHeartbeatTimer ??=
+          Timer.periodic(_activePeersHeartbeatInterval, (_) {
+        try {
+          // For HTTP-LocalAPI platforms this is a cheap heartbeat frame.
+          // For method-channel platforms _ipnService re-asserts the set so
+          // the daemon's idle watchdog doesn't expire.
+          _ipnService.sendActivePeersHeartbeat();
+          _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
+        } catch (e) {
+          _logger.d('active-peers heartbeat failed: $e');
+        }
+      });
+    }
+  }
+
+  Future<void> unregisterActiveThread(String peerRef) async {
+    if (peerRef.isEmpty) return;
+    final n = _activeThreadRefs[peerRef];
+    if (n == null) return;
+    if (n > 1) {
+      _activeThreadRefs[peerRef] = n - 1;
+      return;
+    }
+    _activeThreadRefs.remove(peerRef);
+    // Drop stale warm-status entry; the daemon stops emitting events for
+    // peers we no longer claim, so it would otherwise stay forever.
+    if (_warmStatus.remove(peerRef) != null) {
+      _warmStatusController.add(warmStatusSnapshot);
+    }
+    if (_activeThreadRefs.isEmpty) {
+      _activePeersHeartbeatTimer?.cancel();
+      _activePeersHeartbeatTimer = null;
+      try {
+        await _ipnService.clearActivePeers();
+      } catch (e) {
+        _logger.d('clearActivePeers failed: $e');
+      }
+    } else {
+      try {
+        await _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
+      } catch (e) {
+        _logger.d('setActivePeers (after unregister) failed: $e');
+      }
+    }
+  }
+
+  // Called from the app lifecycle observer when the app goes to background.
+  // Drops the active-peer set so we don't burn battery on warm pings while the
+  // user isn't looking. The thread views remain in the widget tree so we keep
+  // the refcount; suspendActivePeers/resumeActivePeers only touch the daemon.
+  Future<void> suspendActivePeers() async {
+    _activePeersHeartbeatTimer?.cancel();
+    _activePeersHeartbeatTimer = null;
+    try {
+      await _ipnService.clearActivePeers();
+    } catch (_) {}
+  }
+
+  // _reassertActivePeers is called when the IPN backend transitions back into
+  // Running after a disconnect. The daemon's previous active-peer set was
+  // discarded with the LocalBackend, so push the current claim immediately
+  // instead of waiting up to 60s for the next heartbeat.
+  Future<void> _reassertActivePeers() async {
+    if (_activeThreadRefs.isEmpty) return;
+    try {
+      await _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
+    } catch (e) {
+      _logger.d('reassertActivePeers failed: $e');
+    }
+  }
+
+  Future<void> resumeActivePeers() async {
+    if (_activeThreadRefs.isEmpty) return;
+    try {
+      await _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
+    } catch (e) {
+      _logger.d('resumeActivePeers failed: $e');
+      return;
+    }
+    _activePeersHeartbeatTimer ??=
+        Timer.periodic(_activePeersHeartbeatInterval, (_) {
+      try {
+        _ipnService.sendActivePeersHeartbeat();
+        _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
+      } catch (_) {}
+    });
   }
 
   @override
@@ -721,6 +857,20 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           proxy: state.proxy,
         );
         break;
+      case PeerMessagingEventType.warmStatus:
+        final ref = (event.payload['peer_ref'] as String? ?? '').trim();
+        if (ref.isNotEmpty) {
+          final status = PeerMessagingWarmStatus.fromValue(
+              event.payload['status'] as String?);
+          final prev = _warmStatus[ref];
+          if (prev != status) {
+            _warmStatus[ref] = status;
+            _warmStatusController.add(warmStatusSnapshot);
+          }
+        }
+        // Don't fall through to _persistState / broadcast — warm status is
+        // ephemeral runtime state, not part of the conversation snapshot.
+        return;
       case PeerMessagingEventType.authenticated:
       case PeerMessagingEventType.error:
         break;
@@ -756,6 +906,21 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }
 
   Future<void> _handleIpnNotification(IpnNotification notification) async {
+    // Detect transition into Running so we can re-push the active-peer set
+    // immediately after a tunnel reconnect — the daemon's session was wiped
+    // when the LocalBackend went down, and the user might try to send a
+    // message before the next 60s heartbeat fires.
+    final newState = notification.state;
+    if (newState != null && newState != _lastSeenIpnState) {
+      final wasNotRunning =
+          _lastSeenIpnState != BackendState.running.value;
+      _lastSeenIpnState = newState;
+      if (wasNotRunning &&
+          newState == BackendState.running.value &&
+          _activeThreadRefs.isNotEmpty) {
+        unawaited(_reassertActivePeers());
+      }
+    }
     if (notification.netMap != null) {
       final mergedState = _mergeDuplicateConversations(state);
       if (!identical(mergedState, state)) {
@@ -768,6 +933,10 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         notification.outgoingFiles!.isNotEmpty) {
       await _consumeOutgoingAttachmentProgress(notification.outgoingFiles!);
     }
+    if (notification.cylonixDirectFileReceived != null) {
+      await _handleDirectModeFileReceived(
+          notification.cylonixDirectFileReceived!);
+    }
     if (!(Platform.isIOS || Platform.isMacOS) ||
         notification.filesWaiting == null) {
       return;
@@ -778,6 +947,57 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
     if (Platform.isIOS) {
       await _consumePendingAttachmentFiles();
+    }
+  }
+
+  /// Handle a Notify.CylonixDirectFileReceived event. In direct mode the
+  /// file has already landed at its final Path so the only thing left to
+  /// do is correlate to a pending peer-message attachment via the
+  /// transfer ID, or surface a "File Received" desktop notification for
+  /// regular Taildrop arrivals. This piggybacks on the same
+  /// _pendingAutoSavedPaths mechanism BackgroundTaskManager uses on iOS,
+  /// so the existing _consumeAutoSavedAttachmentPaths flow takes care of
+  /// updating the message UI when there is a matching peer message.
+  Future<void> _handleDirectModeFileReceived(
+      Map<String, dynamic> payload) async {
+    final transferId = payload['transfer_id'] as String? ?? '';
+    final path = payload['path'] as String? ?? '';
+    final name = payload['name'] as String? ?? '';
+    if (path.isEmpty) {
+      return;
+    }
+    if (transferId.isNotEmpty) {
+      _pendingAutoSavedPaths[transferId] = path;
+      await _consumeAutoSavedAttachmentPaths();
+      // Peer messaging UI shows the message in the chat thread; suppress
+      // a redundant system notification (matches iOS BackgroundTaskManager).
+      return;
+    }
+    await _showFileReceivedNotification(name: name, path: path);
+  }
+
+  static const _notificationsChannel =
+      MethodChannel('io.cylonix.sase/notifications');
+
+  Future<void> _showFileReceivedNotification({
+    required String name,
+    required String path,
+  }) async {
+    // Only the macOS direct PKG drives this method channel — App Store
+    // / iOS posts the notification from WireGuardAdapter::handleFilesWaiting
+    // inside the Network Extension, and the channel handler is only
+    // registered in macos-direct/Runner. Calling it elsewhere would hit
+    // MissingPluginException.
+    if (!IpnService.isDirectDistribution) {
+      return;
+    }
+    try {
+      await _notificationsChannel.invokeMethod('showFileReceived', {
+        'name': name,
+        'path': path,
+      });
+    } catch (e) {
+      _logger.w('showFileReceived method channel failed: $e');
     }
   }
 
@@ -1360,6 +1580,68 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     return attachmentsDir;
   }
 
+  /// On iOS/macOS the network extension lives in a separate sandbox and can
+  /// only read files placed inside the app-group container. If a message's
+  /// attachment path is in the main app's container (e.g. a retry of a send
+  /// that originally happened before the shared folder was available), copy
+  /// it into the shared folder and return updated attachments. No-op on other
+  /// platforms or when the shared folder is unavailable.
+  Future<List<PeerMessagingAttachment>> _ensureAttachmentsStaged(
+      List<PeerMessagingAttachment> attachments) async {
+    if (attachments.isEmpty) return attachments;
+    if (!(Platform.isIOS || Platform.isMacOS)) return attachments;
+    final sharedFolder = await _ipnService.getSharedFolderPath();
+    if (sharedFolder == null || sharedFolder.isEmpty) return attachments;
+    final scopedDir = Directory(
+      p.join(
+        sharedFolder,
+        'peer-messaging',
+        'attachments',
+        _attachmentScopeFolderName(_currentProfileIdOrEmpty()),
+      ),
+    );
+    await scopedDir.create(recursive: true);
+
+    final result = <PeerMessagingAttachment>[];
+    for (final attachment in attachments) {
+      final path = attachment.path ?? '';
+      if (path.isEmpty || path.startsWith(sharedFolder)) {
+        result.add(attachment);
+        continue;
+      }
+      final source = File(path);
+      if (!await source.exists()) {
+        result.add(attachment);
+        continue;
+      }
+      final extension = p.extension(attachment.name);
+      final baseName = p.basenameWithoutExtension(attachment.name);
+      final stagedPath =
+          p.join(scopedDir.path, '${baseName}_${attachment.id}$extension');
+      try {
+        if (!await File(stagedPath).exists()) {
+          await source.copy(stagedPath);
+        }
+        result.add(attachment.copyWith(path: stagedPath));
+      } catch (e) {
+        _logger.w('Failed to stage attachment ${attachment.id} for send: $e');
+        result.add(attachment);
+      }
+    }
+    return result;
+  }
+
+  bool _attachmentPathsMatch(
+    List<PeerMessagingAttachment> a,
+    List<PeerMessagingAttachment> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].path != b[i].path) return false;
+    }
+    return true;
+  }
+
   bool _shouldBroadcastEvent(PeerMessagingEvent event) {
     switch (event.type) {
       case PeerMessagingEventType.messageSent:
@@ -1820,7 +2102,31 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }) async {
     conversationId = _canonicalConversationId(conversationId);
     try {
-      final filePayloads = attachments
+      final stagedAttachments = await _ensureAttachmentsStaged(attachments);
+      var outgoingPayload = payload;
+      if (!_attachmentPathsMatch(attachments, stagedAttachments)) {
+        await _updateMessage(
+          profileId: profileId,
+          conversationId: conversationId,
+          messageId: messageId,
+          transform: (current) =>
+              current.copyWith(attachments: stagedAttachments),
+        );
+        // Update the outgoing payload's serialized message so the wire copy
+        // also carries the corrected paths.
+        final updatedMessage = _findMessage(
+          profileId: profileId,
+          conversationId: conversationId,
+          messageId: messageId,
+        );
+        if (updatedMessage != null) {
+          outgoingPayload = {
+            ...payload,
+            'message': updatedMessage.toJson(),
+          };
+        }
+      }
+      final filePayloads = stagedAttachments
           .where((item) => (item.path ?? '').isNotEmpty)
           .map(
             (item) => OutgoingFile(
@@ -1835,7 +2141,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       if (filePayloads.isNotEmpty) {
         await _ipnService.sendPeerFiles(conversationId, filePayloads);
       }
-      final sendResult = await _ipnService.sendPeerMessagingMessage(payload);
+      final sendResult =
+          await _ipnService.sendPeerMessagingMessage(outgoingPayload);
       await _updateMessage(
         profileId: profileId,
         conversationId: conversationId,
@@ -2105,6 +2412,36 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     );
   }
 
+  PeerMessagingState _rewriteLegacyAttachmentPaths(PeerMessagingState source) {
+    const legacyMarker = '/$_legacyStorageFolderName/';
+    const newMarker = '/$_storageFolderName/';
+    var anyChanged = false;
+    final conversations =
+        source.conversations.map((conversation) {
+      var convChanged = false;
+      final messages = conversation.messages.map((message) {
+        if (message.attachments.isEmpty) return message;
+        var msgChanged = false;
+        final attachments = message.attachments.map((attachment) {
+          final path = attachment.path ?? '';
+          if (!path.contains(legacyMarker)) return attachment;
+          msgChanged = true;
+          return attachment.copyWith(
+            path: path.replaceAll(legacyMarker, newMarker),
+          );
+        }).toList();
+        if (!msgChanged) return message;
+        convChanged = true;
+        return message.copyWith(attachments: attachments);
+      }).toList();
+      if (!convChanged) return conversation;
+      anyChanged = true;
+      return conversation.copyWith(messages: messages);
+    }).toList();
+    if (!anyChanged) return source;
+    return source.copyWith(conversations: conversations);
+  }
+
   PeerMessagingState _mergeDuplicateConversations(PeerMessagingState source) {
     final merged = <String, PeerMessagingConversation>{};
     var changed = false;
@@ -2238,7 +2575,18 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final appSupport = await getApplicationSupportDirectory();
     final folder = Directory(p.join(appSupport.path, _storageFolderName));
     if (!await folder.exists()) {
-      await folder.create(recursive: true);
+      final legacy = Directory(p.join(appSupport.path, _legacyStorageFolderName));
+      if (await legacy.exists()) {
+        try {
+          await legacy.rename(folder.path);
+        } catch (e) {
+          _logger.w(
+              'Failed to rename legacy $_legacyStorageFolderName folder: $e');
+          await folder.create(recursive: true);
+        }
+      } else {
+        await folder.create(recursive: true);
+      }
     }
     final file = File(p.join(folder.path, _storageFileName));
     if (!await file.exists()) {
@@ -2253,6 +2601,12 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final existing = prefs.getString(_authTokenKey);
     if (existing != null && existing.isNotEmpty) {
       return existing;
+    }
+    final legacy = prefs.getString(_legacyAuthTokenKey);
+    if (legacy != null && legacy.isNotEmpty) {
+      await prefs.setString(_authTokenKey, legacy);
+      await prefs.remove(_legacyAuthTokenKey);
+      return legacy;
     }
     final token = const Uuid().v4();
     await prefs.setString(_authTokenKey, token);

@@ -649,6 +649,9 @@ mixin _$IpnNotification {
   @JsonKey(name: 'PeerMessageEvent')
   Map<String, dynamic>? get peerMessageEvent =>
       throw _privateConstructorUsedError;
+  @JsonKey(name: 'CylonixDirectFileReceived')
+  Map<String, dynamic>? get cylonixDirectFileReceived =>
+      throw _privateConstructorUsedError;
 
   /// Serializes this IpnNotification to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -683,8 +686,9 @@ abstract class $IpnNotificationCopyWith<$Res> {
       @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
       @JsonKey(name: 'DriveShares') List<String>? driveShares,
       @JsonKey(name: 'Health') HealthState? health,
-      @JsonKey(name: 'PeerMessageEvent')
-      Map<String, dynamic>? peerMessageEvent});
+      @JsonKey(name: 'PeerMessageEvent') Map<String, dynamic>? peerMessageEvent,
+      @JsonKey(name: 'CylonixDirectFileReceived')
+      Map<String, dynamic>? cylonixDirectFileReceived});
 
   $IpnPrefsCopyWith<$Res>? get prefs;
   $NetworkMapCopyWith<$Res>? get netMap;
@@ -725,6 +729,7 @@ class _$IpnNotificationCopyWithImpl<$Res, $Val extends IpnNotification>
     Object? driveShares = freezed,
     Object? health = freezed,
     Object? peerMessageEvent = freezed,
+    Object? cylonixDirectFileReceived = freezed,
   }) {
     return _then(_value.copyWith(
       version: freezed == version
@@ -794,6 +799,10 @@ class _$IpnNotificationCopyWithImpl<$Res, $Val extends IpnNotification>
       peerMessageEvent: freezed == peerMessageEvent
           ? _value.peerMessageEvent
           : peerMessageEvent // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>?,
+      cylonixDirectFileReceived: freezed == cylonixDirectFileReceived
+          ? _value.cylonixDirectFileReceived
+          : cylonixDirectFileReceived // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>?,
     ) as $Val);
   }
@@ -894,8 +903,9 @@ abstract class _$$IpnNotificationImplCopyWith<$Res>
       @JsonKey(name: 'ClientVersion') ClientVersion? clientVersion,
       @JsonKey(name: 'DriveShares') List<String>? driveShares,
       @JsonKey(name: 'Health') HealthState? health,
-      @JsonKey(name: 'PeerMessageEvent')
-      Map<String, dynamic>? peerMessageEvent});
+      @JsonKey(name: 'PeerMessageEvent') Map<String, dynamic>? peerMessageEvent,
+      @JsonKey(name: 'CylonixDirectFileReceived')
+      Map<String, dynamic>? cylonixDirectFileReceived});
 
   @override
   $IpnPrefsCopyWith<$Res>? get prefs;
@@ -939,6 +949,7 @@ class __$$IpnNotificationImplCopyWithImpl<$Res>
     Object? driveShares = freezed,
     Object? health = freezed,
     Object? peerMessageEvent = freezed,
+    Object? cylonixDirectFileReceived = freezed,
   }) {
     return _then(_$IpnNotificationImpl(
       version: freezed == version
@@ -1009,6 +1020,10 @@ class __$$IpnNotificationImplCopyWithImpl<$Res>
           ? _value._peerMessageEvent
           : peerMessageEvent // ignore: cast_nullable_to_non_nullable
               as Map<String, dynamic>?,
+      cylonixDirectFileReceived: freezed == cylonixDirectFileReceived
+          ? _value._cylonixDirectFileReceived
+          : cylonixDirectFileReceived // ignore: cast_nullable_to_non_nullable
+              as Map<String, dynamic>?,
     ));
   }
 }
@@ -1034,13 +1049,16 @@ class _$IpnNotificationImpl implements _IpnNotification {
       @JsonKey(name: 'DriveShares') final List<String>? driveShares,
       @JsonKey(name: 'Health') this.health,
       @JsonKey(name: 'PeerMessageEvent')
-      final Map<String, dynamic>? peerMessageEvent})
+      final Map<String, dynamic>? peerMessageEvent,
+      @JsonKey(name: 'CylonixDirectFileReceived')
+      final Map<String, dynamic>? cylonixDirectFileReceived})
       : _loginFinished = loginFinished,
         _filesWaiting = filesWaiting,
         _outgoingFiles = outgoingFiles,
         _incomingFiles = incomingFiles,
         _driveShares = driveShares,
-        _peerMessageEvent = peerMessageEvent;
+        _peerMessageEvent = peerMessageEvent,
+        _cylonixDirectFileReceived = cylonixDirectFileReceived;
 
   factory _$IpnNotificationImpl.fromJson(Map<String, dynamic> json) =>
       _$$IpnNotificationImplFromJson(json);
@@ -1144,9 +1162,21 @@ class _$IpnNotificationImpl implements _IpnNotification {
     return EqualUnmodifiableMapView(value);
   }
 
+  final Map<String, dynamic>? _cylonixDirectFileReceived;
+  @override
+  @JsonKey(name: 'CylonixDirectFileReceived')
+  Map<String, dynamic>? get cylonixDirectFileReceived {
+    final value = _cylonixDirectFileReceived;
+    if (value == null) return null;
+    if (_cylonixDirectFileReceived is EqualUnmodifiableMapView)
+      return _cylonixDirectFileReceived;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
+
   @override
   String toString() {
-    return 'IpnNotification(version: $version, errMessage: $errMessage, loginFinished: $loginFinished, filesWaiting: $filesWaiting, outgoingFiles: $outgoingFiles, state: $state, prefs: $prefs, netMap: $netMap, engine: $engine, browseToURL: $browseToURL, backendLogId: $backendLogId, localTCPPort: $localTCPPort, incomingFiles: $incomingFiles, clientVersion: $clientVersion, driveShares: $driveShares, health: $health, peerMessageEvent: $peerMessageEvent)';
+    return 'IpnNotification(version: $version, errMessage: $errMessage, loginFinished: $loginFinished, filesWaiting: $filesWaiting, outgoingFiles: $outgoingFiles, state: $state, prefs: $prefs, netMap: $netMap, engine: $engine, browseToURL: $browseToURL, backendLogId: $backendLogId, localTCPPort: $localTCPPort, incomingFiles: $incomingFiles, clientVersion: $clientVersion, driveShares: $driveShares, health: $health, peerMessageEvent: $peerMessageEvent, cylonixDirectFileReceived: $cylonixDirectFileReceived)';
   }
 
   @override
@@ -1181,7 +1211,9 @@ class _$IpnNotificationImpl implements _IpnNotification {
                 .equals(other._driveShares, _driveShares) &&
             (identical(other.health, health) || other.health == health) &&
             const DeepCollectionEquality()
-                .equals(other._peerMessageEvent, _peerMessageEvent));
+                .equals(other._peerMessageEvent, _peerMessageEvent) &&
+            const DeepCollectionEquality().equals(
+                other._cylonixDirectFileReceived, _cylonixDirectFileReceived));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1204,7 +1236,8 @@ class _$IpnNotificationImpl implements _IpnNotification {
       clientVersion,
       const DeepCollectionEquality().hash(_driveShares),
       health,
-      const DeepCollectionEquality().hash(_peerMessageEvent));
+      const DeepCollectionEquality().hash(_peerMessageEvent),
+      const DeepCollectionEquality().hash(_cylonixDirectFileReceived));
 
   /// Create a copy of IpnNotification
   /// with the given fields replaced by the non-null parameter values.
@@ -1242,7 +1275,10 @@ abstract class _IpnNotification implements IpnNotification {
       @JsonKey(name: 'DriveShares') final List<String>? driveShares,
       @JsonKey(name: 'Health') final HealthState? health,
       @JsonKey(name: 'PeerMessageEvent')
-      final Map<String, dynamic>? peerMessageEvent}) = _$IpnNotificationImpl;
+      final Map<String, dynamic>? peerMessageEvent,
+      @JsonKey(name: 'CylonixDirectFileReceived')
+      final Map<String, dynamic>?
+          cylonixDirectFileReceived}) = _$IpnNotificationImpl;
 
   factory _IpnNotification.fromJson(Map<String, dynamic> json) =
       _$IpnNotificationImpl.fromJson;
@@ -1298,6 +1334,9 @@ abstract class _IpnNotification implements IpnNotification {
   @override
   @JsonKey(name: 'PeerMessageEvent')
   Map<String, dynamic>? get peerMessageEvent;
+  @override
+  @JsonKey(name: 'CylonixDirectFileReceived')
+  Map<String, dynamic>? get cylonixDirectFileReceived;
 
   /// Create a copy of IpnNotification
   /// with the given fields replaced by the non-null parameter values.

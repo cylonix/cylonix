@@ -102,8 +102,14 @@ class AppStoreVpnController: AppleVpnControlling {
 
             if tunnel.isActivateOnDemandEnabled {
                 let status = tunnel.status
-                wg_log(.info, message: "Tunnel '\(tunnel.name)' on demand is already enabled. Current status '\(status)'.")
-                emit("tunnelStatus", ["status": "\(status)"])
+                let systemStatus = tunnel.systemStatus
+                wg_log(.info, message: "Tunnel '\(tunnel.name)' on demand is already enabled. Current status '\(status)' systemStatus='\(systemStatus)'.")
+                emit("tunnelStatus", [
+                    "status": "\(status)",
+                    "source": "setup-on-demand-current",
+                    "previousStatus": "\(status)",
+                    "systemStatus": "\(systemStatus)",
+                ])
                 if status == .inactive {
                     wg_log(.info, message: "Tunnel '\(tunnel.name)' is inactive. Start the tunnel.")
                     tunnelsManager?.start(tunnel.name)
@@ -124,7 +130,10 @@ class AppStoreVpnController: AppleVpnControlling {
                     return
                 }
                 self.tunnelsManager?.start(tunnel.name)
-                self.emit("tunnelStatus", ["status": "\(TunnelStatus.waiting)"])
+                self.emit("tunnelStatus", [
+                    "status": "\(TunnelStatus.waiting)",
+                    "source": "setup-enable-on-demand",
+                ])
             }
             return
         }
@@ -142,7 +151,10 @@ class AppStoreVpnController: AppleVpnControlling {
                 status = .waiting
             }
             self.tunnelsManager?.start(tunnelConfig.name!)
-            self.emit("tunnelStatus", ["status": "\(status)"])
+            self.emit("tunnelStatus", [
+                "status": "\(status)",
+                "source": "setup-add-tunnel",
+            ])
         }
     }
 
@@ -159,8 +171,8 @@ class AppStoreVpnController: AppleVpnControlling {
             emit("tunnelCreated", ["id": id, "isCreated": true])
             tunnelsManager = tunnelsMgr
 
-            TunnelsManager.onTunnelStatusChange { tunnelName, status in
-                wg_log(.info, message: "Tunnel '\(tunnelName)' status changed to '\(status)'.")
+            TunnelsManager.onTunnelStatusChange { tunnelName, status, context in
+                wg_log(.info, message: "Tunnel '\(tunnelName)' status changed to '\(status)' source=\(context.source) previous=\(context.previousStatus) system=\(context.systemStatus).")
                 if tunnelName != self.tunnelName {
                     if let tunnel = self.tunnelsManager?.tunnel(named: tunnelName) {
                         self.tunnelsManager?.remove(tunnel: tunnel) { error in
@@ -171,7 +183,12 @@ class AppStoreVpnController: AppleVpnControlling {
                     }
                     return
                 }
-                self.emit("tunnelStatus", ["status": status])
+                self.emit("tunnelStatus", [
+                    "status": status,
+                    "source": context.source,
+                    "previousStatus": context.previousStatus,
+                    "systemStatus": context.systemStatus,
+                ])
             }
 
             setupOrUpdateTunnel()

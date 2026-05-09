@@ -10,6 +10,10 @@ import '../models/peer_messaging.dart';
 import '../services/peer_messaging_service.dart';
 import 'ipn.dart';
 
+/// Bumped each time the peer messaging inbox view is mounted. Listened to by
+/// the macOS navigation rail so it can auto-collapse on first open.
+final peerMessagingInboxOpenedProvider = StateProvider<int>((ref) => 0);
+
 final peerMessagingServiceProvider =
     StateNotifierProvider<PeerMessagingService, PeerMessagingState>((ref) {
   final service = PeerMessagingService(ref.watch(ipnServiceProvider), ref);
@@ -50,6 +54,26 @@ final peerMessagingUnreadCountProvider = Provider<int>((ref) {
   return ref
       .watch(peerMessagingConversationsProvider)
       .fold<int>(0, (sum, conversation) => sum + conversation.unreadCount);
+});
+
+// Per-peer warm/keepalive status reported by the daemon. Subscribers re-render
+// whenever any tracked peer's status flips. Peers not in the map have no
+// active session (caller renders nothing).
+final peerMessagingWarmStatusProvider =
+    StreamProvider<Map<String, PeerMessagingWarmStatus>>((ref) async* {
+  final service = ref.watch(peerMessagingServiceProvider.notifier);
+  yield service.warmStatusSnapshot;
+  yield* service.warmStatusStream;
+});
+
+// Convenience: warm status for a single peer ref. Defaults to cold.
+final peerMessagingWarmStatusForProvider =
+    Provider.family<PeerMessagingWarmStatus, String>((ref, peerRef) {
+  final all = ref.watch(peerMessagingWarmStatusProvider).valueOrNull ??
+      const <String, PeerMessagingWarmStatus>{};
+  // Match the daemon's normalization: lowercase, trimmed, no trailing dot.
+  final normalized = peerRef.trim().toLowerCase().replaceAll(RegExp(r'\.$'), '');
+  return all[normalized] ?? PeerMessagingWarmStatus.cold;
 });
 
 final peerMessagingProxyProvider = Provider<PeerMessagingProxyInfo>(

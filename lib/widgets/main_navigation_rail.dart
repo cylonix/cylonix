@@ -41,8 +41,16 @@ class MainNavigationRail extends ConsumerStatefulWidget {
 }
 
 class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
-  bool get _extended => isApple() || isNativeAndroidTV ? true : _isExtended;
+  bool get _extended {
+    if (isNativeAndroidTV) return true;
+    if (Platform.isIOS) return true;
+    if (Platform.isMacOS) return _isExtendedApple;
+    return _isExtended;
+  }
+
   bool _isExtended = false;
+  bool _isExtendedApple = true;
+  bool _macAutoCollapseDone = false;
 
   IconData get _homeIcon => isApple() ? CupertinoIcons.home : Icons.home;
 
@@ -82,11 +90,22 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     );
   }
 
+  void _handleAppleNavigateToPeerMessaging() {
+    if (Platform.isMacOS && !_macAutoCollapseDone) {
+      setState(() {
+        _macAutoCollapseDone = true;
+        _isExtendedApple = false;
+      });
+    }
+    widget.onNavigateToPeerMessaging();
+  }
+
   Widget _buildAppleRail(BuildContext context) {
     final user = ref.watch(userProfileProvider);
     final health = ref.watch(healthProvider);
     final unread = ref.watch(peerMessagingUnreadCountProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final extended = _extended;
 
     final labelStyle = TextStyle(
       color: CupertinoColors.label.resolveFrom(context),
@@ -95,6 +114,17 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     );
 
     Widget row(String title, Widget leading, VoidCallback onTap) {
+      if (!extended) {
+        return Tooltip(
+          message: title,
+          child: CupertinoButton(
+            onPressed: onTap,
+            sizeStyle: CupertinoButtonSize.small,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: leading),
+          ),
+        );
+      }
       return CupertinoButton(
         onPressed: onTap,
         sizeStyle: CupertinoButtonSize.small,
@@ -109,19 +139,54 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
       );
     }
 
+    final showToggle = Platform.isMacOS;
+    final toggleButton = showToggle
+        ? Padding(
+            padding: EdgeInsets.fromLTRB(extended ? 0 : 4, 4, 4, 0),
+            child: Align(
+              alignment:
+                  extended ? Alignment.centerRight : Alignment.center,
+              child: Tooltip(
+                message: extended ? 'Collapse sidebar' : 'Expand sidebar',
+                child: CupertinoButton(
+                  sizeStyle: CupertinoButtonSize.small,
+                  padding: const EdgeInsets.all(6),
+                  onPressed: () {
+                    setState(() {
+                      _macAutoCollapseDone = true;
+                      _isExtendedApple = !_isExtendedApple;
+                    });
+                  },
+                  child: Icon(
+                    extended
+                        ? CupertinoIcons.sidebar_left
+                        : CupertinoIcons.sidebar_right,
+                    color: CupertinoColors.activeBlue,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+          )
+        : null;
+
     return Container(
-      width: 300,
+      width: extended ? 300 : 64,
       color:
           CupertinoColors.tertiarySystemGroupedBackground.resolveFrom(context),
       child: ListView(
         padding: EdgeInsets.only(
-          left: Platform.isIOS && !_isIpad ? 64 : 32,
+          left: extended
+              ? (Platform.isIOS && !_isIpad ? 64 : 32)
+              : 0,
+          right: extended ? 0 : 0,
           top: Platform.isMacOS || _isIpad ? 32 : 0,
         ),
         children: [
+          if (toggleButton != null) toggleButton,
           if (MediaQuery.of(context).size.height > 500)
             _buildLeading(context, user),
-          if (Platform.isMacOS || _isIpad) ...[
+          if (extended && (Platform.isMacOS || _isIpad)) ...[
             const SizedBox(height: 32),
             const Text(
               "Navigation",
@@ -129,6 +194,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             ),
             const SizedBox(height: 8),
           ],
+          if (!extended) const SizedBox(height: 16),
           row(
             'Home',
             _appleIcon(_homeIcon),
@@ -152,7 +218,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
           row(
             unread > 0 ? 'Peer Messages ($unread)' : 'Peer Messages',
             _appleIcon(_peerMessagingIcon),
-            widget.onNavigateToPeerMessaging,
+            _handleAppleNavigateToPeerMessaging,
           ),
           row(
             isDarkMode ? 'Light Mode' : 'Dark Mode',
@@ -185,6 +251,15 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     final unread = ref.watch(peerMessagingUnreadCountProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final selectedIndex = ref.watch(navigationRailIndexProvider);
+
+    ref.listen<int>(peerMessagingInboxOpenedProvider, (previous, next) {
+      if (Platform.isMacOS && !_macAutoCollapseDone) {
+        setState(() {
+          _macAutoCollapseDone = true;
+          _isExtendedApple = false;
+        });
+      }
+    });
 
     if (isApple()) {
       return _buildAppleRail(context);
@@ -384,8 +459,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             false;
 
     return Column(
-      crossAxisAlignment:
-          isApple() ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      crossAxisAlignment: (!_extended || !isApple())
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         SizedBox(height: Platform.isIOS && !_isIpad ? 16 : 32),
         // Avatar and name

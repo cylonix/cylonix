@@ -253,6 +253,16 @@ final peerMessageSummaryEnabledProvider =
   );
 });
 
+final mediaCompressionEnabledProvider =
+    StateNotifierProvider<PreferenceNotifier<bool>, bool>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).value;
+  return PreferenceNotifier(
+    'media_compression_enabled',
+    defaultValue: true,
+    prefs: prefs,
+  );
+});
+
 final exitNodeIDToNameMapProvider = StateNotifierProvider<
     PreferenceNotifier<Map<String, String>>, Map<String, String>>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider).value;

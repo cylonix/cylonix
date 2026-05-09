@@ -294,6 +294,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         ref.watch(notificationPreviewEnabledProvider);
     final peerMessageSummaryEnabled =
         ref.watch(peerMessageSummaryEnabledProvider);
+    final mediaCompressionEnabled =
+        ref.watch(mediaCompressionEnabledProvider);
     return Container(
       alignment: Alignment.topCenter,
       child: Container(
@@ -387,6 +389,34 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 ],
                 footer: const AdaptiveGroupedFooter(
                   'Turn these off to reduce how much message content is shown in notifications and on the main screen.',
+                ),
+              ),
+            if (isMobile())
+              AdaptiveListSection.insetGrouped(
+                header: const AdaptiveGroupedHeader('Messaging'),
+                children: [
+                  AdaptiveListTile.notched(
+                    title: const Text('Compress Photos & Videos'),
+                    subtitle: const Text(
+                      'Shrink captured photos and videos before sending '
+                      'so they transfer faster across the mesh',
+                      softWrap: true,
+                      maxLines: 3,
+                    ),
+                    trailing: AdaptiveSwitch(
+                      value: mediaCompressionEnabled,
+                      onChanged: (value) {
+                        ref
+                            .read(mediaCompressionEnabledProvider.notifier)
+                            .setValue(value);
+                      },
+                    ),
+                  ),
+                ],
+                footer: const AdaptiveGroupedFooter(
+                  'Originals from Files are never modified. Only photos '
+                  'and videos captured or picked from the photo library '
+                  'are compressed.',
                 ),
               ),
             if (isMobile() || Platform.isMacOS)

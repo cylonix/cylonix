@@ -16,7 +16,12 @@ enum PeerMessagingEventType {
   menuSubmitted('menu_submitted'),
   syncSnapshot('sync_snapshot'),
   authenticated('authenticated'),
+  warmStatus('warm_status'),
   error('error');
+
+  // Per-peer warm/keepalive status reported by the daemon. See
+  // ipnlocal/peermessage_warm.go for the source enum.
+  // event payload (when type == warmStatus): {peer_ref, status}.
 
   const PeerMessagingEventType(this.value);
   final String value;
@@ -25,6 +30,23 @@ enum PeerMessagingEventType {
     return PeerMessagingEventType.values.firstWhere(
       (event) => event.value == value,
       orElse: () => PeerMessagingEventType.error,
+    );
+  }
+}
+
+enum PeerMessagingWarmStatus {
+  cold('cold'),
+  warming('warming'),
+  warm('warm'),
+  error('error');
+
+  const PeerMessagingWarmStatus(this.value);
+  final String value;
+
+  static PeerMessagingWarmStatus fromValue(String? value) {
+    return PeerMessagingWarmStatus.values.firstWhere(
+      (s) => s.value == value,
+      orElse: () => PeerMessagingWarmStatus.cold,
     );
   }
 }

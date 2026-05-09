@@ -123,6 +123,8 @@ _$IpnNotificationImpl _$$IpnNotificationImplFromJson(
           ? null
           : HealthState.fromJson(json['Health'] as Map<String, dynamic>),
       peerMessageEvent: json['PeerMessageEvent'] as Map<String, dynamic>?,
+      cylonixDirectFileReceived:
+          json['CylonixDirectFileReceived'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$$IpnNotificationImplToJson(
@@ -145,6 +147,7 @@ Map<String, dynamic> _$$IpnNotificationImplToJson(
       'DriveShares': instance.driveShares,
       'Health': instance.health,
       'PeerMessageEvent': instance.peerMessageEvent,
+      'CylonixDirectFileReceived': instance.cylonixDirectFileReceived,
     };
 
 _$HealthStateImpl _$$HealthStateImplFromJson(Map<String, dynamic> json) =>

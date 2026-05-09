@@ -95,6 +95,8 @@ class IpnNotification with _$IpnNotification {
     @JsonKey(name: 'DriveShares') List<String>? driveShares,
     @JsonKey(name: 'Health') HealthState? health,
     @JsonKey(name: 'PeerMessageEvent') Map<String, dynamic>? peerMessageEvent,
+    @JsonKey(name: 'CylonixDirectFileReceived')
+    Map<String, dynamic>? cylonixDirectFileReceived,
   }) = _IpnNotification;
 
   factory IpnNotification.fromJson(Map<String, dynamic> json) =>

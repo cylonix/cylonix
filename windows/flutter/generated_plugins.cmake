@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   charset_converter
   downloadsfolder
+  file_selector_windows
   screen_retriever
   share_plus
   system_tray

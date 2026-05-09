@@ -45,6 +45,11 @@ cat > "$PLIST_DST" <<'PLIST'
 		<string>--port</string>
 		<string>41741</string>
 	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>CYLONIX_TAILDROP_DEFAULT_DOWNLOADS</key>
+		<string>1</string>
+	</dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
@@ -66,6 +71,23 @@ launchctl load "$PLIST_DST"
 # Symlink CLI to /usr/local/bin so users can run "cylonix" from the terminal
 mkdir -p /usr/local/bin
 ln -sf "$APP_PATH/Contents/Resources/cylonix" /usr/local/bin/cylonix
+
+# Bind the daemon's "operator user" to whoever is logged in at the GUI so
+# the cylonix CLI (and any future per-user helper logic) can talk to the
+# root LaunchDaemon without sudo. Best effort — if no GUI user is logged
+# in or the daemon is not yet ready, the user can re-run
+# `cylonix set --operator <user>` later.
+GUI_USER="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+if [[ -n "${GUI_USER:-}" && "$GUI_USER" != "root" && "$GUI_USER" != "_"* ]]; then
+  for _ in 1 2 3 4 5; do
+    if "$APP_PATH/Contents/Resources/cylonix" \
+        --socket=/var/run/cylonix/cylonixd.sock \
+        set --operator "$GUI_USER" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+fi
 
 # Kill any running Cylonix app so the new version is picked up
 killall Cylonix 2>/dev/null || true

@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:event_bus/event_bus.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
@@ -37,9 +38,9 @@ class IpnService {
   StreamSubscription<BackendNotifyEvent>? _startEngineBackendNotifySub;
   static Timer? _tunnelInactiveDebounceTimer;
   static const _tunnelInactiveDebounce = Duration(milliseconds: 1000);
-  static const _peerMessagingTransportErrorGrace = Duration(seconds: 30);
   static String? _lastReceivedTunnelStatus;
-  static DateTime? _lastPeerMessagingTransportErrorAt;
+  static int? _lastBackendNotificationState;
+  static DateTime? _lastBackendNotificationStateAt;
   static const _localBaseURL = "http://local-tailscaled.sock/localapi/v0";
   static const _localApiHost = "local-tailscaled.sock";
   static const _localApiPrefix = "/localapi/v0";
@@ -51,6 +52,7 @@ class IpnService {
   }
 
   void dispose() {
+    _activePeersStream?.close();
     _notificationController.close();
   }
 
@@ -62,6 +64,10 @@ class IpnService {
     eventBus.on<BackendNotifyEvent>().listen((onData) {
       //_logger.d("Received notification");
       final n = onData.notification;
+      if (n.state != null) {
+        _lastBackendNotificationState = n.state;
+        _lastBackendNotificationStateAt = DateTime.now();
+      }
       _notificationController.add(n);
     });
 
@@ -69,35 +75,34 @@ class IpnService {
     eventBus.on<TunnelStatusEvent>().listen((onData) {
       _logger.d("Received tunnel status ${onData.status}");
       // If tunnel status changed to inactive we may not receive a notification
-      // from the backend as it is being disposed for network extension, we need
-      // to send it manually. Debounce transient inactive blips caused by
-      // fresh-loaded NETunnelProviderManager status reads (see Fix 2 in
-      // TunnelsManager.swift) before synthesizing the backend-down event.
+      // from the backend as it is being disposed for network extension, so the
+      // app has historically synthesized backend-down. Before doing that on
+      // iOS, probe the local backend; if it is still running, the NE status is
+      // not enough proof to drive the app into disconnected state.
       if (onData.status == TunnelStatus.inactive) {
         _tunnelInactiveDebounceTimer?.cancel();
         _tunnelInactiveDebounceTimer = Timer(_tunnelInactiveDebounce, () async {
           _tunnelInactiveDebounceTimer = null;
-          if (Platform.isIOS && _recentPeerMessagingTransportError()) {
-            try {
-              final status = await this.status(light: true, fast: true);
-              final backendState = BackendState.fromString(status.backendState);
-              if (backendState == BackendState.running) {
-                _logger.w(
-                  "Ignoring transient tunnel inactive after peer messaging "
-                  "transport error; backend still reports running",
-                );
-                return;
-              }
-            } catch (e) {
+          if (Platform.isIOS) {
+            final isBackendAlive = await _probeBackendLivenessSideChannel();
+            if (isBackendAlive) {
               _logger.w(
-                "Ignoring tunnel inactive after recent peer messaging "
-                "transport error; backend status check failed: $e",
+                "Ignoring tunnel inactive; local backend answered the "
+                "side-channel liveness probe, so no synthesized state will "
+                "be emitted",
               );
               return;
             }
           }
+          final lastStateAt = _lastBackendNotificationStateAt;
+          final lastStateAgeMs = lastStateAt == null
+              ? -1
+              : DateTime.now().difference(lastStateAt).inMilliseconds;
           _logger.d(
-            "Tunnel status stayed inactive (caller=local-tunnel-inactive)",
+            "Tunnel status stayed inactive; synthesizing BackendState.noState "
+            "synthesized=true caller=local-tunnel-inactive lastBackendState="
+            "$_lastBackendNotificationState lastBackendStateAgeMs="
+            "$lastStateAgeMs",
           );
           final n = IpnNotification(
             state: BackendState.noState.value,
@@ -112,12 +117,39 @@ class IpnService {
     });
   }
 
-  static bool _recentPeerMessagingTransportError() {
-    final at = _lastPeerMessagingTransportErrorAt;
-    if (at == null) {
+  Future<bool> _probeBackendLivenessSideChannel() async {
+    try {
+      final result = await _channel.invokeMethod<dynamic>(
+        'probeBackendLiveness',
+        {'timeoutMilliseconds': 700},
+      );
+      if (result is! Map) {
+        _logger.w(
+          "Tunnel inactive backend liveness probe returned invalid "
+          "response type: ${result.runtimeType}",
+        );
+        return false;
+      }
+      final response = Map<dynamic, dynamic>.from(result);
+      final alive = response['alive'] == true;
+      final backendState = response['backendState'] as String? ?? '';
+      final providerStopping = response['providerStopping'] == true;
+      final timeout = response['timeout'] == true;
+      final error = response['error'] as String? ?? '';
+      _logger.w(
+        "Tunnel inactive backend liveness probe result: alive=$alive "
+        "backendState=$backendState providerStopping=$providerStopping "
+        "timeout=$timeout error=$error",
+      );
+      return alive && !providerStopping;
+    } catch (e) {
+      _logger.w(
+        "Tunnel inactive backend liveness probe failed; synthesizing "
+        "BackendState.noState because local backend liveness could not be "
+        "confirmed: $e",
+      );
       return false;
     }
-    return DateTime.now().difference(at) < _peerMessagingTransportErrorGrace;
   }
 
   Stream<IpnNotification> get notificationStream =>
@@ -248,6 +280,24 @@ class IpnService {
               } else {
                 _logger.d(
                   "Notification state=${v.state} caller=$caller",
+                );
+              }
+            }
+            // Handle peer message events from watch-ipn-bus (Android via
+            // MethodChannel; the HTTP daemon path applies the same logic
+            // below in _runNotifyStream). Without this, Android only sees
+            // the BackendNotifyEvent — the bridge stream that conversations
+            // subscribe to never fires, so inbound peer messages from
+            // remote peers are silently dropped.
+            if (v.peerMessageEvent != null) {
+              try {
+                final event = PeerMessagingEvent.fromJson(v.peerMessageEvent!);
+                _pendingPeerMessagingEvents.add(event);
+                _peerMessagingController.add(event);
+                eventBus.fire(PeerMessagingBridgeEvent(event));
+              } catch (e) {
+                _logger.e(
+                  'Failed to parse peer message event from method channel: $e',
                 );
               }
             }
@@ -483,6 +533,54 @@ class IpnService {
     return await _sendCommand('debug_state_traces', '');
   }
 
+  Future<String> dumpDebugPprof({
+    String profile = 'heap',
+    bool gc = true,
+    int debug = 0,
+  }) async {
+    if (_useHttpLocalApi) {
+      throw UnsupportedError('debug_pprof is only wired through sendCommand');
+    }
+    final dir = await getSharedFolderPath() ?? "";
+    if (dir.isNotEmpty) {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final debugFilesDir = '$dir/debug_profiles';
+      final files = await Directory(debugFilesDir).list().toList();
+      for (var f in files) {
+        _logger.d("moving ${f.path}");
+        final s = f.path.replaceAll(debugFilesDir, docsDir.path);
+        await f.rename(s);
+        _logger.d("moved to $s");
+      }
+    }
+    return await _sendCommand(
+      'debug_pprof',
+      jsonEncode({
+        'profile': profile,
+        'gc': gc,
+        'debug': debug,
+      }),
+      timeoutMilliseconds: 30000,
+    );
+  }
+
+  Future<List<String>> _getDebugPprofLines() async {
+    if (!isApple() || isDirectDistribution) return const [];
+    try {
+      _logger.d("getting pprof logs");
+      final raw = await dumpDebugPprof();
+      final obj = jsonDecode(raw) as Map<String, dynamic>;
+      return [
+        '===== Go pprof heap dump =====',
+        'profile=${obj['profile']} path=${obj['path']} relativePath=${obj['relativePath']} bytes=${obj['bytes']}',
+        'heapAlloc=${obj['heapAlloc']} heapSys=${obj['heapSys']} heapInuse=${obj['heapInuse']} stackInuse=${obj['stackInuse']} otherSys=${obj['otherSys']} nextGC=${obj['nextGC']} numGC=${obj['numGC']} goroutines=${obj['numGoroutine']}',
+      ];
+    } catch (e) {
+      _logger.w('failed to dump Go pprof heap profile: $e');
+      return ['===== Go pprof heap dump failed: $e ====='];
+    }
+  }
+
   Future<List<String>> _getDebugStateTraceLines() async {
     try {
       final raw = await getDebugStateTraces();
@@ -523,9 +621,16 @@ class IpnService {
         rethrow;
       }
     }
+    _logger.d("fetched logs. Now piggy back other logs...");
     final traces = await _getDebugStateTraceLines();
-    if (traces.isEmpty) return base;
-    return [...base, '', ...traces];
+    _logger.d("$traces");
+    final pprof = await _getDebugPprofLines();
+    _logger.d("$pprof");
+    return [
+      ...base,
+      if (traces.isNotEmpty) ...['', ...traces],
+      if (pprof.isNotEmpty) ...['', ...pprof],
+    ];
   }
 
   // _sendCommand sends `cmd` with `args` to the native libtailscale bridge
@@ -1118,26 +1223,10 @@ class IpnService {
         deliveryStatus: PeerMessagingDeliveryStatus.delivered,
       );
     }
-    String result;
-    try {
-      if (Platform.isIOS) {
-        _lastPeerMessagingTransportErrorAt = DateTime.now();
-      }
-      result = await _sendCommand(
-        'send_peer_message',
-        jsonEncode(payload),
-      );
-    } catch (_) {
-      if (Platform.isIOS) {
-        _lastPeerMessagingTransportErrorAt = DateTime.now();
-      }
-      rethrow;
-    }
-    if (Platform.isIOS && result.startsWith("Error sending peerMessage:")) {
-      _lastPeerMessagingTransportErrorAt = DateTime.now();
-    } else if (Platform.isIOS) {
-      _lastPeerMessagingTransportErrorAt = null;
-    }
+    final result = await _sendCommand(
+      'send_peer_message',
+      jsonEncode(payload),
+    );
     if (result == "Success") {
       return const PeerMessagingSendResult(
         accepted: true,
@@ -1151,6 +1240,60 @@ class IpnService {
     return PeerMessagingSendResult.fromJson(
       Map<String, dynamic>.from(jsonDecode(result) as Map),
     );
+  }
+
+  // Active-peer warm/keepalive: while a peer-message thread is open in the UI
+  // the daemon pings the peer's PeerAPI every ~25s so the XRay+DERP+WG+TCP+HTTP
+  // path stays hot. On HTTP-LocalAPI platforms we hold a long-lived chunked
+  // POST so daemon-side cleanup is automatic when the socket drops; on
+  // method-channel platforms the daemon auto-clears after ~3 min idle, so the
+  // app heartbeats every 60s.
+
+  _ActivePeersStream? _activePeersStream;
+  Timer? _activePeersHeartbeatTimer;
+
+  Future<void> setActivePeers(List<String> peerIds) async {
+    final ids = peerIds.toList(growable: false);
+    if (_useHttpLocalApi) {
+      await _ensureActivePeersStreamOpen();
+      _activePeersStream?.write({'peer_ids': ids});
+      return;
+    }
+    final args = jsonEncode({'peer_ids': ids});
+    final result = await _sendCommand('set_active_peers', args);
+    if (!result.startsWith('Success')) {
+      throw Exception('set_active_peers failed: $result');
+    }
+  }
+
+  Future<void> clearActivePeers() async {
+    if (_useHttpLocalApi) {
+      _activePeersHeartbeatTimer?.cancel();
+      _activePeersHeartbeatTimer = null;
+      await _activePeersStream?.close();
+      _activePeersStream = null;
+      return;
+    }
+    final result = await _sendCommand('clear_active_peers', '');
+    if (!result.startsWith('Success')) {
+      throw Exception('clear_active_peers failed: $result');
+    }
+  }
+
+  void sendActivePeersHeartbeat() {
+    if (_useHttpLocalApi) {
+      _activePeersStream?.write({'heartbeat': true});
+    }
+    // Method-channel platforms: caller resends setActivePeers periodically;
+    // there's no separate heartbeat frame.
+  }
+
+  Future<void> _ensureActivePeersStreamOpen() async {
+    final existing = _activePeersStream;
+    if (existing != null && !existing.closed) return;
+    final stream = _ActivePeersStream();
+    await stream.open();
+    _activePeersStream = stream;
   }
 
   Future<void> switchProfile(String id) async {
@@ -2371,4 +2514,72 @@ class EventBusSender {
 class _AppNotInitializedException implements Exception {
   @override
   String toString() => '_AppNotInitializedException';
+}
+
+// _ActivePeersStream owns a long-lived chunked POST to the daemon's
+// /localapi/v0/peer-message/active-peers-stream endpoint. While the stream is
+// open the daemon keeps the listed peers' network paths warm; when this side
+// closes (or the process dies) the daemon releases those peers immediately.
+class _ActivePeersStream {
+  HttpClient? _client;
+  StreamController<List<int>>? _body;
+  bool _opening = false;
+  bool _closed = false;
+
+  bool get closed => _closed;
+
+  Future<void> open() async {
+    if (_opening || _body != null) return;
+    _opening = true;
+    try {
+      final client = IpnService._httpClient;
+      final request = await client.openUrl(
+        'POST',
+        Uri.parse(
+          'http://${IpnService._localApiHost}'
+          '${IpnService._localApiPrefix}/peer-message/active-peers-stream',
+        ),
+      );
+      request.headers.contentType = ContentType('application', 'x-ndjson');
+      // Force chunked + keep-alive. HttpClient does this automatically when
+      // we don't set Content-Length and stream the body.
+      request.headers.chunkedTransferEncoding = true;
+      final body = StreamController<List<int>>();
+      // addStream returns when the stream is closed; we attach it but do
+      // not await — the request stays open as long as `body` does.
+      unawaited(request.addStream(body.stream));
+      _client = client;
+      _body = body;
+      // Drain the response in the background; if the server closes its end
+      // (e.g. backend shutdown), tear down our side too.
+      unawaited(request.done
+          .then(
+        (response) => response.drain<void>(),
+        onError: (_) {},
+      )
+          .whenComplete(() {
+        _closed = true;
+      }));
+    } finally {
+      _opening = false;
+    }
+  }
+
+  void write(Map<String, dynamic> message) {
+    final body = _body;
+    if (body == null || body.isClosed) return;
+    body.add(utf8.encode('${jsonEncode(message)}\n'));
+  }
+
+  Future<void> close() async {
+    _closed = true;
+    final body = _body;
+    _body = null;
+    if (body != null && !body.isClosed) {
+      await body.close();
+    }
+    final client = _client;
+    _client = null;
+    client?.close(force: true);
+  }
 }

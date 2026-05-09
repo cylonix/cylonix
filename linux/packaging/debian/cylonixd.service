@@ -6,6 +6,10 @@ After=network-pre.target NetworkManager.service systemd-resolved.service
 
 [Service]
 EnvironmentFile=/etc/default/cylonixd
+# Land received Taildrop files in $OPERATOR's ~/Downloads/Cylonix instead
+# of the legacy daemon-staged directory. Disable by overriding
+# CYLONIX_TAILDROP_DEFAULT_DOWNLOADS=0 in /etc/default/cylonixd.
+Environment=CYLONIX_TAILDROP_DEFAULT_DOWNLOADS=1
 ExecStart=/usr/sbin/cylonixd --tun cylonix0 \
     --state=/var/lib/cylonix/cylonixd.state \
     --statedir=/var/lib/cylonix \

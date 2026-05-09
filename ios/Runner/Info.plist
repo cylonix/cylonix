@@ -114,6 +114,12 @@
 	<string>We need to notify you when files are received</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cylonix allows user to share files to cylonix peers. Only when user chooses to share photos or videos, the photos library is accessed.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Cylonix saves photos and videos received from peers to your Photos library when you choose to save them.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Cylonix uses the camera to capture photos and videos that you send to peers in messages.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Cylonix uses the microphone to record audio when you capture videos to send to peers in messages.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Cylonix can discover local printers and game peers when Local Network Discovery Relay is enabled.</string>
 	<key>NSBonjourServices</key>

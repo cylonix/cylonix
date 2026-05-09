@@ -10,12 +10,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:downloadsfolder/downloadsfolder.dart' as dlf;
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:top_snackbar_flutter/top_snack_bar.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
+import 'package:video_compress/video_compress.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
 import 'models/ipn.dart';
 import 'models/peer_messaging.dart';
@@ -23,6 +28,7 @@ import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
 import 'services/ipn.dart';
 import 'utils/utils.dart';
+import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/link_preview.dart';
@@ -31,11 +37,13 @@ import 'utils/logger.dart';
 class PeerMessagingThreadView extends ConsumerStatefulWidget {
   final String conversationId;
   final VoidCallback? onNavigateBack;
+  final bool embedded;
 
   const PeerMessagingThreadView({
     super.key,
     required this.conversationId,
     this.onNavigateBack,
+    this.embedded = false,
   });
 
   @override
@@ -44,7 +52,8 @@ class PeerMessagingThreadView extends ConsumerStatefulWidget {
 }
 
 class _PeerMessagingThreadViewState
-    extends ConsumerState<PeerMessagingThreadView> {
+    extends ConsumerState<PeerMessagingThreadView>
+    with WidgetsBindingObserver {
   static final _logger = Logger(tag: 'PeerMessageThread');
   final _controller = TextEditingController();
   final _composerFocusNode = FocusNode();
@@ -55,9 +64,11 @@ class _PeerMessagingThreadViewState
   final Set<String> _persistingResolvedAttachmentPaths = {};
   PeerMessagingMessage? _replyToMessage;
   bool _sending = false;
+  bool _compressingMedia = false;
   int _lastRenderedMessageCount = 0;
   int _scrollToBottomRequest = 0;
   PeerMessagingConversation? _lastSeenConversation;
+  String? _registeredActivePeer;
 
   bool get _useDesktopEnterToSend =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -65,19 +76,81 @@ class _PeerMessagingThreadViewState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref
           .read(peerMessagingServiceProvider.notifier)
           .markConversationRead(widget.conversationId);
     });
+    _registerActivePeer(widget.conversationId);
+  }
+
+  @override
+  void didUpdateWidget(covariant PeerMessagingThreadView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.conversationId != widget.conversationId) {
+      _controller.clear();
+      _pendingAttachments.clear();
+      _resolvedAttachmentPaths.clear();
+      _persistingResolvedAttachmentPaths.clear();
+      _replyToMessage = null;
+      _lastSeenConversation = null;
+      _lastRenderedMessageCount = 0;
+      _unregisterActivePeer();
+      _registerActivePeer(widget.conversationId);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref
+            .read(peerMessagingServiceProvider.notifier)
+            .markConversationRead(widget.conversationId);
+      });
+    }
   }
 
   @override
   void dispose() {
+    _unregisterActivePeer();
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     _composerFocusNode.dispose();
     _messagesScrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final svc = ref.read(peerMessagingServiceProvider.notifier);
+    switch (state) {
+      case AppLifecycleState.resumed:
+        svc.resumeActivePeers();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        svc.suspendActivePeers();
+        break;
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
+  void _registerActivePeer(String peerRef) {
+    if (peerRef.isEmpty) return;
+    _registeredActivePeer = peerRef;
+    // Fire and forget; warm/keepalive is best-effort.
+    ref
+        .read(peerMessagingServiceProvider.notifier)
+        .registerActiveThread(peerRef);
+  }
+
+  void _unregisterActivePeer() {
+    final ref0 = _registeredActivePeer;
+    _registeredActivePeer = null;
+    if (ref0 == null || ref0.isEmpty) return;
+    ref
+        .read(peerMessagingServiceProvider.notifier)
+        .unregisterActiveThread(ref0);
   }
 
   void _dismissKeyboard() {
@@ -87,6 +160,136 @@ class _PeerMessagingThreadViewState
 
   bool _isConnected() {
     return ref.read(vpnStateProvider) == VpnState.connected;
+  }
+
+  Future<void> _chooseAttachmentSource() async {
+    if (!isMobile()) {
+      await _pickAttachments();
+      return;
+    }
+    final action = await _showAttachmentSourceSheet();
+    if (action == null || !mounted) {
+      return;
+    }
+    switch (action) {
+      case _AttachSourceAction.camera:
+        await _pickFromCamera(video: false);
+        break;
+      case _AttachSourceAction.video:
+        await _pickFromCamera(video: true);
+        break;
+      case _AttachSourceAction.gallery:
+        await _pickFromGallery();
+        break;
+      case _AttachSourceAction.files:
+        await _pickAttachments();
+        break;
+    }
+  }
+
+  Future<_AttachSourceAction?> _showAttachmentSourceSheet() async {
+    if (isApple()) {
+      return showCupertinoModalPopup<_AttachSourceAction>(
+        context: context,
+        builder: (popupContext) => CupertinoActionSheet(
+          title: const Text('Add Attachment'),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () =>
+                  Navigator.pop(popupContext, _AttachSourceAction.camera),
+              child: const Text('Take Photo'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () =>
+                  Navigator.pop(popupContext, _AttachSourceAction.video),
+              child: const Text('Record Video'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () =>
+                  Navigator.pop(popupContext, _AttachSourceAction.gallery),
+              child: const Text('Photo Library'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () =>
+                  Navigator.pop(popupContext, _AttachSourceAction.files),
+              child: const Text('Browse Files'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(popupContext),
+            child: const Text('Cancel'),
+          ),
+        ),
+      );
+    }
+    return showModalBottomSheet<_AttachSourceAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take Photo'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _AttachSourceAction.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Record Video'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _AttachSourceAction.video),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photo Library'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _AttachSourceAction.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text('Browse Files'),
+              onTap: () =>
+                  Navigator.pop(sheetContext, _AttachSourceAction.files),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickFromCamera({required bool video}) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = video
+          ? await picker.pickVideo(source: ImageSource.camera)
+          : await picker.pickImage(source: ImageSource.camera);
+      if (file == null || !mounted) {
+        return;
+      }
+      await _ingestXFiles([file]);
+    } catch (e) {
+      if (mounted) {
+        await showAlertDialog(context, 'Capture Failed', '$e');
+      }
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
+    try {
+      final picker = ImagePicker();
+      final files = await picker.pickMultipleMedia();
+      if (files.isEmpty || !mounted) {
+        return;
+      }
+      await _ingestXFiles(files);
+    } catch (e) {
+      if (mounted) {
+        await showAlertDialog(context, 'Photo Library Failed', '$e');
+      }
+    }
   }
 
   Future<void> _pickAttachments() async {
@@ -144,6 +347,179 @@ class _PeerMessagingThreadViewState
         await showAlertDialog(context, 'Attachment Failed', '$e');
       }
     }
+  }
+
+  Future<void> _ingestXFiles(List<XFile> files) async {
+    final compressionEnabled =
+        isMobile() && ref.read(mediaCompressionEnabledProvider);
+    if (compressionEnabled && mounted) {
+      setState(() {
+        _compressingMedia = true;
+      });
+    }
+
+    final processed = <XFile>[];
+    try {
+      for (final file in files) {
+        if (compressionEnabled) {
+          processed.add(await _maybeCompress(file));
+        } else {
+          processed.add(file);
+        }
+      }
+    } finally {
+      if (mounted && compressionEnabled) {
+        setState(() {
+          _compressingMedia = false;
+        });
+      }
+    }
+
+    final existingKeys =
+        _pendingAttachments.map((item) => '${item.name}:${item.size}').toSet();
+    final pickedAttachments = <PeerMessagingAttachment>[];
+
+    for (final file in processed) {
+      final sourcePath = file.path;
+      if (sourcePath.isEmpty) {
+        continue;
+      }
+      final size = await file.length();
+      final key = '${file.name}:$size';
+      if (existingKeys.contains(key)) {
+        continue;
+      }
+      final attachmentId = const Uuid().v4();
+      final preparedPath = await _prepareAttachmentPath(
+        sourcePath,
+        file.name,
+        attachmentId,
+      );
+      pickedAttachments.add(
+        PeerMessagingAttachment(
+          id: attachmentId,
+          transferId: null,
+          name: file.name,
+          size: size,
+          mimeType:
+              file.mimeType ?? p.extension(file.name).replaceFirst('.', ''),
+          path: preparedPath,
+        ),
+      );
+      existingKeys.add(key);
+    }
+
+    if (!mounted || pickedAttachments.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _pendingAttachments.addAll(pickedAttachments);
+    });
+  }
+
+  Future<XFile> _maybeCompress(XFile file) async {
+    final mime = (file.mimeType ?? '').toLowerCase();
+    final ext = p.extension(file.name).toLowerCase();
+    final isImage = mime.startsWith('image/') ||
+        const {
+          '.png',
+          '.jpg',
+          '.jpeg',
+          '.gif',
+          '.webp',
+          '.bmp',
+          '.heic',
+          '.heif',
+        }.contains(ext);
+    final isVideo = mime.startsWith('video/') ||
+        const {
+          '.mp4',
+          '.mov',
+          '.m4v',
+          '.avi',
+          '.mkv',
+          '.webm',
+        }.contains(ext);
+
+    try {
+      if (isImage) {
+        return await _compressImageFile(file);
+      }
+      if (isVideo) {
+        return await _compressVideoFile(file);
+      }
+    } catch (e) {
+      _logger.w('Compression failed; sending original ${file.name}: $e');
+    }
+    return file;
+  }
+
+  Future<XFile> _compressImageFile(XFile source) async {
+    final dir = await getTemporaryDirectory();
+    final outputName =
+        '${p.basenameWithoutExtension(source.name)}_compressed.jpg';
+    final outputPath = p.join(dir.path, '${const Uuid().v4()}_$outputName');
+    final compressed = await FlutterImageCompress.compressAndGetFile(
+      source.path,
+      outputPath,
+      quality: 75,
+      minWidth: 1920,
+      minHeight: 1920,
+      format: CompressFormat.jpeg,
+      keepExif: true,
+    );
+    if (compressed == null) {
+      return source;
+    }
+    final origLen = await source.length();
+    final newLen = await File(compressed.path).length();
+    if (newLen >= origLen) {
+      try {
+        await File(compressed.path).delete();
+      } catch (_) {}
+      return source;
+    }
+    return XFile(
+      compressed.path,
+      name: outputName,
+      mimeType: 'image/jpeg',
+      length: newLen,
+    );
+  }
+
+  Future<XFile> _compressVideoFile(XFile source) async {
+    final info = await VideoCompress.compressVideo(
+      source.path,
+      quality: VideoQuality.MediumQuality,
+      deleteOrigin: false,
+      includeAudio: true,
+    );
+    final outputPath = info?.path;
+    if (outputPath == null) {
+      return source;
+    }
+    final outputFile = File(outputPath);
+    if (!await outputFile.exists()) {
+      return source;
+    }
+    final origLen = await source.length();
+    final newLen = await outputFile.length();
+    if (newLen >= origLen) {
+      try {
+        await outputFile.delete();
+      } catch (_) {}
+      return source;
+    }
+    final outExt = p.extension(outputPath);
+    final outputName =
+        '${p.basenameWithoutExtension(source.name)}_compressed$outExt';
+    return XFile(
+      outputPath,
+      name: outputName,
+      mimeType: 'video/${outExt.replaceFirst('.', '').toLowerCase()}',
+      length: newLen,
+    );
   }
 
   Future<String> _prepareAttachmentPath(
@@ -686,6 +1062,16 @@ class _PeerMessagingThreadViewState
       await ref.read(ipnServiceProvider).previewLocalFile(path);
       return;
     }
+    if (Platform.isAndroid) {
+      // Files received via taildrop sit inside the cylonix app's private
+      // filesDir. launchUrl(Uri.file(...)) on Android can't grant other apps
+      // permission to read that path, so external viewers fail with no
+      // matching activity. share_plus copies the file through its own
+      // FileProvider and opens a share sheet, letting the user pick a
+      // viewer (Gallery, text editor, etc.).
+      await Share.shareXFiles([XFile(path)]);
+      return;
+    }
     final launched = await launchUrl(
       Uri.file(path),
       mode: LaunchMode.externalApplication,
@@ -780,7 +1166,7 @@ class _PeerMessagingThreadViewState
     final attachmentsDir = Directory(
       p.join(
         supportDir.path,
-        'openclaw',
+        'peer_messaging',
         'attachments',
         _attachmentScopeFolderName(),
       ),
@@ -866,11 +1252,35 @@ class _PeerMessagingThreadViewState
       ref.read(filesWaitingProvider),
     );
 
-    return _resolveAttachmentSourcePath(
+    final sourcePath = await _resolveAttachmentSourcePath(
       messageId,
       attachment,
       waitingFile: waitingFile,
     );
+    if ((sourcePath ?? '').isNotEmpty) {
+      return sourcePath;
+    }
+
+    // Android (and other non-Apple non-Web platforms) keeps inbound taildrop
+    // files inside the daemon's directFileRoot rather than exposing a path on
+    // the AwaitingFile record. Fall back to asking libtailscale for the
+    // resolved on-disk path so the chat thread can render image previews and
+    // video thumbnails for received attachments — same fallback used by the
+    // open-attachment path.
+    if (!kIsWeb &&
+        !(Platform.isIOS || Platform.isMacOS) &&
+        attachment.name.isNotEmpty) {
+      try {
+        final fallbackPath = await ref
+            .read(ipnStateNotifierProvider.notifier)
+            .getFilePath(waitingFile?.name ?? attachment.name);
+        if (fallbackPath.isNotEmpty && await File(fallbackPath).exists()) {
+          return fallbackPath;
+        }
+      } catch (_) {}
+    }
+
+    return null;
   }
 
   AwaitingFile? _matchWaitingFileForAttachment(
@@ -978,8 +1388,7 @@ class _PeerMessagingThreadViewState
     // history doesn't blast dozens of parallel HTTP requests on open.
     const maxScan = 40;
     final messages = conversation.messages;
-    final start =
-        messages.length > maxScan ? messages.length - maxScan : 0;
+    final start = messages.length > maxScan ? messages.length - maxScan : 0;
     for (var i = messages.length - 1; i >= start; i--) {
       final message = messages[i];
       if (message.text.isEmpty) continue;
@@ -1029,10 +1438,14 @@ class _PeerMessagingThreadViewState
     }
     final conversation = liveConversation ?? _lastSeenConversation;
     if (conversation == null) {
+      const notFound = Center(child: Text('Conversation not found'));
+      if (widget.embedded) {
+        return notFound;
+      }
       return AdaptiveScaffold(
         title: const Text('Peer Conversation'),
         onGoBack: widget.onNavigateBack,
-        body: const Center(child: Text('Conversation not found')),
+        body: notFound,
       );
     }
 
@@ -1047,345 +1460,380 @@ class _PeerMessagingThreadViewState
     final outgoingFiles =
         ref.watch(ipnStateProvider)?.outgoingFiles ?? const [];
 
+    final bodyColumn = Column(
+      children: [
+        if (!widget.embedded && (Platform.isIOS || Platform.isMacOS)) ...[
+          SizedBox(height: Platform.isIOS ? 96 : 64),
+        ],
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 800),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _dismissKeyboard,
+                child: ListView.separated(
+                  controller: _messagesScrollController,
+                  reverse: true,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.all(16),
+                  itemBuilder: (context, index) {
+                    final message = renderedMessages[index];
+                    final previous = index + 1 < renderedMessages.length
+                        ? renderedMessages[index + 1]
+                        : null;
+                    final next = index > 0 ? renderedMessages[index - 1] : null;
+                    final laterMessages = renderedMessages.take(index);
+                    return KeyedSubtree(
+                      key: _messageKeyFor(message.id),
+                      child: _MessageBubble(
+                        message: message,
+                        outgoingFiles: outgoingFiles,
+                        previousMessage: previous,
+                        nextMessage: next,
+                        replyTarget: message.replyToMessageId == null
+                            ? null
+                            : messagesById[message.replyToMessageId!],
+                        waitingFiles: waitingFiles,
+                        filesSaved: filesSaved,
+                        hasLaterDeliveredMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.delivered,
+                        ),
+                        hasLaterSentMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.sent,
+                        ),
+                        hasLaterPendingMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.pending,
+                        ),
+                        hasLaterFailedMessage: laterMessages.any(
+                          (item) =>
+                              _isLocalMessage(item) &&
+                              item.deliveryStatus ==
+                                  PeerMessagingDeliveryStatus.failed,
+                        ),
+                        onDelete: () => _deleteMessage(message),
+                        onReply: () => _beginReply(message),
+                        onSendAgain: _isLocalMessage(message) &&
+                                message.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.failed
+                            ? () => _retryMessage(message)
+                            : null,
+                        onShowFailureDetails: _isLocalMessage(message) &&
+                                message.deliveryStatus ==
+                                    PeerMessagingDeliveryStatus.failed
+                            ? () => _showFailedMessageDialog(message)
+                            : null,
+                        onSaveAttachment: (attachment) =>
+                            _saveAttachment(message.id, attachment),
+                        onOpenAttachment: (attachment) =>
+                            _openAttachment(message.id, attachment),
+                        resolveAttachmentPath: (attachment) =>
+                            _resolveAttachmentPreviewPath(
+                          message.id,
+                          attachment,
+                        ),
+                        onApproval: (approved) async {
+                          await ref
+                              .read(peerMessagingServiceProvider.notifier)
+                              .submitApproval(
+                                conversationId: conversation.id,
+                                approvalId: message.approvalId ?? '',
+                                approved: approved,
+                              );
+                        },
+                        onMenuSelection: (action, title) async {
+                          await ref
+                              .read(peerMessagingServiceProvider.notifier)
+                              .submitMenuSelection(
+                                conversationId: conversation.id,
+                                messageId: message.id,
+                                action: action,
+                                title: title,
+                              );
+                        },
+                      ),
+                    );
+                  },
+                  separatorBuilder: (_, index) {
+                    final newer = renderedMessages[index];
+                    final older = renderedMessages[index + 1];
+                    final sameRun = _messagesBelongToSameRun(older, newer);
+                    return SizedBox(height: sameRun ? 3 : 14);
+                  },
+                  itemCount: renderedMessages.length,
+                ),
+              ),
+            ),
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        Material(
+                          color: Colors.transparent,
+                          child: Focus(
+                            onKeyEvent: _useDesktopEnterToSend
+                                ? (node, event) {
+                                    if (event is! KeyDownEvent) {
+                                      return KeyEventResult.ignored;
+                                    }
+                                    final isEnter = event.logicalKey ==
+                                            LogicalKeyboardKey.enter ||
+                                        event.logicalKey ==
+                                            LogicalKeyboardKey.numpadEnter;
+                                    if (!isEnter ||
+                                        HardwareKeyboard
+                                            .instance.isShiftPressed) {
+                                      return KeyEventResult.ignored;
+                                    }
+                                    _sendMessage(conversation);
+                                    return KeyEventResult.handled;
+                                  }
+                                : null,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(
+                                  isApple() ? 20 : 12,
+                                ),
+                                border: Border.all(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                                color: isApple()
+                                    ? CupertinoColors
+                                        .secondarySystemGroupedBackground
+                                        .resolveFrom(context)
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  64,
+                                  18,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_replyToMessage != null) ...[
+                                      _ReplyComposerPreview(
+                                        message: _replyToMessage!,
+                                        resolveAttachmentPath: (attachment) =>
+                                            _resolveAttachmentPreviewPath(
+                                          _replyToMessage!.id,
+                                          attachment,
+                                        ),
+                                        onCancel: _clearReply,
+                                      ),
+                                      const SizedBox(height: 10),
+                                    ],
+                                    if (_compressingMedia) ...[
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Compressing…',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelMedium,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (_pendingAttachments.isNotEmpty) ...[
+                                      Text(
+                                        _pendingAttachments.length == 1
+                                            ? '1 attachment will be sent with this message'
+                                            : '${_pendingAttachments.length} attachments will be sent with this message',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelMedium,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          for (final attachment
+                                              in _pendingAttachments)
+                                            InputChip(
+                                              label: Text(
+                                                attachment.name,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              deleteIcon: const Icon(
+                                                Icons.close,
+                                                size: 18,
+                                              ),
+                                              onDeleted: () {
+                                                setState(() {
+                                                  _pendingAttachments
+                                                      .removeWhere(
+                                                    (item) =>
+                                                        item.id ==
+                                                        attachment.id,
+                                                  );
+                                                });
+                                              },
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                    ],
+                                    TextField(
+                                      focusNode: _composerFocusNode,
+                                      controller: _controller,
+                                      minLines: 3,
+                                      maxLines: 8,
+                                      textInputAction: TextInputAction.newline,
+                                      onTapOutside: (_) => _dismissKeyboard(),
+                                      decoration: InputDecoration(
+                                        hintText: isConnected
+                                            ? 'Reply…'
+                                            : 'Reply… (disconnected)',
+                                        alignLabelWithHint: true,
+                                        isCollapsed: true,
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          right: 96,
+                          bottom: 8,
+                          child: ListenableBuilder(
+                            listenable: _controller,
+                            builder: (context, _) {
+                              if (_controller.text.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
+                              return IconButton(
+                                tooltip: 'Clear',
+                                onPressed: _sending
+                                    ? null
+                                    : () {
+                                        _controller.clear();
+                                      },
+                                icon: Icon(
+                                  isApple()
+                                      ? CupertinoIcons.clear_circled_solid
+                                      : Icons.cancel,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        Positioned(
+                          right: 56,
+                          bottom: 8,
+                          child: IconButton(
+                            tooltip: _compressingMedia
+                                ? 'Compressing media…'
+                                : (isConnected
+                                    ? 'Add attachment'
+                                    : 'Disconnected'),
+                            onPressed:
+                                (_sending || _compressingMedia || !isConnected)
+                                    ? null
+                                    : _chooseAttachmentSource,
+                            icon: _compressingMedia
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Icon(
+                                    isApple()
+                                        ? CupertinoIcons.paperclip
+                                        : Icons.attach_file,
+                                  ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10, bottom: 10),
+                          child: FilledButton(
+                            onPressed:
+                                (_sending || _compressingMedia || !isConnected)
+                                    ? null
+                                    : () => _sendMessage(conversation),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(40, 40),
+                              maximumSize: const Size(40, 40),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  isApple() ? 18 : 12,
+                                ),
+                              ),
+                            ),
+                            child: Icon(
+                              isApple()
+                                  ? CupertinoIcons.arrow_up
+                                  : Icons.arrow_upward,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return bodyColumn;
+    }
     return AdaptiveScaffold(
       title: _ThreadTitle(
         title: conversation.title,
         vpnState: vpnState,
+        peerRef: widget.conversationId,
       ),
       onGoBack: widget.onNavigateBack,
-      body: Column(
-        children: [
-          if (Platform.isIOS || Platform.isMacOS) ...[
-            SizedBox(height: Platform.isIOS ? 96 : 64),
-          ],
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _dismissKeyboard,
-                  child: ListView.separated(
-                    controller: _messagesScrollController,
-                    reverse: true,
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.all(16),
-                    itemBuilder: (context, index) {
-                      final message = renderedMessages[index];
-                      final previous = index + 1 < renderedMessages.length
-                          ? renderedMessages[index + 1]
-                          : null;
-                      final next =
-                          index > 0 ? renderedMessages[index - 1] : null;
-                      final laterMessages = renderedMessages.take(index);
-                      return KeyedSubtree(
-                        key: _messageKeyFor(message.id),
-                        child: _MessageBubble(
-                          message: message,
-                          outgoingFiles: outgoingFiles,
-                          previousMessage: previous,
-                          nextMessage: next,
-                          replyTarget: message.replyToMessageId == null
-                              ? null
-                              : messagesById[message.replyToMessageId!],
-                          waitingFiles: waitingFiles,
-                          filesSaved: filesSaved,
-                          hasLaterDeliveredMessage: laterMessages.any(
-                            (item) =>
-                                _isLocalMessage(item) &&
-                                item.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.delivered,
-                          ),
-                          hasLaterSentMessage: laterMessages.any(
-                            (item) =>
-                                _isLocalMessage(item) &&
-                                item.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.sent,
-                          ),
-                          hasLaterPendingMessage: laterMessages.any(
-                            (item) =>
-                                _isLocalMessage(item) &&
-                                item.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.pending,
-                          ),
-                          hasLaterFailedMessage: laterMessages.any(
-                            (item) =>
-                                _isLocalMessage(item) &&
-                                item.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.failed,
-                          ),
-                          onDelete: () => _deleteMessage(message),
-                          onReply: () => _beginReply(message),
-                          onSendAgain: _isLocalMessage(message) &&
-                                  message.deliveryStatus ==
-                                      PeerMessagingDeliveryStatus.failed
-                              ? () => _retryMessage(message)
-                              : null,
-                          onShowFailureDetails: _isLocalMessage(message) &&
-                                  message.deliveryStatus ==
-                                      PeerMessagingDeliveryStatus.failed
-                              ? () => _showFailedMessageDialog(message)
-                              : null,
-                          onSaveAttachment: (attachment) =>
-                              _saveAttachment(message.id, attachment),
-                          onOpenAttachment: (attachment) =>
-                              _openAttachment(message.id, attachment),
-                          resolveAttachmentPath: (attachment) =>
-                              _resolveAttachmentPreviewPath(
-                            message.id,
-                            attachment,
-                          ),
-                          onApproval: (approved) async {
-                            await ref
-                                .read(peerMessagingServiceProvider.notifier)
-                                .submitApproval(
-                                  conversationId: conversation.id,
-                                  approvalId: message.approvalId ?? '',
-                                  approved: approved,
-                                );
-                          },
-                          onMenuSelection: (action, title) async {
-                            await ref
-                                .read(peerMessagingServiceProvider.notifier)
-                                .submitMenuSelection(
-                                  conversationId: conversation.id,
-                                  messageId: message.id,
-                                  action: action,
-                                  title: title,
-                                );
-                          },
-                        ),
-                      );
-                    },
-                    separatorBuilder: (_, index) {
-                      final newer = renderedMessages[index];
-                      final older = renderedMessages[index + 1];
-                      final sameRun = _messagesBelongToSameRun(older, newer);
-                      return SizedBox(height: sameRun ? 3 : 14);
-                    },
-                    itemCount: renderedMessages.length,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 800),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Stack(
-                        alignment: Alignment.bottomRight,
-                        children: [
-                          Material(
-                            color: Colors.transparent,
-                            child: Focus(
-                              onKeyEvent: _useDesktopEnterToSend
-                                  ? (node, event) {
-                                      if (event is! KeyDownEvent) {
-                                        return KeyEventResult.ignored;
-                                      }
-                                      final isEnter = event.logicalKey ==
-                                              LogicalKeyboardKey.enter ||
-                                          event.logicalKey ==
-                                              LogicalKeyboardKey.numpadEnter;
-                                      if (!isEnter ||
-                                          HardwareKeyboard
-                                              .instance.isShiftPressed) {
-                                        return KeyEventResult.ignored;
-                                      }
-                                      _sendMessage(conversation);
-                                      return KeyEventResult.handled;
-                                    }
-                                  : null,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(
-                                    isApple() ? 20 : 12,
-                                  ),
-                                  border: Border.all(
-                                    color: Theme.of(context).dividerColor,
-                                  ),
-                                  color: isApple()
-                                      ? CupertinoColors
-                                          .secondarySystemGroupedBackground
-                                          .resolveFrom(context)
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainerHighest,
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    12,
-                                    64,
-                                    18,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (_replyToMessage != null) ...[
-                                        _ReplyComposerPreview(
-                                          message: _replyToMessage!,
-                                          resolveAttachmentPath: (attachment) =>
-                                              _resolveAttachmentPreviewPath(
-                                            _replyToMessage!.id,
-                                            attachment,
-                                          ),
-                                          onCancel: _clearReply,
-                                        ),
-                                        const SizedBox(height: 10),
-                                      ],
-                                      if (_pendingAttachments.isNotEmpty) ...[
-                                        Text(
-                                          _pendingAttachments.length == 1
-                                              ? '1 attachment will be sent with this message'
-                                              : '${_pendingAttachments.length} attachments will be sent with this message',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelMedium,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children: [
-                                            for (final attachment
-                                                in _pendingAttachments)
-                                              InputChip(
-                                                label: Text(
-                                                  attachment.name,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                deleteIcon: const Icon(
-                                                  Icons.close,
-                                                  size: 18,
-                                                ),
-                                                onDeleted: () {
-                                                  setState(() {
-                                                    _pendingAttachments
-                                                        .removeWhere(
-                                                      (item) =>
-                                                          item.id ==
-                                                          attachment.id,
-                                                    );
-                                                  });
-                                                },
-                                              ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 10),
-                                      ],
-                                      TextField(
-                                        focusNode: _composerFocusNode,
-                                        controller: _controller,
-                                        minLines: 3,
-                                        maxLines: 8,
-                                        textInputAction:
-                                            TextInputAction.newline,
-                                        onTapOutside: (_) => _dismissKeyboard(),
-                                        decoration: InputDecoration(
-                                          hintText: isConnected
-                                              ? 'Reply…'
-                                              : 'Reply… (disconnected)',
-                                          alignLabelWithHint: true,
-                                          isCollapsed: true,
-                                          border: InputBorder.none,
-                                          enabledBorder: InputBorder.none,
-                                          focusedBorder: InputBorder.none,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            right: 96,
-                            bottom: 8,
-                            child: ListenableBuilder(
-                              listenable: _controller,
-                              builder: (context, _) {
-                                if (_controller.text.isEmpty) {
-                                  return const SizedBox.shrink();
-                                }
-                                return IconButton(
-                                  tooltip: 'Clear',
-                                  onPressed: _sending
-                                      ? null
-                                      : () {
-                                          _controller.clear();
-                                        },
-                                  icon: Icon(
-                                    isApple()
-                                        ? CupertinoIcons.clear_circled_solid
-                                        : Icons.cancel,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          Positioned(
-                            right: 56,
-                            bottom: 8,
-                            child: IconButton(
-                              tooltip: isConnected
-                                  ? 'Add attachment'
-                                  : 'Disconnected',
-                              onPressed: (_sending || !isConnected)
-                                  ? null
-                                  : _pickAttachments,
-                              icon: Icon(
-                                isApple()
-                                    ? CupertinoIcons.paperclip
-                                    : Icons.attach_file,
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding:
-                                const EdgeInsets.only(right: 10, bottom: 10),
-                            child: FilledButton(
-                              onPressed: (_sending || !isConnected)
-                                  ? null
-                                  : () => _sendMessage(conversation),
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size(40, 40),
-                                maximumSize: const Size(40, 40),
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    isApple() ? 18 : 12,
-                                  ),
-                                ),
-                              ),
-                              child: Icon(
-                                isApple()
-                                    ? CupertinoIcons.arrow_up
-                                    : Icons.arrow_upward,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: bodyColumn,
     );
   }
 }
@@ -1646,9 +2094,9 @@ class _MessageBubble extends StatelessWidget {
               ),
               if (_showsTail && !isMediaOnlyMessage)
                 Positioned(
-                  bottom: -6,
-                  right: isLocal ? -2 : null,
-                  left: isLocal ? null : -2,
+                  bottom: -2,
+                  right: isLocal ? -1 : null,
+                  left: isLocal ? null : -1,
                   child: _BubbleTail(
                     color: bubbleColor,
                     isLocal: isLocal,
@@ -2536,10 +2984,9 @@ class _AttachmentThumbnail extends StatelessWidget {
     }
 
     if (isVideo) {
-      return _MediaPlaceholder(
-        icon: isApple() ? CupertinoIcons.video_camera : Icons.videocam_outlined,
-        label: 'Video',
-        color: secondaryColor,
+      return _VideoAttachmentThumbnail(
+        resolvePath: resolvePath,
+        secondaryColor: secondaryColor,
       );
     }
 
@@ -2552,6 +2999,136 @@ class _AttachmentThumbnail extends StatelessWidget {
     }
 
     return const SizedBox.shrink();
+  }
+}
+
+class _VideoAttachmentThumbnail extends StatefulWidget {
+  final Future<String?> Function() resolvePath;
+  final Color secondaryColor;
+
+  const _VideoAttachmentThumbnail({
+    required this.resolvePath,
+    required this.secondaryColor,
+  });
+
+  @override
+  State<_VideoAttachmentThumbnail> createState() =>
+      _VideoAttachmentThumbnailState();
+}
+
+class _VideoAttachmentThumbnailState extends State<_VideoAttachmentThumbnail> {
+  static final Map<String, String> _cache = {};
+  String? _thumbnailPath;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveThumbnail();
+  }
+
+  static const _macosMediaChannel = MethodChannel('io.cylonix.sase/media');
+
+  Future<void> _resolveThumbnail() async {
+    try {
+      final source = await widget.resolvePath();
+      if (!mounted || (source ?? '').isEmpty) {
+        return;
+      }
+      final cached = _cache[source!];
+      if (cached != null && await File(cached).exists()) {
+        if (mounted) setState(() => _thumbnailPath = cached);
+        return;
+      }
+      if (!isMobile() && !Platform.isMacOS) {
+        return;
+      }
+      final tempDir = await getTemporaryDirectory();
+      final outDir = Directory(p.join(tempDir.path, 'video_thumbs'));
+      if (!await outDir.exists()) {
+        await outDir.create(recursive: true);
+      }
+
+      String? outPath;
+      if (Platform.isMacOS) {
+        outPath = await _macosMediaChannel.invokeMethod<String>(
+          'generateVideoThumbnail',
+          {
+            'path': source,
+            'outputDir': outDir.path,
+            'maxWidth': 480,
+            'quality': 70,
+          },
+        );
+      } else {
+        outPath = await vt.VideoThumbnail.thumbnailFile(
+          video: source,
+          thumbnailPath: outDir.path,
+          imageFormat: vt.ImageFormat.JPEG,
+          maxWidth: 480,
+          quality: 70,
+        );
+      }
+
+      if (!mounted) return;
+      if (outPath == null) {
+        setState(() => _failed = true);
+        return;
+      }
+      _cache[source] = outPath;
+      setState(() => _thumbnailPath = outPath);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = _MediaPlaceholder(
+      icon: isApple() ? CupertinoIcons.video_camera : Icons.videocam_outlined,
+      label: 'Video',
+      color: widget.secondaryColor,
+    );
+    final path = _thumbnailPath;
+    if (path == null || _failed) {
+      return placeholder;
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: 220,
+          maxHeight: 180,
+          minWidth: 120,
+          minHeight: 84,
+        ),
+        child: Stack(
+          children: [
+            Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => placeholder,
+            ),
+            Positioned.fill(
+              child: Center(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -2649,7 +3226,7 @@ class _BubbleTail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: const Size(10, 11),
+      size: const Size(10, 10),
       painter: _BubbleTailPainter(
         color: color,
         isLocal: isLocal,
@@ -2682,9 +3259,10 @@ class _BubbleTailPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
     path
-      ..moveTo(w * 0.8, -10)
-      ..cubicTo(w * 0.30, h * 0.05, w * 0.55, h * 0.5, w, h)
-      ..cubicTo(w * 0.55, h * 0.85, -w * 0.45, h * 0.45, -w * 0.6, 4)
+      ..moveTo(w * 0.7, -10)
+      ..cubicTo(0, h * 0.5, w * 0.7, h * 0.7, w - 0.7, h - 0.7)
+      ..quadraticBezierTo(w, h, w - 0.7, h + 0.7)
+      ..cubicTo(w, h * 1.35, 0, h * 0.75, -w, 4)
       ..close();
     canvas.drawPath(path, paint);
     if (!isLocal) {
@@ -3428,28 +4006,47 @@ String _replySnippet(PeerMessagingMessage message) {
   return 'Message';
 }
 
-class _ThreadTitle extends StatelessWidget {
+class _ThreadTitle extends ConsumerWidget {
   final String title;
   final VpnState vpnState;
+  final String peerRef;
 
   const _ThreadTitle({
     required this.title,
     required this.vpnState,
+    required this.peerRef,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final warm = peerRef.isEmpty
+        ? PeerMessagingWarmStatus.cold
+        : ref.watch(peerMessagingWarmStatusForProvider(peerRef));
     final subtitle = _statusSubtitle(vpnState);
     final titleStyle = isApple()
         ? CupertinoTheme.of(context).textTheme.navTitleTextStyle
         : Theme.of(context).textTheme.titleLarge;
+    final titleRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (peerRef.isNotEmpty) ...[
+          _WarmStatusDot(status: warm),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            title,
+            style: titleStyle,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ),
+      ],
+    );
     if (subtitle == null) {
-      return Text(
-        title,
-        style: titleStyle,
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-      );
+      return titleRow;
     }
     final subtitleColor = vpnState == VpnState.error
         ? Theme.of(context).colorScheme.error
@@ -3460,12 +4057,7 @@ class _ThreadTitle extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          title,
-          style: titleStyle,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-        ),
+        titleRow,
         const SizedBox(height: 1),
         Text(
           subtitle,
@@ -3494,3 +4086,49 @@ class _ThreadTitle extends StatelessWidget {
     }
   }
 }
+
+// _WarmStatusDot renders a small colored circle showing the daemon's
+// connection-warmth status to the open peer. Tooltip on hover/long-press
+// for explanation.
+class _WarmStatusDot extends StatelessWidget {
+  final PeerMessagingWarmStatus status;
+  const _WarmStatusDot({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, label) = switch (status) {
+      PeerMessagingWarmStatus.warm => (
+          isApple()
+              ? CupertinoColors.systemGreen.resolveFrom(context)
+              : Colors.green.shade600,
+          'Connection ready',
+        ),
+      PeerMessagingWarmStatus.warming => (
+          isApple()
+              ? CupertinoColors.systemOrange.resolveFrom(context)
+              : Colors.orange.shade600,
+          'Connecting…',
+        ),
+      PeerMessagingWarmStatus.error => (
+          isApple()
+              ? CupertinoColors.systemRed.resolveFrom(context)
+              : Colors.red.shade600,
+          'Connection error',
+        ),
+      PeerMessagingWarmStatus.cold => (
+          isApple()
+              ? CupertinoColors.systemGrey.resolveFrom(context)
+              : Colors.grey.shade500,
+          'Connection cold',
+        ),
+    };
+    final dot = Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+    return Tooltip(message: label, child: dot);
+  }
+}
+
+enum _AttachSourceAction { camera, video, gallery, files }
