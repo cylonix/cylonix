@@ -6,8 +6,11 @@ set -euo pipefail
 
 PLIST_NAME="io.cylonix.sase.direct.daemon"
 PLIST_DST="/Library/LaunchDaemons/$PLIST_NAME.plist"
+NOTIFIER_PLIST_NAME="io.cylonix.sase.direct.notifier"
+NOTIFIER_PLIST_DST="/Library/LaunchAgents/$NOTIFIER_PLIST_NAME.plist"
 APP_PATH="/Applications/Cylonix.app"
 DAEMON_PATH="$APP_PATH/Contents/Resources/cylonixd"
+NOTIFIER_PATH="$APP_PATH/Contents/Resources/CylonixNotifier.app/Contents/MacOS/CylonixNotifier"
 
 # Create required directories
 mkdir -p /var/lib/cylonix
@@ -72,21 +75,53 @@ launchctl load "$PLIST_DST"
 mkdir -p /usr/local/bin
 ln -sf "$APP_PATH/Contents/Resources/cylonix" /usr/local/bin/cylonix
 
-# Bind the daemon's "operator user" to whoever is logged in at the GUI so
-# the cylonix CLI (and any future per-user helper logic) can talk to the
-# root LaunchDaemon without sudo. Best effort — if no GUI user is logged
-# in or the daemon is not yet ready, the user can re-run
-# `cylonix set --operator <user>` later.
+# Note: the daemon resolves the active GUI/console user itself for
+# Taildrop's Downloads/Cylonix destination (see
+# tailscale/feature/taildrop/paths_cylonix.go), gated on
+# CYLONIX_TAILDROP_DEFAULT_DOWNLOADS=1 (set above). No postinstall
+# `cylonix set --operator` is required; admins on a shared Mac can still
+# pin a specific user explicitly via `cylonix set --operator <user>`.
+
+# Install the per-user notifier LaunchAgent. The system-wide LaunchAgents
+# directory loads automatically for every user at login; we additionally
+# bootstrap it into the currently-logged-in GUI session so notifications
+# start working immediately without requiring logout/login.
+cat > "$NOTIFIER_PLIST_DST" <<NOTIFIERPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>$NOTIFIER_PLIST_NAME</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>$NOTIFIER_PATH</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>5</integer>
+	<key>StandardOutPath</key>
+	<string>/tmp/cylonix-notifier.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/cylonix-notifier.log</string>
+</dict>
+</plist>
+NOTIFIERPLIST
+chown root:wheel "$NOTIFIER_PLIST_DST"
+chmod 644 "$NOTIFIER_PLIST_DST"
+
 GUI_USER="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
 if [[ -n "${GUI_USER:-}" && "$GUI_USER" != "root" && "$GUI_USER" != "_"* ]]; then
-  for _ in 1 2 3 4 5; do
-    if "$APP_PATH/Contents/Resources/cylonix" \
-        --socket=/var/run/cylonix/cylonixd.sock \
-        set --operator "$GUI_USER" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
+  GUI_UID="$(id -u "$GUI_USER" 2>/dev/null || true)"
+  if [[ -n "${GUI_UID:-}" ]]; then
+    # Replace any stale registration; ignore errors from never-loaded.
+    launchctl bootout "gui/$GUI_UID/$NOTIFIER_PLIST_NAME" 2>/dev/null || true
+    launchctl bootstrap "gui/$GUI_UID" "$NOTIFIER_PLIST_DST" 2>/dev/null || true
+    launchctl enable "gui/$GUI_UID/$NOTIFIER_PLIST_NAME" 2>/dev/null || true
+  fi
 fi
 
 # Kill any running Cylonix app so the new version is picked up

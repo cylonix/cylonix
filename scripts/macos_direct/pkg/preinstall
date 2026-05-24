@@ -6,11 +6,27 @@ set -euo pipefail
 
 PLIST_NAME="io.cylonix.sase.direct.daemon"
 PLIST_DST="/Library/LaunchDaemons/$PLIST_NAME.plist"
+NOTIFIER_PLIST_NAME="io.cylonix.sase.direct.notifier"
+NOTIFIER_PLIST_DST="/Library/LaunchAgents/$NOTIFIER_PLIST_NAME.plist"
 PKG_ID="io.cylonix.sase.direct.installer"
 
 # Stop existing daemon before overwriting the app
 if launchctl list "$PLIST_NAME" &>/dev/null; then
   launchctl unload "$PLIST_DST" 2>/dev/null || true
+fi
+
+# Boot out any running notifier instance so the new binary takes effect.
+# We don't know which users are logged in; iterate over /dev/console for
+# the active GUI user, plus any other user with a runtime session.
+GUI_USER="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+if [[ -n "${GUI_USER:-}" && "$GUI_USER" != "root" && "$GUI_USER" != "_"* ]]; then
+  GUI_UID="$(id -u "$GUI_USER" 2>/dev/null || true)"
+  if [[ -n "${GUI_UID:-}" ]]; then
+    launchctl bootout "gui/$GUI_UID/$NOTIFIER_PLIST_NAME" 2>/dev/null || true
+  fi
+fi
+if [[ -f "$NOTIFIER_PLIST_DST" ]]; then
+  rm -f "$NOTIFIER_PLIST_DST"
 fi
 
 # Forget old package receipt so installer uses our --install-location

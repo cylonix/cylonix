@@ -27,6 +27,7 @@ import 'models/peer_messaging.dart';
 import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
 import 'services/ipn.dart';
+import 'services/peer_messaging_service.dart';
 import 'utils/utils.dart';
 import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
@@ -69,6 +70,7 @@ class _PeerMessagingThreadViewState
   int _scrollToBottomRequest = 0;
   PeerMessagingConversation? _lastSeenConversation;
   String? _registeredActivePeer;
+  PeerMessagingService? _activePeerService;
 
   bool get _useDesktopEnterToSend =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -138,19 +140,21 @@ class _PeerMessagingThreadViewState
   void _registerActivePeer(String peerRef) {
     if (peerRef.isEmpty) return;
     _registeredActivePeer = peerRef;
+    // Cache the notifier so dispose() can still reach it after the Riverpod
+    // `ref` has been torn down.
+    final service = ref.read(peerMessagingServiceProvider.notifier);
+    _activePeerService = service;
     // Fire and forget; warm/keepalive is best-effort.
-    ref
-        .read(peerMessagingServiceProvider.notifier)
-        .registerActiveThread(peerRef);
+    service.registerActiveThread(peerRef);
   }
 
   void _unregisterActivePeer() {
     final ref0 = _registeredActivePeer;
     _registeredActivePeer = null;
-    if (ref0 == null || ref0.isEmpty) return;
-    ref
-        .read(peerMessagingServiceProvider.notifier)
-        .unregisterActiveThread(ref0);
+    final service = _activePeerService;
+    _activePeerService = null;
+    if (ref0 == null || ref0.isEmpty || service == null) return;
+    service.unregisterActiveThread(ref0);
   }
 
   void _dismissKeyboard() {
@@ -1629,8 +1633,8 @@ class _PeerMessagingThreadViewState
                                 padding: const EdgeInsets.fromLTRB(
                                   16,
                                   12,
-                                  64,
-                                  18,
+                                  16,
+                                  56,
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,

@@ -74,6 +74,32 @@ build_daemon() {
   cd "$ROOT_DIR"
 }
 
+# CylonixNotifier: a tiny LSUIElement Swift app, installed as a per-user
+# LaunchAgent, that surfaces direct-mode Taildrop "file received" events
+# as macOS user notifications. Built independently of the Flutter app so
+# it can keep running when Cylonix.app is closed.
+build_notifier() {
+  require_tool swiftc
+  echo "==> Building CylonixNotifier (universal)..."
+  local notifier_src="$PROJECT_DIR/Notifier"
+  local notifier_out="$PROJECT_DIR/Notifier/build"
+  rm -rf "$notifier_out"
+  mkdir -p "$notifier_out/CylonixNotifier.app/Contents/MacOS"
+  mkdir -p "$notifier_out/CylonixNotifier.app/Contents/Resources"
+
+  # Universal binary (arm64 + x86_64).
+  swiftc -O -target arm64-apple-macos11 \
+    -o "$notifier_out/CylonixNotifier-arm64" "$notifier_src/main.swift"
+  swiftc -O -target x86_64-apple-macos11 \
+    -o "$notifier_out/CylonixNotifier-amd64" "$notifier_src/main.swift"
+  lipo -create -output "$notifier_out/CylonixNotifier.app/Contents/MacOS/CylonixNotifier" \
+    "$notifier_out/CylonixNotifier-arm64" "$notifier_out/CylonixNotifier-amd64"
+  rm -f "$notifier_out/CylonixNotifier-arm64" "$notifier_out/CylonixNotifier-amd64"
+  chmod 755 "$notifier_out/CylonixNotifier.app/Contents/MacOS/CylonixNotifier"
+
+  cp "$notifier_src/Info.plist" "$notifier_out/CylonixNotifier.app/Contents/Info.plist"
+}
+
 prepare_flutter() {
   echo "==> Preparing Flutter ephemeral files for macos-direct..."
   cd "$ROOT_DIR"
@@ -133,6 +159,19 @@ build_archive() {
   cp "$ROOT_DIR/tailscale/tailscale" "$app_resources/cylonix"
   chmod 755 "$app_resources/cylonixd" "$app_resources/cylonix"
 
+  # Bundle CylonixNotifier.app (LaunchAgent target) into Resources.
+  echo "==> Bundling CylonixNotifier.app into archive..."
+  rm -rf "$app_resources/CylonixNotifier.app"
+  cp -R "$PROJECT_DIR/Notifier/build/CylonixNotifier.app" "$app_resources/CylonixNotifier.app"
+
+  # Share the parent app's compiled AppIcon.icns so notification banners
+  # show the Cylonix logo instead of a blank tile. The Notifier bundle's
+  # Info.plist references AppIcon as CFBundleIconFile.
+  if [[ -f "$app_resources/AppIcon.icns" ]]; then
+    cp "$app_resources/AppIcon.icns" \
+      "$app_resources/CylonixNotifier.app/Contents/Resources/AppIcon.icns"
+  fi
+
   # Note: downloadsfolder.framework must stay — the Runner binary is dynamically
   # linked against it, so removing it causes a dyld crash at launch.
 
@@ -141,6 +180,11 @@ build_archive() {
   echo "==> Signing daemon binaries..."
   codesign --force --options runtime --sign "$signing_identity" "$app_resources/cylonixd"
   codesign --force --options runtime --sign "$signing_identity" "$app_resources/cylonix"
+  echo "==> Signing CylonixNotifier.app..."
+  codesign --force --options runtime --sign "$signing_identity" \
+    "$app_resources/CylonixNotifier.app/Contents/MacOS/CylonixNotifier"
+  codesign --force --options runtime --sign "$signing_identity" \
+    "$app_resources/CylonixNotifier.app"
 
   # Re-sign the app bundle (without --deep to preserve extension entitlements)
   echo "==> Re-signing app bundle..."
@@ -352,6 +396,9 @@ case "$step" in
   daemon)
     build_daemon
     ;;
+  notifier)
+    build_notifier
+    ;;
   flutter)
     prepare_flutter
     ;;
@@ -380,6 +427,7 @@ case "$step" in
     ;;
   all)
     build_daemon
+    build_notifier
     prepare_flutter
     build_archive
     export_archive
@@ -388,7 +436,7 @@ case "$step" in
     verify_distribution
     ;;
   *)
-    echo "usage: $0 [daemon|flutter|archive|export|dmg|pkg|mesh-pkg|notarize|verify|all]" >&2
+    echo "usage: $0 [daemon|notifier|flutter|archive|export|dmg|pkg|mesh-pkg|notarize|verify|all]" >&2
     exit 1
     ;;
 esac

@@ -71,6 +71,7 @@ direct_macos_export:
 
 direct_macos_pkg:
 	./scripts/macos_direct/build_direct_distribution.sh daemon
+	./scripts/macos_direct/build_direct_distribution.sh notifier
 	./scripts/macos_direct/build_direct_distribution.sh flutter
 	./scripts/macos_direct/build_direct_distribution.sh archive
 	./scripts/macos_direct/build_direct_distribution.sh export

@@ -749,9 +749,29 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
                   event.type == PeerMessagingEventType.menuRequested;
           final rawFromPeerId = event.payload['from_peer_id'] as String?;
           final selfPeerId = _ref.read(selfNodeProvider)?.stableID ?? '';
+          final messageId = messageJson['id'] as String? ?? '';
+          // The backend echoes our own peer messages back via messageReceived
+          // (so the local app can re-broadcast them to proxy clients like
+          // openclaw via the WebSocket bus). The stableID check below catches
+          // the common case, but selfNode can be null/empty at echo time and
+          // some platforms route the event before from_peer_id is populated;
+          // as a backup, if we already have this message ID in any local
+          // conversation for this profile, the event must be an echo of
+          // something we sent (UUID v4 collisions are not a concern).
+          var alreadyKnownLocally = false;
+          if (messageId.isNotEmpty) {
+            for (final conv in state.conversations) {
+              if (conv.profileId != profileId) continue;
+              if (conv.messages.any((m) => m.id == messageId)) {
+                alreadyKnownLocally = true;
+                break;
+              }
+            }
+          }
           final isFromSelf = isInboundEvent &&
-              (rawFromPeerId ?? '').isNotEmpty &&
-              rawFromPeerId == selfPeerId;
+              (alreadyKnownLocally ||
+                  ((rawFromPeerId ?? '').isNotEmpty &&
+                      rawFromPeerId == selfPeerId));
           // Backend echoes our own peer messages back via messageReceived. Treat
           // them as local so they render as our own and don't bump unread.
           final isRealInbound = isInboundEvent && !isFromSelf;
@@ -971,6 +991,13 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       await _consumeAutoSavedAttachmentPaths();
       // Peer messaging UI shows the message in the chat thread; suppress
       // a redundant system notification (matches iOS BackgroundTaskManager).
+      return;
+    }
+    // On macOS direct distribution the CylonixNotifier LaunchAgent
+    // (installed by postinstall) surfaces "File Received" banners
+    // regardless of whether Cylonix.app is running, so we don't post one
+    // from here to avoid duplicate notifications.
+    if (IpnService.isDirectDistribution) {
       return;
     }
     await _showFileReceivedNotification(name: name, path: path);
