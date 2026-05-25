@@ -67,11 +67,17 @@ extension ShareViewController {
         fileInfos = []
         sharedFiles = []
 
+        // Order matters: fileURL must be checked before url (fileURL is a
+        // subtype of url). Likewise plainText is checked as the canonical
+        // text identifier — most senders register either plainText or one of
+        // its subtypes.
         let types: [UTType] = [
             UTType.video,
             UTType.audio,
             UTType.image,
             UTType.fileURL,
+            UTType.url,
+            UTType.plainText,
         ]
 
         for attachment in attachments {
@@ -107,14 +113,34 @@ extension ShareViewController {
                 return
             }
 
-            debugLog("Loaded item type: \(type(of: data))")
+            debugLog("Loaded item type: \(type(of: data)) for identifier \(identifier)")
 
-            if let url = data as? URL {
+            // Web URL → save as .webloc (mimic AirDrop URL drop)
+            if identifier == UTType.url.identifier {
+                if let url = self.urlValue(from: data), !url.isFileURL {
+                    self.writeWebloc(for: url, attachment: attachment)
+                    return
+                }
+                // If somehow a file URL arrived under the url identifier,
+                // fall through to the file-URL handling below.
+            }
+
+            // Plain text (and its subtypes) → save as .txt
+            if let textType = UTType(identifier),
+               textType.conforms(to: .text) || textType.conforms(to: .plainText)
+            {
+                if let text = self.textValue(from: data) {
+                    self.writeTextFile(text, attachment: attachment)
+                    return
+                }
+            }
+
+            if let url = data as? URL, url.isFileURL {
                 self.copyToTempFolder(url)
                 return
             }
-            if let url = data as? NSURL {
-                self.copyToTempFolder(url as URL)
+            if let nsurl = data as? NSURL, let url = nsurl as URL?, url.isFileURL {
+                self.copyToTempFolder(url)
                 return
             }
 
@@ -141,22 +167,132 @@ extension ShareViewController {
                 }
             #endif
 
-            if let urlString = data as? String, let url = URL(string: urlString) {
-                self.copyToTempFolder(url)
-                return
-            }
-
-            if let data = data as? Data {
-                if let url = self.fileURL(from: data) {
+            if let bytes = data as? Data {
+                if let url = self.fileURL(from: bytes) {
                     self.copyToTempFolder(url)
                     return
                 }
-                self.writeSharedData(data, attachment, identifier, fallbackExtension: "dat")
+                self.writeSharedData(bytes, attachment, identifier, fallbackExtension: "dat")
                 return
             }
 
             debugLog("Unsupported loaded item value: \(type(of: data))")
         }
+    }
+
+    private func urlValue(from data: NSSecureCoding) -> URL? {
+        if let url = data as? URL { return url }
+        if let nsurl = data as? NSURL { return nsurl as URL }
+        if let str = data as? String {
+            return URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if let ns = data as? NSString {
+            return URL(string: (ns as String).trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if let bytes = data as? Data,
+           let str = String(data: bytes, encoding: .utf8)
+        {
+            return URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
+    }
+
+    private func textValue(from data: NSSecureCoding) -> String? {
+        if let str = data as? String { return str }
+        if let nsstr = data as? NSString { return nsstr as String }
+        if let bytes = data as? Data { return String(data: bytes, encoding: .utf8) }
+        return nil
+    }
+
+    private func writeWebloc(for url: URL, attachment: NSItemProvider) {
+        guard let tempFolder = sharedTempFolder() else {
+            debugLog("Failed to locate shared temp folder")
+            return
+        }
+        let plist: [String: Any] = ["URL": url.absoluteString]
+        let data: Data
+        do {
+            data = try PropertyListSerialization.data(
+                fromPropertyList: plist, format: .xml, options: 0
+            )
+        } catch {
+            debugLog("Failed to encode webloc plist: \(error)")
+            return
+        }
+
+        let fileName = weblocFileName(for: url, attachment: attachment)
+        let destURL = tempFolder.appendingPathComponent(fileName)
+        do {
+            try data.write(to: destURL)
+            debugLog("Saved webloc to \(destURL.path)")
+            appendSharedFile(fileName, destURL)
+        } catch {
+            debugLog("Failed to save webloc: \(error)")
+        }
+    }
+
+    private func writeTextFile(_ text: String, attachment: NSItemProvider) {
+        guard let tempFolder = sharedTempFolder() else {
+            debugLog("Failed to locate shared temp folder")
+            return
+        }
+        guard let data = text.data(using: .utf8) else {
+            debugLog("Failed to encode shared text as UTF-8")
+            return
+        }
+        let fileName = textFileName(for: text, attachment: attachment)
+        let destURL = tempFolder.appendingPathComponent(fileName)
+        do {
+            try data.write(to: destURL)
+            debugLog("Saved text to \(destURL.path)")
+            appendSharedFile(fileName, destURL)
+        } catch {
+            debugLog("Failed to save text: \(error)")
+        }
+    }
+
+    private func weblocFileName(for url: URL, attachment: NSItemProvider) -> String {
+        let suggested = attachment.suggestedName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let base: String
+        if let suggested = suggested, !suggested.isEmpty {
+            base = suggested
+        } else if let host = url.host, !host.isEmpty {
+            base = host
+        } else {
+            base = "Shared URL"
+        }
+        return ensureExtension(sanitize(base), ".webloc")
+    }
+
+    private func textFileName(for text: String, attachment: NSItemProvider) -> String {
+        let suggested = attachment.suggestedName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let base: String
+        if let suggested = suggested, !suggested.isEmpty {
+            base = suggested
+        } else if let firstLine = text.components(separatedBy: .newlines)
+            .first?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !firstLine.isEmpty
+        {
+            base = String(firstLine.prefix(50))
+        } else {
+            base = "Shared Text"
+        }
+        return ensureExtension(sanitize(base), ".txt")
+    }
+
+    private func sanitize(_ name: String) -> String {
+        let illegal = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let cleaned = name.unicodeScalars
+            .map { illegal.contains($0) ? "-" : Character($0).description }
+            .joined()
+        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Shared" : trimmed
+    }
+
+    private func ensureExtension(_ name: String, _ ext: String) -> String {
+        name.lowercased().hasSuffix(ext.lowercased()) ? name : name + ext
     }
 
     private func fileURL(from data: Data) -> URL? {
