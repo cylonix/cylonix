@@ -11,6 +11,7 @@ import 'models/ipn.dart';
 import 'models/platform.dart';
 import 'providers/ipn.dart';
 import 'providers/settings.dart';
+import 'services/android_taildrop_notifications.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'viewmodels/settings.dart';
@@ -386,6 +387,40 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       },
                     ),
                   ),
+                  if (Platform.isAndroid)
+                    AdaptiveListTile.notched(
+                      title: const Text('Cylonix File Transfer Banners'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4, bottom: 4),
+                            child: Text(
+                              'Some devices (e.g. MIUI on Xiaomi/Redmi) '
+                              'hide heads-up banners by default, even '
+                              'for high-priority notifications. To get '
+                              'a pop-up banner each time a file arrives '
+                              'via Cylonix File Transfer, tap "Open '
+                              'Settings" and turn on "Floating '
+                              'notifications" / "Show as banner" for '
+                              'the "Cylonix File Transfer" channel.',
+                              softWrap: true,
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: AdaptiveButton(
+                              textButton: true,
+                              child: const Text('Open Settings'),
+                              onPressed: () {
+                                AndroidTaildropNotifications
+                                    .openTaildropChannelSettings();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
                 footer: const AdaptiveGroupedFooter(
                   'Turn these off to reduce how much message content is shown in notifications and on the main screen.',

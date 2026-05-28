@@ -51,6 +51,7 @@ import com.tailscale.ipn.sendCommand
 import com.tailscale.ipn.ui.model.Ipn
 import com.tailscale.ipn.ui.model.Ipn.Notify
 import com.tailscale.ipn.ui.model.Netmap
+import com.tailscale.ipn.ui.notifier.Notifier
 import com.tailscale.ipn.ui.viewModel.AppViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModelFactory
@@ -107,6 +108,16 @@ class MainActivity: FlutterFragmentActivity() {
             App.get().setNotificationCallback(::onNotificationReceived)
             Log.d(LOG_TAG, "onCreate: initializing VPN ViewModel")
             initializeVpnViewModel()
+            // Replay the current backend state once now that the callback is
+            // wired. Notifier.start() is invoked inside App.get() above —
+            // any Ipn.State transitions emitted between that call and the
+            // setIpnStateChangeCallback above never reach onIpnStateChanged,
+            // so a backend that has already reached Running by this point
+            // would leave the Android VpnService never established (system
+            // Settings shows VPN off while the engine reports connected).
+            val initialState = Notifier.state.value
+            Log.d(LOG_TAG, "Replaying initial IPN state: $initialState")
+            onIpnStateChanged(initialState)
         }
         //checkDownloadsFolderPermission()
 	}
@@ -321,6 +332,23 @@ class MainActivity: FlutterFragmentActivity() {
 					setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
 					Log.d(LOG_TAG, "set portrait mode")
 					result.success("DONE")
+				}
+				"getDeviceManufacturer" -> {
+					result.success(Build.MANUFACTURER.lowercase())
+				}
+				"openTaildropChannelSettings" -> {
+					try {
+						val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+							putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+							putExtra(Settings.EXTRA_CHANNEL_ID, "cylonix-taildrop-files")
+							addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+						}
+						startActivity(intent)
+						result.success(true)
+					} catch (e: Exception) {
+						Log.e(LOG_TAG, "openTaildropChannelSettings failed: ${e.message}")
+						result.error("OPEN_SETTINGS_FAILED", e.message, null)
+					}
 				}
                 "checkVPNPermission" -> {
                     Log.d(LOG_TAG, "checkVPNPermission")

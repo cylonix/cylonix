@@ -2,4 +2,19 @@
 <resources>
     <string name="app_name">Cylonix</string>
     <string name="tile_name">Cylonix</string>
+
+    <!-- Cylonix share-flow overrides for upstream Taildrop strings. -->
+    <string name="share">Send with Cylonix</string>
+    <string name="taildrop_share_failed">Cylonix file transfer failed. Some files were not shared. Please try again.</string>
+    <string name="taildrop_share_failed_title">Cylonix file transfer failed</string>
+
+    <!-- Permissions / directory-picker copy that still mentioned Taildrop. -->
+    <string name="permission_write_external_storage_needed">We use storage in order to receive files sent to you with Cylonix.</string>
+    <string name="taildrop_dir">Cylonix files directory</string>
+    <string name="taildrop_dir_access">Cylonix files directory access</string>
+    <string name="permission_taildrop_dir">Give Cylonix access to a folder so it can save files sent to you by other devices.</string>
+    <string name="taildrop_directory_picker_title">Cylonix Files Directory</string>
+    <string name="taildrop_directory_picker_body">You have not selected a directory for incoming Cylonix file transfers. Please select or create a target directory.</string>
+    <string name="taildrop_directory_picker_info">What is Cylonix file transfer?</string>
+    <string name="taildrop_directory_picker_button">Open Directory Picker</string>
 </resources>

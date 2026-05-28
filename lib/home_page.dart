@@ -24,6 +24,7 @@ import 'permissions_view.dart';
 import 'providers/peer_messaging.dart';
 import 'providers/share_file.dart';
 import 'providers/theme.dart';
+import 'services/android_taildrop_notifications.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
@@ -68,6 +69,46 @@ class _HomePageState extends ConsumerState<HomePage>
           WidgetsBinding.instance.platformDispatcher.platformBrightness;
       ref.read(systemBrightnessProvider.notifier).updateBrightness(brightness);
     };
+    if (Platform.isAndroid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_maybeShowTaildropHeadsUpTip());
+      });
+    }
+  }
+
+  Future<void> _maybeShowTaildropHeadsUpTip() async {
+    if (await AndroidTaildropNotifications.hasDismissedTip()) {
+      return;
+    }
+    if (!await AndroidTaildropNotifications.isAffectedByHeadsUpSuppression()) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    // Defer until the user is past the intro flow — showing this dialog
+    // on top of IntroPage is jarring and the channel they're being asked
+    // to configure does not exist in the system settings until the app
+    // has gone through onCreate at least once.
+    if (!ref.read(introViewedProvider)) {
+      return;
+    }
+    await showAlertDialog(
+      context,
+      'Enable Cylonix File Transfer banners',
+      'Your device hides heads-up notification banners by default, '
+          'even for high-priority notifications. To get a pop-up banner '
+          'each time a file arrives via Cylonix File Transfer, tap '
+          '"Open Settings" and turn on "Floating notifications" / '
+          '"Show as banner" for the "Cylonix File Transfer" channel.',
+      okText: 'Open Settings',
+      cancelText: "Don't show again",
+      showCancel: true,
+      onPressOK: () {
+        unawaited(AndroidTaildropNotifications.openTaildropChannelSettings());
+      },
+    );
+    await AndroidTaildropNotifications.markTipDismissed();
   }
 
   @override
