@@ -84,3 +84,4 @@ windows/share_extension/build
 .tools-cache/
 ios/build
 macos-direct/Notifier/build/
+.claude/
