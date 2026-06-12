@@ -22,7 +22,12 @@ final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationDidFinishLaunching(_: Notification) {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.requestAuthorization(options: [.alert, .sound, .provisional]) { granted, error in
+        // Request full (not provisional) authorization. Provisional auth is
+        // auto-granted but delivers quietly: notifications land in
+        // Notification Center with no banner or sound, so file arrivals
+        // look like they were never received. The one-time Allow prompt is
+        // worth the prominent banners.
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error = error {
                 NSLog("cylonix-notifier: requestAuthorization error: \(error)")
             }

@@ -885,6 +885,51 @@ class _PeerMessagingThreadViewState
     }
   }
 
+  /// Hands the attachment to the system share sheet (Android). Resolves
+  /// the same local path the open flow uses.
+  Future<void> _shareAttachment(
+    String messageId,
+    PeerMessagingAttachment attachment,
+  ) async {
+    try {
+      final resolvedPath = await _resolveAttachmentOpenPath(
+        messageId,
+        attachment,
+        refreshWaitingFiles: true,
+      );
+      if (resolvedPath == null || resolvedPath.isEmpty) {
+        throw Exception('Attachment file is not available yet on this device');
+      }
+      await Share.shareXFiles(
+        [await _shareableFile(resolvedPath, attachment.name)],
+      );
+    } catch (e) {
+      if (mounted) {
+        await showAlertDialog(context, 'Error', 'Failed to share file: $e');
+      }
+    }
+  }
+
+  /// Returns an XFile for sharing under the attachment's display name.
+  /// The resolved path may be the managed-store mirror whose basename
+  /// carries a transferId prefix; share_plus ignores fileNameOverrides for
+  /// path-backed files (it shares the on-disk name), so stage a copy named
+  /// after the display name in a temp folder instead.
+  Future<XFile> _shareableFile(String path, String? displayName) async {
+    final name = (displayName ?? '').trim();
+    if (name.isEmpty || p.basename(path) == name) {
+      return XFile(path);
+    }
+    final tempDir = await getTemporaryDirectory();
+    final shareDir = Directory(
+      p.join(tempDir.path, 'attachment_share', const Uuid().v4()),
+    );
+    await shareDir.create(recursive: true);
+    final copyPath = p.join(shareDir.path, name);
+    await File(path).copy(copyPath);
+    return XFile(copyPath);
+  }
+
   Future<void> _openAttachment(
     String messageId,
     PeerMessagingAttachment attachment,
@@ -933,6 +978,7 @@ class _PeerMessagingThreadViewState
                           tooltip: 'Open externally',
                           onPressed: () => _launchAttachmentExternally(
                             resolvedPath,
+                            displayName: attachment.name,
                           ),
                           icon: Icon(
                             isApple()
@@ -978,7 +1024,10 @@ class _PeerMessagingThreadViewState
         return;
       }
 
-      await _launchAttachmentExternally(resolvedPath);
+      await _launchAttachmentExternally(
+        resolvedPath,
+        displayName: attachment.name,
+      );
     } catch (e) {
       if (mounted) {
         await showAlertDialog(context, 'Open Attachment Failed', '$e');
@@ -1071,7 +1120,10 @@ class _PeerMessagingThreadViewState
     }.contains(extension);
   }
 
-  Future<void> _launchAttachmentExternally(String path) async {
+  Future<void> _launchAttachmentExternally(
+    String path, {
+    String? displayName,
+  }) async {
     if (Platform.isIOS) {
       await ref.read(ipnServiceProvider).previewLocalFile(path);
       return;
@@ -1091,7 +1143,7 @@ class _PeerMessagingThreadViewState
         'OpenFilex could not open $path (${result.type}: ${result.message}); '
         'falling back to share sheet',
       );
-      await Share.shareXFiles([XFile(path)]);
+      await Share.shareXFiles([await _shareableFile(path, displayName)]);
       return;
     }
     final launched = await launchUrl(
@@ -1557,6 +1609,8 @@ class _PeerMessagingThreadViewState
                             : null,
                         onSaveAttachment: (attachment) =>
                             _saveAttachment(message.id, attachment),
+                        onShareAttachment: (attachment) =>
+                            _shareAttachment(message.id, attachment),
                         onOpenAttachment: (attachment) =>
                             _openAttachment(message.id, attachment),
                         resolveAttachmentPath: (attachment) =>
@@ -1879,6 +1933,8 @@ class _MessageBubble extends StatelessWidget {
   final Future<void> Function(PeerMessagingAttachment attachment)
       onSaveAttachment;
   final Future<void> Function(PeerMessagingAttachment attachment)
+      onShareAttachment;
+  final Future<void> Function(PeerMessagingAttachment attachment)
       onOpenAttachment;
   final Future<String?> Function(PeerMessagingAttachment attachment)
       resolveAttachmentPath;
@@ -1902,6 +1958,7 @@ class _MessageBubble extends StatelessWidget {
     required this.onSendAgain,
     required this.onShowFailureDetails,
     required this.onSaveAttachment,
+    required this.onShareAttachment,
     required this.onOpenAttachment,
     required this.resolveAttachmentPath,
     required this.onApproval,
@@ -2635,6 +2692,14 @@ class _MessageBubble extends StatelessWidget {
                       title: const Text('Copy Text'),
                       onTap: () => Navigator.pop(context, 'copy_text'),
                     ),
+                  // Android only: share_plus needs a sharePositionOrigin on
+                  // iPad, which this bottom sheet cannot supply reliably.
+                  if (Platform.isAndroid && message.text.isNotEmpty)
+                    ListTile(
+                      leading: const Icon(Icons.share_outlined),
+                      title: const Text('Share Text'),
+                      onTap: () => Navigator.pop(context, 'share_text'),
+                    ),
                   if (onSendAgain != null)
                     ListTile(
                       leading: Icon(
@@ -2658,6 +2723,18 @@ class _MessageBubble extends StatelessWidget {
                       onTap: () =>
                           Navigator.pop(context, 'save:${attachment.id}'),
                     ),
+                  if (Platform.isAndroid)
+                    for (final attachment in savableAttachments)
+                      ListTile(
+                        leading: const Icon(Icons.share_outlined),
+                        title: Text(
+                          savableAttachments.length == 1
+                              ? 'Share File'
+                              : 'Share ${attachment.name}',
+                        ),
+                        onTap: () =>
+                            Navigator.pop(context, 'share:${attachment.id}'),
+                      ),
                   ListTile(
                     leading: const Icon(Icons.delete_outline),
                     iconColor: Theme.of(context).colorScheme.error,
@@ -2678,6 +2755,18 @@ class _MessageBubble extends StatelessWidget {
     }
     if (selected == 'copy_text') {
       await Clipboard.setData(ClipboardData(text: message.text));
+      return;
+    }
+    if (selected == 'share_text') {
+      await Share.share(message.text);
+      return;
+    }
+    if (selected.startsWith('share:')) {
+      final attachmentId = selected.substring('share:'.length);
+      final attachment = message.attachments.firstWhere(
+        (value) => value.id == attachmentId,
+      );
+      await onShareAttachment(attachment);
       return;
     }
     if (selected == 'send_again') {
