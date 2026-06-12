@@ -13,6 +13,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -788,7 +789,16 @@ class _PeerMessagingThreadViewState
       );
       var showPath = attachment.name;
       if (Platform.isAndroid) {
-        final srcPath = await ref
+        // Prefer the resolved local copy (managed store / stored path);
+        // getFilePath joins the daemon's directFileRoot, where MediaStore
+        // receives never land.
+        String? srcPath = managedPath;
+        if (srcPath == null &&
+            (attachment.path ?? '').isNotEmpty &&
+            await File(attachment.path!).exists()) {
+          srcPath = attachment.path;
+        }
+        srcPath ??= await ref
             .read(ipnStateNotifierProvider.notifier)
             .getFilePath(sourceFileName);
         await dlf.copyFileIntoDownloadFolder(srcPath, sourceFileName);
@@ -1067,12 +1077,20 @@ class _PeerMessagingThreadViewState
       return;
     }
     if (Platform.isAndroid) {
-      // Files received via taildrop sit inside the cylonix app's private
-      // filesDir. launchUrl(Uri.file(...)) on Android can't grant other apps
-      // permission to read that path, so external viewers fail with no
-      // matching activity. share_plus copies the file through its own
-      // FileProvider and opens a share sheet, letting the user pick a
-      // viewer (Gallery, text editor, etc.).
+      // Attachments sit inside the cylonix app's private storage, which
+      // other apps can't read from a bare file:// URI. open_filex serves
+      // the file through its FileProvider with a read grant and fires an
+      // ACTION_VIEW intent, so the default viewer (WPS, video player,
+      // etc.) opens it directly. Fall back to the share sheet when no
+      // installed app handles the type.
+      final result = await OpenFilex.open(path);
+      if (result.type == ResultType.done) {
+        return;
+      }
+      _logger.d(
+        'OpenFilex could not open $path (${result.type}: ${result.message}); '
+        'falling back to share sheet',
+      );
       await Share.shareXFiles([XFile(path)]);
       return;
     }

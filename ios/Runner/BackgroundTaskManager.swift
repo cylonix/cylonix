@@ -5,6 +5,8 @@ import Foundation
 import UserNotifications
 #if os(iOS)
     import BackgroundTasks
+    import Photos
+    import UniformTypeIdentifiers
 #endif
 
 struct WaitingFile: Codable {
@@ -22,8 +24,22 @@ class BackgroundTaskManager {
     static let shared = BackgroundTaskManager()
     private static let transferIDSidecarSuffix = ".cylonix-transfer-id"
     private static let peerMessageNotificationLedgerKey = "PeerMessageNotifiedTransferIDs"
- 
+
+    // Serial queue for file processing. SceneDelegate calls in on the main
+    // thread; the Photos import below blocks on authorization and
+    // performChangesAndWait, so the body must run off the main thread.
+    private let processingQueue = DispatchQueue(
+        label: "io.cylonix.sase.fileProcessingQueue",
+        qos: .utility
+    )
+
     func processFilesFromSharedContainer(completion: @escaping (Bool) -> Void) {
+        processingQueue.async {
+            self.processFilesFromSharedContainerLocked(completion: completion)
+        }
+    }
+
+    private func processFilesFromSharedContainerLocked(completion: @escaping (Bool) -> Void) {
         wg_log(.info, message: "Processing files from shared container")
 
         guard let appGroupId = FileManager.appGroupId,
@@ -67,6 +83,7 @@ class BackgroundTaskManager {
             var processedFiles: [String] = []
             var peerMessagingTransferIDs: [String] = []
             var nonPeerMessagingFiles: [String] = []
+            var photoLibrarySavedFiles: [String] = []
 
             for file in filesWaiting.Files {
                 let sourceURL = sourceDir.appendingPathComponent(file.Name)
@@ -76,10 +93,30 @@ class BackgroundTaskManager {
                     continue
                 }
 
+                let transferID = resolvedTransferID(for: file, in: sourceDir)
+
+                #if os(iOS)
+                    // AirDrop parity: plain drops (no peer-message transfer
+                    // ID) of photos and videos go straight into the Photos
+                    // library instead of the app's Downloads folder. Chat
+                    // attachments keep the Downloads path so message bubbles
+                    // can reference the saved file. On permission denial or
+                    // import failure the file falls through to the regular
+                    // Downloads move below.
+                    if (transferID ?? "").isEmpty,
+                       isPhotoLibraryCandidate(file.Name),
+                       saveToPhotoLibrary(fileURL: sourceURL, name: file.Name)
+                    {
+                        cleanupTransferIDSidecar(for: file, in: sourceDir)
+                        processedFiles.append(file.Name)
+                        photoLibrarySavedFiles.append(file.Name)
+                        continue
+                    }
+                #endif
+
                 if let uniqueName = getUniqueFileName(originalName: file.Name, at: destinationURL) {
                     let destinationFileURL = destinationURL.appendingPathComponent(uniqueName)
                     do {
-                        let transferID = resolvedTransferID(for: file, in: sourceDir)
                         try FileManager.default.moveItem(at: sourceURL, to: destinationFileURL)
                         if let transferID, !transferID.isEmpty {
                             wg_log(.info, message: "Peer attachment auto-saved: transferID=\(transferID) source=\(sourceURL.path) destination=\(destinationFileURL.path)")
@@ -105,9 +142,12 @@ class BackgroundTaskManager {
 
             if !processedFiles.isEmpty {
                 markPeerMessagingTransfersNotified(peerMessagingTransferIDs, defaults: groupDefaults)
+                if !photoLibrarySavedFiles.isEmpty {
+                    notifyUserSavedToPhotos(files: photoLibrarySavedFiles)
+                }
                 if !nonPeerMessagingFiles.isEmpty {
                     notifyUserAirDropStyle(files: nonPeerMessagingFiles)
-                } else if !peerMessagingTransferIDs.isEmpty {
+                } else if photoLibrarySavedFiles.isEmpty, !peerMessagingTransferIDs.isEmpty {
                     wg_log(.info, message: "Suppressing auto-save notification for peer messaging transfers: \(peerMessagingTransferIDs)")
                 }
                 wg_log(.info, message: "Processed files: \(processedFiles.joined(separator: ", "))")
@@ -122,6 +162,96 @@ class BackgroundTaskManager {
         } catch {
             wg_log(.error, message: "Error processing files: \(error)")
             completion(false)
+        }
+    }
+
+    #if os(iOS)
+        // isPhotoLibraryCandidate reports whether a received file should be
+        // imported into the Photos library, judged by filename extension
+        // (the only type information Taildrop carries).
+        private func isPhotoLibraryCandidate(_ name: String) -> Bool {
+            let ext = (name as NSString).pathExtension
+            guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else {
+                return false
+            }
+            return type.conforms(to: .image) || type.conforms(to: .movie)
+        }
+
+        // ensurePhotoLibraryAddAuthorization checks add-only Photos access,
+        // prompting the user once if undetermined. Blocks the calling
+        // (background) queue until the prompt resolves.
+        private func ensurePhotoLibraryAddAuthorization() -> Bool {
+            var status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            if status == .notDetermined {
+                let semaphore = DispatchSemaphore(value: 0)
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+                    status = newStatus
+                    semaphore.signal()
+                }
+                semaphore.wait()
+            }
+            return status == .authorized || status == .limited
+        }
+
+        // saveToPhotoLibrary imports the file at fileURL into the Photos
+        // library, moving it out of the staging directory on success.
+        // Returns false (leaving the source file in place) when permission
+        // is denied or Photos rejects the asset, so the caller can fall
+        // back to the Downloads flow.
+        private func saveToPhotoLibrary(fileURL: URL, name: String) -> Bool {
+            guard ensurePhotoLibraryAddAuthorization() else {
+                wg_log(.info, message: "Photos add access denied; saving \(name) to Downloads instead")
+                return false
+            }
+            let ext = (name as NSString).pathExtension
+            let isMovie = UTType(filenameExtension: ext)?.conforms(to: .movie) ?? false
+            do {
+                try PHPhotoLibrary.shared().performChangesAndWait {
+                    let options = PHAssetResourceCreationOptions()
+                    options.shouldMoveFile = true
+                    let request = PHAssetCreationRequest.forAsset()
+                    request.addResource(
+                        with: isMovie ? .video : .photo,
+                        fileURL: fileURL,
+                        options: options
+                    )
+                }
+                wg_log(.info, message: "Imported \(name) into Photos library")
+                return true
+            } catch {
+                wg_log(.error, message: "Photos import failed for \(name): \(error); saving to Downloads instead")
+                return false
+            }
+        }
+    #endif
+
+    private func notifyUserSavedToPhotos(files: [String]) {
+        let content = UNMutableNotificationContent()
+        let previewsEnabled = currentNotificationPreviewEnabled()
+
+        if previewsEnabled {
+            content.title = files.count == 1 ? "Saved to Photos" : "\(files.count) items saved to Photos"
+            content.body = files.joined(separator: ", ")
+        } else {
+            content.title = files.count == 1 ? "Saved to Photos" : "Items saved to Photos"
+            content.body = "Open the Photos app to view."
+        }
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+
+        let notificationCenter = UNUserNotificationCenter.current()
+        notificationCenter.getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized else { return }
+            notificationCenter.add(request) { error in
+                if let error = error {
+                    wg_log(.error, message: "Failed to add Photos-saved notification: \(error)")
+                }
+            }
         }
     }
 

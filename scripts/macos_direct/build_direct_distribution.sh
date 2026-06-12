@@ -57,6 +57,10 @@ require_signing_values() {
 build_daemon() {
   echo "==> Building cylonixd daemon (universal)..."
   cd "$ROOT_DIR/tailscale"
+  # Clear universal binaries from a previous run: go (1.24+) refuses to
+  # overwrite a lipo'd fat binary ("already exists and is not an object
+  # file").
+  rm -f tailscaled tailscale
   GOOS=darwin GOARCH=arm64 ./build_dist.sh tailscale.com/cmd/tailscaled
   mv tailscaled tailscaled-arm64
   GOOS=darwin GOARCH=amd64 ./build_dist.sh tailscale.com/cmd/tailscaled

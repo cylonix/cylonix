@@ -28,7 +28,9 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel;
 import java.util.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -55,6 +57,11 @@ import com.tailscale.ipn.ui.notifier.Notifier
 import com.tailscale.ipn.ui.viewModel.AppViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModel
 import com.tailscale.ipn.ui.viewModel.MainViewModelFactory
+
+// Survives activity destruction: copyContentUri work must finish and
+// deliver its MethodChannel result even if MainActivity is torn down,
+// because the VPN service keeps the process and Dart side alive.
+private val contentCopyScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 class MainActivity: FlutterFragmentActivity() {
     companion object {
@@ -335,6 +342,51 @@ class MainActivity: FlutterFragmentActivity() {
 				}
 				"getDeviceManufacturer" -> {
 					result.success(Build.MANUFACTURER.lowercase())
+				}
+				"copyContentUri" -> {
+					// Copy a MediaStore content:// URI's bytes to a plain
+					// file path. Taildrop receives on Android 10+ land in
+					// MediaStore (Downloads/Cylonix) as content URIs that
+					// dart:io cannot read; the peer messaging service uses
+					// this to mirror chat attachments into its managed
+					// attachment store.
+					val uri = call.argument<String>("uri")
+					val destPath = call.argument<String>("destPath")
+					if (uri == null || destPath == null) {
+						result.error("INVALID_ARGUMENT", "uri and destPath are required", null)
+					} else {
+						// Process-lifetime scope, not lifecycleScope: the VPN
+						// service keeps the process (and a Dart awaiter)
+						// alive after this activity is destroyed, and a
+						// cancelled coroutine would strand that await with
+						// no result forever.
+						contentCopyScope.launch {
+							// Write to a temp name and rename into place so a
+							// process death mid-copy can't leave a partial
+							// file that later passes the caller's exists()
+							// check.
+							val dest = java.io.File(destPath)
+							val tmp = java.io.File("$destPath.part")
+							try {
+								dest.parentFile?.mkdirs()
+								val input = contentResolver.openInputStream(Uri.parse(uri))
+									?: throw java.io.IOException("openInputStream failed for $uri")
+								input.use { ins ->
+									java.io.FileOutputStream(tmp).use { outs -> ins.copyTo(outs) }
+								}
+								if (!tmp.renameTo(dest)) {
+									throw java.io.IOException("rename to $destPath failed")
+								}
+								withContext(Dispatchers.Main) { result.success(destPath) }
+							} catch (e: Exception) {
+								Log.e(LOG_TAG, "copyContentUri failed: ${e.message}")
+								try { tmp.delete() } catch (_: Exception) {}
+								withContext(Dispatchers.Main) {
+									result.error("COPY_FAILED", e.message, null)
+								}
+							}
+						}
+					}
 				}
 				"openTaildropChannelSettings" -> {
 					try {

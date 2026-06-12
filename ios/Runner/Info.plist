@@ -115,7 +115,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cylonix allows user to share files to cylonix peers. Only when user chooses to share photos or videos, the photos library is accessed.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Cylonix saves photos and videos received from peers to your Photos library when you choose to save them.</string>
+	<string>Cylonix saves photos and videos received from peers directly to your Photos library, like AirDrop.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Cylonix uses the camera to capture photos and videos that you send to peers in messages.</string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -59,6 +59,7 @@ dependencies:
   ffi: ^2.1.4
   win32: ^5.14.0
   window_manager: ^0.3.7
+  open_filex: ^4.7.0
 
 dev_dependencies:
   build_runner: ^2.4.6

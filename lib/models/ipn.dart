@@ -684,6 +684,12 @@ class OutgoingFile with _$OutgoingFile {
     @JsonKey(name: 'Finished') @Default(false) bool finished,
     @JsonKey(name: 'Succeeded') @Default(false) bool succeeded,
     @JsonKey(name: 'Path') String? path,
+    // Marks this transfer as a peer-message attachment. Only flagged
+    // transfers have their ID forwarded to the receiver as the cylonix
+    // transfer ID; plain drops keep their ID for progress tracking only.
+    @JsonKey(name: 'CylonixPeerMessage')
+    @Default(false)
+    bool cylonixPeerMessage,
   }) = _OutgoingFile;
 
   const OutgoingFile._();

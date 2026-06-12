@@ -639,6 +639,7 @@ _$OutgoingFileImpl _$$OutgoingFileImplFromJson(Map<String, dynamic> json) =>
       finished: json['Finished'] as bool? ?? false,
       succeeded: json['Succeeded'] as bool? ?? false,
       path: json['Path'] as String?,
+      cylonixPeerMessage: json['CylonixPeerMessage'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$$OutgoingFileImplToJson(_$OutgoingFileImpl instance) =>
@@ -654,6 +655,7 @@ Map<String, dynamic> _$$OutgoingFileImplToJson(_$OutgoingFileImpl instance) =>
       'Finished': instance.finished,
       'Succeeded': instance.succeeded,
       'Path': instance.path,
+      'CylonixPeerMessage': instance.cylonixPeerMessage,
     };
 
 _$AutoUpdatePrefsImpl _$$AutoUpdatePrefsImplFromJson(

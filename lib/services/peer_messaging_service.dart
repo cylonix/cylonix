@@ -987,7 +987,23 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       return;
     }
     if (transferId.isNotEmpty) {
-      _pendingAutoSavedPaths[transferId] = path;
+      var localPath = path;
+      if (Platform.isAndroid && path.startsWith('content://')) {
+        // Android saves taildrop arrivals through MediaStore, so the
+        // reported path is a content:// URI dart:io cannot read. Mirror
+        // the attachment into the managed attachment store and reference
+        // that copy from the chat bubble; the Downloads/Cylonix copy
+        // stays for user visibility.
+        final copied = await _copyContentUriToAttachmentStore(
+          uri: path,
+          transferId: transferId,
+          name: name,
+        );
+        if (copied != null) {
+          localPath = copied;
+        }
+      }
+      _pendingAutoSavedPaths[transferId] = localPath;
       await _consumeAutoSavedAttachmentPaths();
       // Peer messaging UI shows the message in the chat thread; suppress
       // a redundant system notification (matches iOS BackgroundTaskManager).
@@ -1597,6 +1613,38 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     return candidate;
   }
 
+  /// Copies an Android MediaStore content:// URI into the managed
+  /// attachment store so chat bubbles can resolve a real file path.
+  /// Returns null when the copy fails; callers fall back to the content
+  /// URI (which keeps today's degraded behavior instead of dropping the
+  /// reference entirely).
+  Future<String?> _copyContentUriToAttachmentStore({
+    required String uri,
+    required String transferId,
+    required String name,
+  }) async {
+    try {
+      final dir = await _attachmentStorageDir();
+      final fileName = name.isNotEmpty ? name : transferId;
+      final destPath = p.join(dir.path, '${transferId}_$fileName');
+      final destFile = File(destPath);
+      if (await destFile.exists()) {
+        return destPath;
+      }
+      await _ipnService.copyContentUriToFile(uri, destPath);
+      if (await destFile.exists()) {
+        _logger.d(
+          'Mirrored attachment content URI into managed store: '
+          'transferId=$transferId path=$destPath',
+        );
+        return destPath;
+      }
+    } catch (e) {
+      _logger.w('Failed to mirror attachment content URI $uri: $e');
+    }
+    return null;
+  }
+
   Future<Directory> _attachmentStorageDir() async {
     final supportDir = await getApplicationSupportDirectory();
     final profileScope = _attachmentScopeFolderName(_currentProfileIdOrEmpty());
@@ -2162,6 +2210,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               peerID: conversationId,
               declaredSize: item.size,
               path: item.path,
+              cylonixPeerMessage: true,
             ),
           )
           .toList();

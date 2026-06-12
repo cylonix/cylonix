@@ -1164,6 +1164,16 @@ class IpnService {
     }
   }
 
+  /// Android only: copy a MediaStore content:// URI's bytes to a plain
+  /// file path the Dart side can read. Taildrop receives on Android 10+
+  /// land in MediaStore as content URIs that dart:io cannot open.
+  Future<void> copyContentUriToFile(String uri, String destPath) async {
+    await _channel.invokeMethod('copyContentUri', {
+      'uri': uri,
+      'destPath': destPath,
+    });
+  }
+
   Future<void> startTailchat() async {
     final cacheDir = await _channel.invokeMethod('getSharedFolderPath');
     final result = await _sendCommand(

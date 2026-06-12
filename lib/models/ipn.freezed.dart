@@ -7225,7 +7225,12 @@ mixin _$OutgoingFile {
   @JsonKey(name: 'Succeeded')
   bool get succeeded => throw _privateConstructorUsedError;
   @JsonKey(name: 'Path')
-  String? get path => throw _privateConstructorUsedError;
+  String? get path =>
+      throw _privateConstructorUsedError; // Marks this transfer as a peer-message attachment. Only flagged
+// transfers have their ID forwarded to the receiver as the cylonix
+// transfer ID; plain drops keep their ID for progress tracking only.
+  @JsonKey(name: 'CylonixPeerMessage')
+  bool get cylonixPeerMessage => throw _privateConstructorUsedError;
 
   /// Serializes this OutgoingFile to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -7254,7 +7259,8 @@ abstract class $OutgoingFileCopyWith<$Res> {
       @JsonKey(name: 'FinalPath') String? finalPath,
       @JsonKey(name: 'Finished') bool finished,
       @JsonKey(name: 'Succeeded') bool succeeded,
-      @JsonKey(name: 'Path') String? path});
+      @JsonKey(name: 'Path') String? path,
+      @JsonKey(name: 'CylonixPeerMessage') bool cylonixPeerMessage});
 }
 
 /// @nodoc
@@ -7283,6 +7289,7 @@ class _$OutgoingFileCopyWithImpl<$Res, $Val extends OutgoingFile>
     Object? finished = null,
     Object? succeeded = null,
     Object? path = freezed,
+    Object? cylonixPeerMessage = null,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -7329,6 +7336,10 @@ class _$OutgoingFileCopyWithImpl<$Res, $Val extends OutgoingFile>
           ? _value.path
           : path // ignore: cast_nullable_to_non_nullable
               as String?,
+      cylonixPeerMessage: null == cylonixPeerMessage
+          ? _value.cylonixPeerMessage
+          : cylonixPeerMessage // ignore: cast_nullable_to_non_nullable
+              as bool,
     ) as $Val);
   }
 }
@@ -7352,7 +7363,8 @@ abstract class _$$OutgoingFileImplCopyWith<$Res>
       @JsonKey(name: 'FinalPath') String? finalPath,
       @JsonKey(name: 'Finished') bool finished,
       @JsonKey(name: 'Succeeded') bool succeeded,
-      @JsonKey(name: 'Path') String? path});
+      @JsonKey(name: 'Path') String? path,
+      @JsonKey(name: 'CylonixPeerMessage') bool cylonixPeerMessage});
 }
 
 /// @nodoc
@@ -7379,6 +7391,7 @@ class __$$OutgoingFileImplCopyWithImpl<$Res>
     Object? finished = null,
     Object? succeeded = null,
     Object? path = freezed,
+    Object? cylonixPeerMessage = null,
   }) {
     return _then(_$OutgoingFileImpl(
       id: null == id
@@ -7425,6 +7438,10 @@ class __$$OutgoingFileImplCopyWithImpl<$Res>
           ? _value.path
           : path // ignore: cast_nullable_to_non_nullable
               as String?,
+      cylonixPeerMessage: null == cylonixPeerMessage
+          ? _value.cylonixPeerMessage
+          : cylonixPeerMessage // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
@@ -7443,7 +7460,8 @@ class _$OutgoingFileImpl extends _OutgoingFile {
       @JsonKey(name: 'FinalPath') this.finalPath,
       @JsonKey(name: 'Finished') this.finished = false,
       @JsonKey(name: 'Succeeded') this.succeeded = false,
-      @JsonKey(name: 'Path') this.path})
+      @JsonKey(name: 'Path') this.path,
+      @JsonKey(name: 'CylonixPeerMessage') this.cylonixPeerMessage = false})
       : super._();
 
   factory _$OutgoingFileImpl.fromJson(Map<String, dynamic> json) =>
@@ -7482,10 +7500,16 @@ class _$OutgoingFileImpl extends _OutgoingFile {
   @override
   @JsonKey(name: 'Path')
   final String? path;
+// Marks this transfer as a peer-message attachment. Only flagged
+// transfers have their ID forwarded to the receiver as the cylonix
+// transfer ID; plain drops keep their ID for progress tracking only.
+  @override
+  @JsonKey(name: 'CylonixPeerMessage')
+  final bool cylonixPeerMessage;
 
   @override
   String toString() {
-    return 'OutgoingFile(id: $id, name: $name, peerID: $peerID, started: $started, declaredSize: $declaredSize, sent: $sent, partialPath: $partialPath, finalPath: $finalPath, finished: $finished, succeeded: $succeeded, path: $path)';
+    return 'OutgoingFile(id: $id, name: $name, peerID: $peerID, started: $started, declaredSize: $declaredSize, sent: $sent, partialPath: $partialPath, finalPath: $finalPath, finished: $finished, succeeded: $succeeded, path: $path, cylonixPeerMessage: $cylonixPeerMessage)';
   }
 
   @override
@@ -7508,13 +7532,27 @@ class _$OutgoingFileImpl extends _OutgoingFile {
                 other.finished == finished) &&
             (identical(other.succeeded, succeeded) ||
                 other.succeeded == succeeded) &&
-            (identical(other.path, path) || other.path == path));
+            (identical(other.path, path) || other.path == path) &&
+            (identical(other.cylonixPeerMessage, cylonixPeerMessage) ||
+                other.cylonixPeerMessage == cylonixPeerMessage));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, id, name, peerID, started,
-      declaredSize, sent, partialPath, finalPath, finished, succeeded, path);
+  int get hashCode => Object.hash(
+      runtimeType,
+      id,
+      name,
+      peerID,
+      started,
+      declaredSize,
+      sent,
+      partialPath,
+      finalPath,
+      finished,
+      succeeded,
+      path,
+      cylonixPeerMessage);
 
   /// Create a copy of OutgoingFile
   /// with the given fields replaced by the non-null parameter values.
@@ -7534,17 +7572,19 @@ class _$OutgoingFileImpl extends _OutgoingFile {
 
 abstract class _OutgoingFile extends OutgoingFile {
   const factory _OutgoingFile(
-      {@JsonKey(name: 'ID') final String id,
-      @JsonKey(name: 'Name') required final String name,
-      @JsonKey(name: 'PeerID') final String peerID,
-      @JsonKey(name: 'Started') final String? started,
-      @JsonKey(name: 'DeclaredSize') required final int declaredSize,
-      @JsonKey(name: 'Sent') final int sent,
-      @JsonKey(name: 'PartialPath') final String? partialPath,
-      @JsonKey(name: 'FinalPath') final String? finalPath,
-      @JsonKey(name: 'Finished') final bool finished,
-      @JsonKey(name: 'Succeeded') final bool succeeded,
-      @JsonKey(name: 'Path') final String? path}) = _$OutgoingFileImpl;
+          {@JsonKey(name: 'ID') final String id,
+          @JsonKey(name: 'Name') required final String name,
+          @JsonKey(name: 'PeerID') final String peerID,
+          @JsonKey(name: 'Started') final String? started,
+          @JsonKey(name: 'DeclaredSize') required final int declaredSize,
+          @JsonKey(name: 'Sent') final int sent,
+          @JsonKey(name: 'PartialPath') final String? partialPath,
+          @JsonKey(name: 'FinalPath') final String? finalPath,
+          @JsonKey(name: 'Finished') final bool finished,
+          @JsonKey(name: 'Succeeded') final bool succeeded,
+          @JsonKey(name: 'Path') final String? path,
+          @JsonKey(name: 'CylonixPeerMessage') final bool cylonixPeerMessage}) =
+      _$OutgoingFileImpl;
   const _OutgoingFile._() : super._();
 
   factory _OutgoingFile.fromJson(Map<String, dynamic> json) =
@@ -7582,7 +7622,13 @@ abstract class _OutgoingFile extends OutgoingFile {
   bool get succeeded;
   @override
   @JsonKey(name: 'Path')
-  String? get path;
+  String?
+      get path; // Marks this transfer as a peer-message attachment. Only flagged
+// transfers have their ID forwarded to the receiver as the cylonix
+// transfer ID; plain drops keep their ID for progress tracking only.
+  @override
+  @JsonKey(name: 'CylonixPeerMessage')
+  bool get cylonixPeerMessage;
 
   /// Create a copy of OutgoingFile
   /// with the given fields replaced by the non-null parameter values.
