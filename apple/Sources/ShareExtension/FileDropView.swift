@@ -312,6 +312,17 @@ public struct FileDropView: View {
         @FocusState private var searchFieldIsFocused: Bool
     #endif
 
+    // The macOS sheet is a fixed 480pt wide, so the search field can claim
+    // 200pt; on iOS it takes whatever the toggle and refresh control leave
+    // over, otherwise the row overflows on phone widths.
+    private var searchFieldMinWidth: CGFloat {
+        #if os(macOS)
+            return 200
+        #else
+            return 0
+        #endif
+    }
+
     private var filteredPeers: [PeerStatus] {
         var peers = viewModel.status?.userPeers ?? []
         if showOnlineOnly {
@@ -392,15 +403,34 @@ public struct FileDropView: View {
                 HStack {
                     TextField("Search name or OS…", text: $searchText)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(minWidth: 200)
+                        .frame(minWidth: searchFieldMinWidth)
                     #if os(iOS)
                         .focused($searchFieldIsFocused)
                     #endif
 
                     Toggle("Online Only", isOn: $showOnlineOnly)
+                        // Hug content so the label isn't squeezed into
+                        // per-character wrapping on narrow phone layouts.
+                        .fixedSize()
                     #if os(macOS)
                         .toggleStyle(CheckboxToggleStyle())
                     #endif
+
+                    if viewModel.isRefreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 24, height: 24)
+                    } else {
+                        Button {
+                            viewModel.loadStatus()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.accentColor)
+                        .frame(width: 24, height: 24)
+                        .help("Refresh device status")
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -427,6 +457,9 @@ public struct FileDropView: View {
                         .listStyle(.plain)
                         .modifier(HideScrollBackground())
                         .background(Color.clear)
+                    #if os(iOS)
+                        .refreshable { await viewModel.refreshStatus() }
+                    #endif
                 }
             }
         }
@@ -470,6 +503,7 @@ class FileDropViewModel: ObservableObject {
     @Published private(set) var status: Status?
     @Published private(set) var transfers: [String: PeerTransferState] = [:]
     @Published private(set) var isLoading = true
+    @Published private(set) var isRefreshing = false
 
     private var pending = [String: (Data?) -> Void]()
     private let channelSuffix = "share"
@@ -694,7 +728,12 @@ class FileDropViewModel: ObservableObject {
     }
 
     func loadStatus() {
-        isLoading = true
+        // Full-screen loading only before the first status arrives; later
+        // calls refresh in place so the peer list stays visible.
+        if status == nil {
+            isLoading = true
+        }
+        isRefreshing = true
         debugLog("loadStatus()")
 
         #if os(macOS)
@@ -704,11 +743,11 @@ class FileDropViewModel: ObservableObject {
                     let s = try await client.getStatus()
                     await MainActor.run {
                         self.status = s
-                        self.isLoading = false
+                        self.finishLoading()
                     }
                 } catch {
                     debugLog("Direct loadStatus failed: \(error)")
-                    await MainActor.run { self.isLoading = false }
+                    await MainActor.run { self.finishLoading() }
                 }
             }
             return
@@ -717,18 +756,33 @@ class FileDropViewModel: ObservableObject {
 
         postMessage(["method": "status"]) { [weak self] data in
             debugLog("loadStatus response: \(String(describing: data))")
-            guard
-                let data = data,
-                let status = try? JSONDecoder().decode(Status.self, from: data)
-            else {
-                DispatchQueue.main.async { self?.isLoading = false }
-                return
-            }
             DispatchQueue.main.async {
-                self?.status = status
-                self?.isLoading = false
+                if let data = data,
+                   let status = try? JSONDecoder().decode(Status.self, from: data)
+                {
+                    self?.status = status
+                }
+                self?.finishLoading()
             }
         }
+    }
+
+    private func finishLoading() {
+        isLoading = false
+        isRefreshing = false
+    }
+
+    /// Async wrapper for pull-to-refresh. The tunnel may never answer the
+    /// status message (pending IPC callbacks have no timeout), so give up
+    /// after 10s rather than leaving the spinner up forever.
+    @MainActor
+    func refreshStatus() async {
+        loadStatus()
+        for _ in 0 ..< 50 {
+            guard isRefreshing else { return }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        finishLoading()
     }
 
     /// Retry only the failed files for this peer.
