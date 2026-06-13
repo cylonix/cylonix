@@ -9,6 +9,7 @@ import UserNotifications
 class MainFlutterWindow: NSWindow {
   private var mediaChannel: FlutterMethodChannel?
   private var notificationsChannel: FlutterMethodChannel?
+  private var directChannel: FlutterMethodChannel?
   private var notificationDelegate: ForegroundNotificationDelegate?
 
   override func awakeFromNib() {
@@ -20,6 +21,7 @@ class MainFlutterWindow: NSWindow {
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerMediaChannel(controller: flutterViewController)
     registerNotificationsChannel(controller: flutterViewController)
+    registerDirectChannel(controller: flutterViewController)
     requestNotificationAuthorization()
 
     super.awakeFromNib()
@@ -141,6 +143,121 @@ class MainFlutterWindow: NSWindow {
       }
     }
     notificationsChannel = channel
+  }
+
+  private func registerDirectChannel(controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(
+      name: "io.cylonix.sase/direct",
+      binaryMessenger: controller.engine.binaryMessenger
+    )
+    channel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "uninstallServices":
+        // Phase 1: stop/remove the daemon, notifier, CLI and receipt; return a
+        // status report. Does NOT delete the app bundle or quit the app.
+        let args = call.arguments as? [String: Any] ?? [:]
+        let purgeState = (args["purgeState"] as? NSNumber)?.boolValue ?? false
+        MainFlutterWindow.runUninstallPhase(
+          mode: "services", purgeState: purgeState, result: result)
+      case "deleteApp":
+        // Phase 2: delete /Applications/Cylonix.app and terminate this app.
+        MainFlutterWindow.runUninstallPhase(
+          mode: "app", purgeState: false, result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    directChannel = channel
+  }
+
+  /// Runs one phase of the bundled uninstall_direct.sh as root.
+  ///
+  /// The script is copied to a temp path first so the "app" phase can delete
+  /// the app bundle without removing the file it is executing. It runs
+  /// synchronously under security_authtrampoline (an independent privileged
+  /// process tree), so the "app" phase's trailing `killall Cylonix` terminates
+  /// this app only after deletion has finished. macOS caches the admin
+  /// authorization for ~5 minutes, so the second phase does not re-prompt.
+  ///
+  /// The phase's stdout (a "• …" status report) is returned to Dart on
+  /// success; a dismissed password prompt maps to the `cancelled` error code.
+  static func runUninstallPhase(
+    mode: String, purgeState: Bool, result: @escaping FlutterResult
+  ) {
+    guard let bundled = Bundle.main.path(forResource: "uninstall_direct", ofType: "sh") else {
+      result(FlutterError(
+        code: "missing_script",
+        message: "uninstall_direct.sh not found in app bundle",
+        details: nil
+      ))
+      return
+    }
+
+    let tmpPath = NSTemporaryDirectory() + "cylonix-uninstall-\(UUID().uuidString).sh"
+    do {
+      try? FileManager.default.removeItem(atPath: tmpPath)
+      try FileManager.default.copyItem(atPath: bundled, toPath: tmpPath)
+    } catch {
+      result(FlutterError(
+        code: "copy_failed",
+        message: "Failed to stage uninstaller: \(error)",
+        details: nil
+      ))
+      return
+    }
+
+    let flag = purgeState ? " --purge-state" : ""
+    let shellCmd = "/bin/zsh \(tmpPath) \(mode)\(flag)"
+    // Escape for embedding inside an AppleScript double-quoted string.
+    let escaped = shellCmd
+      .replacingOccurrences(of: "\\", with: "\\\\")
+      .replacingOccurrences(of: "\"", with: "\\\"")
+    let appleScript = "do shell script \"\(escaped)\" with administrator privileges"
+
+    DispatchQueue.global(qos: .userInitiated).async {
+      let task = Process()
+      task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+      task.arguments = ["-e", appleScript]
+      let stdoutPipe = Pipe()
+      let stderrPipe = Pipe()
+      task.standardOutput = stdoutPipe
+      task.standardError = stderrPipe
+      do {
+        try task.run()
+      } catch {
+        DispatchQueue.main.async {
+          result(FlutterError(
+            code: "uninstall_failed",
+            message: "Failed to launch osascript: \(error)",
+            details: nil
+          ))
+        }
+        return
+      }
+      let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+      let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+      task.waitUntilExit()
+      let outStr = String(data: outData, encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      let errStr = String(data: errData, encoding: .utf8) ?? ""
+      DispatchQueue.main.async {
+        if task.terminationStatus == 0 {
+          // do shell script returns the command's stdout — the status report.
+          result(outStr)
+        } else if errStr.contains("-128")
+          || errStr.localizedCaseInsensitiveContains("User canceled") {
+          // User dismissed the authorization prompt.
+          result(FlutterError(code: "cancelled", message: "User cancelled", details: nil))
+        } else {
+          result(FlutterError(
+            code: "uninstall_failed",
+            message: errStr.isEmpty
+              ? "osascript exited \(task.terminationStatus)" : errStr,
+            details: nil
+          ))
+        }
+      }
+    }
   }
 
   private func requestNotificationAuthorization() {

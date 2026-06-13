@@ -176,6 +176,14 @@ build_archive() {
       "$app_resources/CylonixNotifier.app/Contents/Resources/AppIcon.icns"
   fi
 
+  # Bundle the uninstaller so the in-app Settings "Uninstall" button can run
+  # it with administrator privileges. Must happen before the app bundle is
+  # re-signed below so the new resource is covered by the signature seal.
+  echo "==> Bundling uninstall_direct.sh into archive..."
+  cp "$ROOT_DIR/scripts/macos_direct/uninstall_direct.sh" \
+    "$app_resources/uninstall_direct.sh"
+  chmod 755 "$app_resources/uninstall_direct.sh"
+
   # Note: downloadsfolder.framework must stay — the Runner binary is dynamically
   # linked against it, so removing it causes a dyld crash at launch.
 

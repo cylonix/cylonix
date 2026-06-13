@@ -171,7 +171,11 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
         : null;
 
     return Container(
-      width: extended ? 300 : 64,
+      // Collapsed width clears the macOS traffic-light cluster (the green
+      // zoom button's right edge sits near x≈67); 64 used to slice it down
+      // the middle since the window uses a transparent full-size-content
+      // title bar and the rail renders beneath the controls.
+      width: extended ? 300 : 80,
       color:
           CupertinoColors.tertiarySystemGroupedBackground.resolveFrom(context),
       child: ListView(

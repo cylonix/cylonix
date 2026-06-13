@@ -12,6 +12,7 @@ import 'models/platform.dart';
 import 'providers/ipn.dart';
 import 'providers/settings.dart';
 import 'services/android_taildrop_notifications.dart';
+import 'services/ipn.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'viewmodels/settings.dart';
@@ -233,6 +234,157 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           _isTogglingNotificationPreviews = false;
         });
       }
+    }
+  }
+
+  void _showUninstallProgress(String message) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: CupertinoAlertDialog(
+          title: Text(message),
+          content: const Padding(
+            padding: EdgeInsets.only(top: 16),
+            child: CupertinoActivityIndicator(radius: 16),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _dismissUninstallProgress() {
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  Widget _uninstallStatusRow(BuildContext context, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1, right: 8),
+            child: Icon(
+              CupertinoIcons.check_mark_circled_solid,
+              size: 16,
+              color: CupertinoColors.systemGreen.resolveFrom(context),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13, height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmUninstall() async {
+    final confirmed = await showAlertDialog(
+      context,
+      'Uninstall Cylonix?',
+      'This stops and removes the Cylonix background service, command-line '
+          'tool, and notifier. You will be asked for an administrator '
+          'password. The app itself is deleted in a second step, after you '
+          'review what was removed.',
+      okText: 'Uninstall',
+      destructiveButton: 'Uninstall',
+      showCancel: true,
+      cancelText: 'Cancel',
+    );
+    if (confirmed != true || !mounted) return;
+
+    // Phase 1: stop/remove the daemon, notifier, CLI and receipt.
+    _showUninstallProgress('Uninstalling services…');
+    String? status;
+    try {
+      status = await ref.read(ipnServiceProvider).uninstallDirectServices();
+    } catch (e) {
+      _logger.e("Uninstall (services) failed: $e");
+      if (!mounted) return;
+      _dismissUninstallProgress();
+      await showAlertDialog(
+        context,
+        "Uninstall Failed",
+        "Could not remove Cylonix services: $e",
+      );
+      return;
+    }
+    if (!mounted) return;
+    _dismissUninstallProgress();
+    if (status == null) {
+      // User dismissed the administrator-password prompt.
+      return;
+    }
+
+    // Show what was removed, then confirm deleting the app itself. There is
+    // no going back from here — services are already removed — so the only
+    // action is to delete the app. (do shell script returns CR line endings;
+    // split on any newline variant so each item renders on its own line.)
+    final statusLines = status
+        .split(RegExp(r'\r\n|\r|\n'))
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    final proceed = await showAlertDialog(
+      context,
+      'Services Removed',
+      null,
+      child: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'The Cylonix background service and tools were removed '
+              'from this Mac:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            if (statusLines.isEmpty)
+              _uninstallStatusRow(context, 'Done')
+            else
+              for (final line in statusLines)
+                _uninstallStatusRow(
+                  context,
+                  // Strip the leading "• " bullet emitted by the script; the
+                  // green checkmark replaces it here.
+                  line.replaceFirst(RegExp(r'^[•\-\*]\s*'), ''),
+                ),
+          ],
+        ),
+      ),
+      okText: 'OK, Delete Cylonix App',
+      destructiveButton: 'OK, Delete Cylonix App',
+      showCancel: false,
+    );
+    if (proceed != true || !mounted) return;
+
+    // Phase 2: delete the app bundle and quit. On success this app is
+    // terminated, so the progress dialog stays up until the app disappears.
+    _showUninstallProgress('Deleting Cylonix…');
+    try {
+      final started = await ref.read(ipnServiceProvider).deleteDirectApp();
+      if (!mounted) return;
+      if (started) {
+        return;
+      }
+      // Cancelled at the (normally cached) administrator-password prompt.
+      _dismissUninstallProgress();
+    } catch (e) {
+      _logger.e("Uninstall (app) failed: $e");
+      if (!mounted) return;
+      _dismissUninstallProgress();
+      await showAlertDialog(
+        context,
+        "Delete Failed",
+        "Could not delete the Cylonix app: $e",
+      );
     }
   }
 
@@ -563,6 +715,38 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 'stability of the application.',
               ),
             ),
+            if (IpnService.isDirectDistribution)
+              AdaptiveListSection.insetGrouped(
+                header: const AdaptiveGroupedHeader('UNINSTALL'),
+                children: [
+                  AdaptiveListTile.notched(
+                    title: const Text('Uninstall Cylonix'),
+                    subtitle: const Text(
+                      'Remove the app, background service, command-line '
+                      'tool, and notifier from this Mac',
+                      softWrap: true,
+                      maxLines: 3,
+                    ),
+                    trailing: AdaptiveButton(
+                      textButton: true,
+                      child: Text(
+                        'Uninstall',
+                        style: TextStyle(
+                          color:
+                              CupertinoColors.systemRed.resolveFrom(context),
+                        ),
+                      ),
+                      onPressed: _confirmUninstall,
+                    ),
+                  ),
+                ],
+                footer: const AdaptiveGroupedFooter(
+                  'You will be asked for an administrator password, and '
+                  'Cylonix will quit once removal completes. Your saved node '
+                  'state is preserved so a future reinstall keeps this '
+                  "device's identity.",
+                ),
+              ),
             if (const bool.fromEnvironment('DEBUG') || forceDebug)
               AdaptiveListSection.insetGrouped(
                 header: const Text('DEBUG OPTIONS'),

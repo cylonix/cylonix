@@ -25,6 +25,9 @@ class IpnService {
   static const _capInjectL2Discovery = 'can-inject-l2-discovery';
   static bool _initialized = false;
   static const _channel = MethodChannel('io.cylonix.sase/wg');
+  // Direct-distribution only: privileged system actions (e.g. uninstall)
+  // handled by the macos-direct runner.
+  static const _directChannel = MethodChannel('io.cylonix.sase/direct');
   static final _logger = Logger(tag: "IpnService");
   static final eventBus = EventBus();
   static final _commandCompleters =
@@ -2192,6 +2195,53 @@ class IpnService {
 
   static bool get isDirectDistribution =>
       Platform.isMacOS && _distributionMode == 'direct';
+
+  /// Phase 1 of the direct-build uninstall: stops and removes the `cylonixd`
+  /// LaunchDaemon, the notifier LaunchAgent, the CLI symlink and the pkg
+  /// receipt — leaving the app bundle in place. The native side prompts once
+  /// for an administrator password and runs the bundled `uninstall_direct.sh`
+  /// as root.
+  ///
+  /// Node state under /var/lib/cylonix is preserved unless [purgeState] is
+  /// true, so a later reinstall keeps this device's identity.
+  ///
+  /// Returns the human-readable status report to show the user, or null if the
+  /// user dismissed the administrator-password prompt.
+  Future<String?> uninstallDirectServices({bool purgeState = false}) async {
+    if (!isDirectDistribution) {
+      throw UnsupportedError(
+          "uninstallDirectServices is only available on the macOS direct build.");
+    }
+    try {
+      final status = await _directChannel.invokeMethod<String>(
+        'uninstallServices',
+        {'purgeState': purgeState},
+      );
+      return status ?? '';
+    } on PlatformException catch (e) {
+      if (e.code == 'cancelled') return null;
+      rethrow;
+    }
+  }
+
+  /// Phase 2 of the direct-build uninstall: deletes /Applications/Cylonix.app
+  /// and terminates the app. On success this process is killed, so the returned
+  /// future typically does not complete normally. Returns false if the user
+  /// dismissed the administrator-password prompt (admin auth from phase 1 is
+  /// normally still cached, so no second prompt appears).
+  Future<bool> deleteDirectApp() async {
+    if (!isDirectDistribution) {
+      throw UnsupportedError(
+          "deleteDirectApp is only available on the macOS direct build.");
+    }
+    try {
+      await _directChannel.invokeMethod('deleteApp');
+      return true;
+    } on PlatformException catch (e) {
+      if (e.code == 'cancelled') return false;
+      rethrow;
+    }
+  }
 
   static bool get _useHttpLocalApi {
     return Platform.isLinux || Platform.isWindows || isDirectDistribution;
