@@ -885,12 +885,14 @@ class _PeerMessagingThreadViewState
     }
   }
 
-  /// Hands the attachment to the system share sheet (Android). Resolves
-  /// the same local path the open flow uses.
+  /// Hands the attachment to the system share sheet (Android/iOS). Resolves
+  /// the same local path the open flow uses. [sharePositionOrigin] anchors the
+  /// iPad share popover; it is null (and ignored) elsewhere.
   Future<void> _shareAttachment(
     String messageId,
-    PeerMessagingAttachment attachment,
-  ) async {
+    PeerMessagingAttachment attachment, {
+    Rect? sharePositionOrigin,
+  }) async {
     try {
       final resolvedPath = await _resolveAttachmentOpenPath(
         messageId,
@@ -902,6 +904,7 @@ class _PeerMessagingThreadViewState
       }
       await Share.shareXFiles(
         [await _shareableFile(resolvedPath, attachment.name)],
+        sharePositionOrigin: sharePositionOrigin,
       );
     } catch (e) {
       if (mounted) {
@@ -1609,8 +1612,9 @@ class _PeerMessagingThreadViewState
                             : null,
                         onSaveAttachment: (attachment) =>
                             _saveAttachment(message.id, attachment),
-                        onShareAttachment: (attachment) =>
-                            _shareAttachment(message.id, attachment),
+                        onShareAttachment: (attachment, sharePositionOrigin) =>
+                            _shareAttachment(message.id, attachment,
+                                sharePositionOrigin: sharePositionOrigin),
                         onOpenAttachment: (attachment) =>
                             _openAttachment(message.id, attachment),
                         resolveAttachmentPath: (attachment) =>
@@ -1932,8 +1936,10 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback? onShowFailureDetails;
   final Future<void> Function(PeerMessagingAttachment attachment)
       onSaveAttachment;
-  final Future<void> Function(PeerMessagingAttachment attachment)
-      onShareAttachment;
+  final Future<void> Function(
+    PeerMessagingAttachment attachment,
+    Rect? sharePositionOrigin,
+  ) onShareAttachment;
   final Future<void> Function(PeerMessagingAttachment attachment)
       onOpenAttachment;
   final Future<String?> Function(PeerMessagingAttachment attachment)
@@ -2619,6 +2625,23 @@ class _MessageBubble extends StatelessWidget {
   bool _supportsSecondaryClickAction(BuildContext context) =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
+  /// Anchor rect for the iOS share popover. share_plus requires this on
+  /// iPad (iPhone ignores it). Derived from the bubble's render box so the
+  /// popover anchors near the message even though the action sheet that
+  /// triggered the share has already been dismissed.
+  Rect? _sharePositionOrigin(BuildContext context) {
+    if (!Platform.isIOS) {
+      return null;
+    }
+    final box = context.findRenderObject() as RenderBox?;
+    return box != null && box.hasSize
+        ? Rect.fromPoints(
+            box.localToGlobal(Offset.zero),
+            box.localToGlobal(box.size.bottomRight(Offset.zero)),
+          )
+        : null;
+  }
+
   Future<void> _showMessageActions(
     BuildContext context, {
     Offset? globalPosition,
@@ -2692,9 +2715,8 @@ class _MessageBubble extends StatelessWidget {
                       title: const Text('Copy Text'),
                       onTap: () => Navigator.pop(context, 'copy_text'),
                     ),
-                  // Android only: share_plus needs a sharePositionOrigin on
-                  // iPad, which this bottom sheet cannot supply reliably.
-                  if (Platform.isAndroid && message.text.isNotEmpty)
+                  if ((Platform.isAndroid || Platform.isIOS) &&
+                      message.text.isNotEmpty)
                     ListTile(
                       leading: const Icon(Icons.share_outlined),
                       title: const Text('Share Text'),
@@ -2723,7 +2745,7 @@ class _MessageBubble extends StatelessWidget {
                       onTap: () =>
                           Navigator.pop(context, 'save:${attachment.id}'),
                     ),
-                  if (Platform.isAndroid)
+                  if (Platform.isAndroid || Platform.isIOS)
                     for (final attachment in savableAttachments)
                       ListTile(
                         leading: const Icon(Icons.share_outlined),
@@ -2758,7 +2780,10 @@ class _MessageBubble extends StatelessWidget {
       return;
     }
     if (selected == 'share_text') {
-      await Share.share(message.text);
+      await Share.share(
+        message.text,
+        sharePositionOrigin: _sharePositionOrigin(context),
+      );
       return;
     }
     if (selected.startsWith('share:')) {
@@ -2766,7 +2791,7 @@ class _MessageBubble extends StatelessWidget {
       final attachment = message.attachments.firstWhere(
         (value) => value.id == attachmentId,
       );
-      await onShareAttachment(attachment);
+      await onShareAttachment(attachment, _sharePositionOrigin(context));
       return;
     }
     if (selected == 'send_again') {
