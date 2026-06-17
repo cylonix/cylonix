@@ -5,20 +5,16 @@
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <!--
-      Media access is permission-free, so READ_MEDIA_* / READ_EXTERNAL_STORAGE
-      are intentionally NOT requested (Google Play Photo & Video Permissions
-      policy): gallery picking uses image_picker's Android Photo Picker, file
-      browse/save uses file_picker's Storage Access Framework, and received
-      Taildrop files are written via MediaStore into collections this app owns
-      (no permission on API 29+). The open_filex dependency declares those read
-      permissions for opening raw external-storage paths, but Cylonix only opens
-      attachments from its own private storage (served via open_filex's
-      FileProvider with a per-open read grant), so they are stripped at
-      manifest-merge time below.
+      No READ_MEDIA_* / READ_EXTERNAL_STORAGE: media access is permission-free
+      (image_picker's Photo Picker, file_picker's SAF, and MediaStore writes to
+      app-owned collections on API 29+), and requesting them would trip Google
+      Play's Photo & Video Permissions policy. The open_filex dependency pulls
+      them in for raw external-storage paths Cylonix never uses (it opens
+      private-storage attachments via open_filex's FileProvider), so they are
+      stripped via tools:node="remove" below.
 
-      WRITE_EXTERNAL_STORAGE is kept only for legacy shared-storage writes on
-      Android 9 and below (maxSdkVersion 29); it is inert on modern devices and
-      is not subject to the policy.
+      WRITE_EXTERNAL_STORAGE is kept for legacy writes on Android 9 and below
+      (maxSdkVersion 29) — inert on modern devices, not policy-flagged.
     -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
