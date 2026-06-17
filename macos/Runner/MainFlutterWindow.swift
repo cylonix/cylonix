@@ -1,10 +1,12 @@
 import AVFoundation
 import Cocoa
 import FlutterMacOS
+import UserNotifications
 
 class MainFlutterWindow: NSWindow {
   private weak var mainFlutterViewController: FlutterViewController?
   private var mediaChannel: FlutterMethodChannel?
+  private var notificationDelegate: UNUserNotificationCenterDelegate?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController.init()
@@ -16,6 +18,7 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerMediaChannel(controller: flutterViewController)
+    requestNotificationAuthorization()
 
     super.awakeFromNib()
     restoreFlutterFirstResponder()
@@ -139,6 +142,23 @@ class MainFlutterWindow: NSWindow {
     }
   }
 
+  // The Network Extension build posts file-received banners from the NE
+  // (WireGuardAdapter / BackgroundTaskManager), but those are dropped unless
+  // the app has requested notification authorization. The PKG build does this
+  // in macos-direct; the App Store / NE build must do the same here.
+  private func requestNotificationAuthorization() {
+    let center = UNUserNotificationCenter.current()
+    let delegate = ForegroundNotificationDelegate()
+    center.delegate = delegate
+    notificationDelegate = delegate
+    center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+      if let error = error {
+        NSLog("UNUserNotification requestAuthorization error: \(error)")
+      }
+      NSLog("UNUserNotification authorization granted=\(granted)")
+    }
+  }
+
   private func adjustWindowControls() {
     let buttonInset = NSPoint(x: 20, y: -10)
 
@@ -157,5 +177,17 @@ class MainFlutterWindow: NSWindow {
 
     let zoomX = minimizeX + 20
     zoomButton.setFrameOrigin(NSPoint(x: zoomX, y: buttonInset.y))
+  }
+}
+
+/// Lets file-received banners appear even when Cylonix.app is focused;
+/// without a delegate, macOS suppresses notifications from the active app.
+final class ForegroundNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+  func userNotificationCenter(
+    _: UNUserNotificationCenter,
+    willPresent _: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    completionHandler([.banner, .sound])
   }
 }

@@ -1120,7 +1120,18 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
     final autoSavedPaths = await _ipnService.consumeAutoSavedFilePaths();
     if (autoSavedPaths.isNotEmpty) {
-      _pendingAutoSavedPaths.addAll(autoSavedPaths);
+      // macOS NE: BackgroundTaskManager stages peer-message attachments in an
+      // app inbox (deliberately kept out of the user's Downloads). Relocate
+      // each into the profile-scoped managed attachment store so the chat
+      // bubbles can read them.
+      if (Platform.isMacOS && !IpnService.isDirectDistribution) {
+        for (final entry in autoSavedPaths.entries) {
+          final managed = await _relocateInboxAttachmentToStore(entry.value);
+          _pendingAutoSavedPaths[entry.key] = managed ?? entry.value;
+        }
+      } else {
+        _pendingAutoSavedPaths.addAll(autoSavedPaths);
+      }
       _logger.d(
         'Merged auto-saved attachment paths into pending cache: $_pendingAutoSavedPaths',
       );
@@ -1653,6 +1664,38 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     );
     await attachmentsDir.create(recursive: true);
     return attachmentsDir;
+  }
+
+  /// macOS NE only: move a peer attachment that `BackgroundTaskManager` staged
+  /// in the app inbox (`<AppSupport>/peer_messaging/incoming`) into the
+  /// profile-scoped managed attachment store, returning the managed path. The
+  /// inbox copy is removed so peer attachments never linger outside the managed
+  /// store (and never in the user's Downloads). Returns null on any error, in
+  /// which case the caller keeps the original inbox path.
+  Future<String?> _relocateInboxAttachmentToStore(String inboxPath) async {
+    try {
+      final source = File(inboxPath);
+      if (!await source.exists()) {
+        return null;
+      }
+      final dir = await _attachmentStorageDir();
+      final destPath = p.join(dir.path, p.basename(inboxPath));
+      final dest = File(destPath);
+      if (await dest.exists()) {
+        await dest.delete();
+      }
+      await source.copy(destPath);
+      try {
+        await source.delete();
+      } catch (_) {}
+      _logger.d(
+        'Relocated peer attachment into managed store: $inboxPath -> $destPath',
+      );
+      return destPath;
+    } catch (e) {
+      _logger.w('Failed to relocate inbox attachment $inboxPath: $e');
+      return null;
+    }
   }
 
   /// On iOS/macOS the network extension lives in a separate sandbox and can
