@@ -67,12 +67,11 @@ class BackgroundTaskManager {
                 for: .documentDirectory,
                 in: .userDomainMask
             )[0].appendingPathComponent("Downloads")
-        #else
-            let destinationURL = FileManager.default.urls(
-                for: .downloadsDirectory,
-                in: .userDomainMask
-            )[0]
         #endif
+        // macOS computes a per-file destination inside the loop below:
+        // peer-message attachments go to the app-managed peer_messaging store
+        // (chat-accessible, never the user's Downloads); plain Taildrop drops
+        // go to ~/Downloads/Cylonix.
 
         do {
             #if os(iOS)
@@ -110,6 +109,34 @@ class BackgroundTaskManager {
                         cleanupTransferIDSidecar(for: file, in: sourceDir)
                         processedFiles.append(file.Name)
                         photoLibrarySavedFiles.append(file.Name)
+                        continue
+                    }
+                #endif
+
+                #if os(macOS)
+                    // Route by kind on macOS. Peer-message attachments
+                    // (transferID present) land in the app-managed
+                    // peer_messaging store so chat bubbles can read them and are
+                    // deliberately kept OUT of the user's Downloads; the Flutter
+                    // side relocates them into the profile-scoped managed dir.
+                    // Plain Taildrop drops go to ~/Downloads/Cylonix.
+                    let destinationURL: URL
+                    if let transferID, !transferID.isEmpty {
+                        destinationURL = FileManager.default.urls(
+                            for: .applicationSupportDirectory, in: .userDomainMask
+                        )[0]
+                        .appendingPathComponent("peer_messaging", isDirectory: true)
+                        .appendingPathComponent("incoming", isDirectory: true)
+                    } else {
+                        destinationURL = FileManager.default.urls(
+                            for: .downloadsDirectory, in: .userDomainMask
+                        )[0].appendingPathComponent("Cylonix", isDirectory: true)
+                    }
+                    do {
+                        try FileManager.default.createDirectory(
+                            at: destinationURL, withIntermediateDirectories: true)
+                    } catch {
+                        wg_log(.error, message: "Failed to create destination \(destinationURL.path): \(error)")
                         continue
                     }
                 #endif
