@@ -30,6 +30,16 @@
         tools:node="remove" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"
         tools:node="remove" />
+    <!--
+      QUERY_ALL_PACKAGES is a Google Play restricted permission, pulled in by
+      the installed_apps plugin and the tailscale-android AAR for app
+      enumeration. The split-tunnel picker instead discovers launchable apps
+      via the <queries> MAIN/LAUNCHER entry below (getInstalledApplications()
+      returns packages this app can see), so the broad permission is removed at
+      manifest-merge time.
+    -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:node="remove" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera"
@@ -50,6 +60,22 @@
     <uses-feature android:name="android.hardware.touchscreen"
               android:required="false" />
 	<queries>
+        <!--
+          Make launchable apps visible so the split-tunnel picker can enumerate
+          them via PackageManager.getInstalledApplications() without the
+          restricted QUERY_ALL_PACKAGES permission. This covers every
+          user-launchable app; system apps are filtered out in Dart. The
+          LEANBACK_LAUNCHER variant covers Android TV apps that only expose a
+          leanback entry point.
+        -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
