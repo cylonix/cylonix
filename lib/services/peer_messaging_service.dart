@@ -1114,11 +1114,14 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }
 
   Future<void> _consumeAutoSavedAttachmentPaths() async {
-    if (!(Platform.isMacOS || Platform.isIOS)) {
-      return;
-    }
-
-    final autoSavedPaths = await _ipnService.consumeAutoSavedFilePaths();
+    // The native auto-saved-path map only exists on Apple platforms
+    // (staged by the Network Extension). On desktop/Android, inbound
+    // taildrop arrives in DirectFileMode and is recorded into
+    // _pendingAutoSavedPaths by _handleDirectModeFileReceived, so we still
+    // need to run the consumption below to attach those paths to messages.
+    final autoSavedPaths = (Platform.isMacOS || Platform.isIOS)
+        ? await _ipnService.consumeAutoSavedFilePaths()
+        : const <String, String>{};
     if (autoSavedPaths.isNotEmpty) {
       // macOS NE: BackgroundTaskManager stages peer-message attachments in an
       // app inbox (deliberately kept out of the user's Downloads). Relocate

@@ -18,7 +18,7 @@ import 'widgets/adaptive_widgets.dart';
 import 'widgets/share_peer_device_list.dart';
 
 const double _splitViewMinWidth = 760;
-const double _splitViewListWidth = 360;
+const double _splitViewListWidth = 460;
 
 class PeerMessagingInboxView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateBack;
@@ -224,27 +224,21 @@ class _ComposeCard extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 20),
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Start a new message',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    peers.isEmpty
-                        ? 'Connect to your tailnet to message a peer.'
-                        : 'Choose a peer and jump into an existing thread or create a new one.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
+            Text(
+              'Start a new message',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(height: 6),
+            Text(
+              peers.isEmpty
+                  ? 'Connect to your tailnet to message a peer.'
+                  : 'Choose a peer and jump into an existing thread or create a new one.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: peers.isEmpty
                   ? null
