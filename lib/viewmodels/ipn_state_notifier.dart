@@ -16,6 +16,7 @@ import '../services/mdm.dart';
 import '../services/system_tray_service.dart';
 import '../utils/logger.dart';
 import '../utils/utils.dart';
+import '../providers/ipn.dart';
 import '../providers/settings.dart';
 import 'state_notifier.dart';
 
@@ -38,6 +39,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   bool _checkedFilesWaiting = false;
   String? urlBrowsed;
   bool loginSent = false;
+  bool _reauthRequested = false;
+  String? _reauthOrigNodeKey;
 
   var peerCategorizer = PeerCategorizer();
   static final _logger = Logger(tag: "IpnStateNotifier");
@@ -266,11 +269,38 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       urlBrowsed = null;
     }
 
+    // Track an in-progress explicit re-authentication. When the device key has
+    // not yet expired, the backend renews the node key seamlessly: it stays in
+    // the running state and never drops to needsLogin. We keep the login URL
+    // (instead of discarding it below) and route the UI to the login page so it
+    // auto-launches the URL like a normal login. Completion is detected by the
+    // node key changing or a LoginFinished event, mirroring upstream
+    // `tailscale up --force-reauth`.
+    if (_reauthRequested) {
+      final newNodeKey =
+          (notification.netMap ?? currentState?.netmap)?.selfNode.key;
+      final keyChanged = newNodeKey != null &&
+          newNodeKey.isNotEmpty &&
+          _reauthOrigNodeKey != null &&
+          newNodeKey != _reauthOrigNodeKey;
+      if (notification.loginFinished != null || keyChanged) {
+        _logger.d("Reauth: completed (loginFinished="
+            "${notification.loginFinished != null}, keyChanged=$keyChanged)");
+        _setReauthInProgress(false);
+      }
+    }
+
     // Determine browseToURL
     var browseToURL = notification.browseToURL ?? currentState?.browseToURL;
     if (backendState.value > BackendState.needsLogin.index) {
-      browseToURL = null;
-      loginSent = false;
+      // A login URL is normally only relevant at/below needsLogin. During an
+      // explicit re-auth of a not-yet-expired key the backend stays running, so
+      // keep the URL until login finishes — this lets the login page show and
+      // auto-launch the URL exactly like a normal login.
+      if (!_reauthRequested) {
+        browseToURL = null;
+        loginSent = false;
+      }
     }
 
     var health = notification.health;
@@ -555,10 +585,14 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     return await _ipnService.getLogs();
   }
 
-  Future<void> login({String? authKey, String? controlURL}) async {
+  Future<void> login({
+    String? authKey,
+    String? controlURL,
+    bool reauth = false,
+  }) async {
     _logger.d(
-      "\n\n***Logging in with authKey: $authKey, controlURL: $controlURL. "
-      "Set ipn state to connecting***\n\n",
+      "\n\n***Logging in with authKey: $authKey, controlURL: $controlURL, "
+      "reauth: $reauth. Set ipn state to connecting***\n\n",
     );
     final previousState = state.valueOrNull ?? const IpnState();
     state = AsyncValue.data(
@@ -567,7 +601,11 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       ),
     );
     try {
-      await _ipnService.login(authKey: authKey, controlURL: controlURL);
+      await _ipnService.login(
+        authKey: authKey,
+        controlURL: controlURL,
+        reauth: reauth,
+      );
       loginSent = true;
     } catch (error, stack) {
       _logger.e("login() caught error: $error");
@@ -577,6 +615,41 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       state = AsyncValue.data(previousState);
       rethrow;
     }
+  }
+
+  /// Re-authenticate the current profile.
+  ///
+  /// Performs an interactive login, which forces control to rotate a new node
+  /// key and return a fresh login URL. The request is remembered so the
+  /// notification handler opens that URL in the browser even when the backend
+  /// stays in the running state (seamless key renewal for a not-yet-expired
+  /// key). Mirrors `tailscale up --force-reauth`.
+  Future<void> reauthenticate() async {
+    if (_reauthRequested) {
+      _logger.d("Reauth already in progress, ignoring duplicate request");
+      return;
+    }
+    // Remember the current node key so we can detect when control rotates it,
+    // which marks the re-authentication as complete (the backend may stay
+    // running the whole time when the key has not yet expired).
+    _reauthOrigNodeKey = state.valueOrNull?.netmap?.selfNode.key;
+    // Mark reauth in progress so the UI drops to the login page.
+    _setReauthInProgress(true);
+    try {
+      // No controlURL: reauth reuses the daemon's current (own) controller.
+      await login(reauth: true);
+    } catch (e) {
+      _setReauthInProgress(false);
+      rethrow;
+    }
+  }
+
+  void _setReauthInProgress(bool value) {
+    _reauthRequested = value;
+    if (!value) {
+      _reauthOrigNodeKey = null;
+    }
+    ref.read(reauthInProgressProvider.notifier).state = value;
   }
 
   Future<void> logout() async {

@@ -1819,25 +1819,42 @@ class IpnService {
     MaskedPrefs? maskedPrefs,
     String? authKey,
     String? controlURL,
+    bool reauth = false,
   }) async {
     try {
       // Stop VPN before setting the prefs so that it won't apply
       // to the current login profile.
       Future<void> editPrefsBeforeLogin() async {
-        // Handle MDM control URL (assuming you have MDM settings)
         var prefs = maskedPrefs;
         final isInteractiveLogin = authKey == null || authKey.isEmpty;
-        final mdmControlURL = await _getMdmControlURL();
-        if (mdmControlURL.isNotEmpty) {
-          controlURL = mdmControlURL;
-          _logger.i('Overriding control URL with MDM value: $mdmControlURL');
+        if (reauth) {
+          // Re-authentication must reuse the CURRENT session's own controller,
+          // which the daemon already has in its prefs. Do NOT set a control URL
+          // here: the settings/default control URL is only for a NEW login, and
+          // applying it would switch the session onto a different controller.
+          // Leave controlURL unset so editPrefs keeps the daemon's existing one.
+          if (controlURL != null && controlURL!.isNotEmpty) {
+            _logger.w("Reauth: ignoring passed control URL '$controlURL'; "
+                "reusing the daemon's existing controller");
+            controlURL = null;
+          }
         } else {
-          controlURL ??= "https://manage.cylonix.io";
+          // New login: use the explicit control URL (from settings), an MDM
+          // policy value if configured, or the default. (_getMdmControlURL is
+          // currently a stub returning "".)
+          final mdmControlURL = await _getMdmControlURL();
+          if (mdmControlURL.isNotEmpty) {
+            controlURL = mdmControlURL;
+            _logger.i('Overriding control URL with MDM value: $mdmControlURL');
+          } else {
+            controlURL ??= "https://manage.cylonix.io";
+          }
         }
         prefs ??= const MaskedPrefs();
+        final setControlURL = controlURL != null && controlURL!.isNotEmpty;
         prefs = prefs.copyWith(
-          controlURL: controlURL,
-          controlURLSet: true,
+          controlURL: setControlURL ? controlURL : prefs.controlURL,
+          controlURLSet: setControlURL ? true : prefs.controlURLSet,
           wantRunning: true,
           wantRunningSet: true,
         );
@@ -1848,7 +1865,8 @@ class IpnService {
           );
           _logger.d("Clearing stored auth key before interactive login");
         }
-        _logger.d("apply control URL $controlURL");
+        _logger.d("apply control URL ${prefs.controlURL} "
+            "(set=${prefs.controlURLSet})");
         await editPrefs(prefs);
       }
 

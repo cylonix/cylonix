@@ -20,6 +20,12 @@ final ipnStateNotifierProvider =
       ref.watch(ipnServiceProvider), ref.watch(mdmSettingsProvider), ref);
 });
 
+// True while an explicit re-authentication is in progress. Driven by
+// IpnStateNotifier so the UI can drop to the login page and auto-launch the
+// login URL like a normal login, even when the backend renews seamlessly and
+// stays running. Not part of IpnState to avoid regenerating freezed code.
+final reauthInProgressProvider = StateProvider<bool>((ref) => false);
+
 // Derived providers with error handling
 final ipnStateProvider = Provider<IpnState?>((ref) {
   final state = ref.watch(ipnStateNotifierProvider);

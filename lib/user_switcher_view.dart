@@ -1,7 +1,6 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
-import 'dart:async';
 import 'dart:convert';
 import 'package:cylonix/widgets/alert_dialog_widget.dart';
 import 'package:flutter/material.dart';
@@ -644,65 +643,22 @@ class _UserSwitcherViewState extends ConsumerState<UserSwitcherView> {
   Future<void> _handleReauthenticate() async {
     if (_isReauthenticating) return;
     setState(() => _isReauthenticating = true);
-    final loginProfile = ref.read(currentLoginProfileProvider);
 
     try {
-      // Start re-authentication process. Basically login and generate a new
-      // node key for the current profile.
-      await ref
-          .read(ipnStateNotifierProvider.notifier)
-          .login(controlURL: loginProfile?.controlURL);
-
-      // Wait for login to rotate a new node key and then restart the VPN.
-      // Note re-authentication does not ask user to re-enter credentials.
-      // It uses existing session to generate a new node key.
-      //
-      // To completely re-authenticate, user may need to sign out and then
-      // sign in again.
-      //
-      // Since there is no state change on getting a new node key, we wait
-      // for a short duration before restarting the VPN.
-      await Future.delayed(const Duration(seconds: 2));
-
-      await ref.read(ipnStateNotifierProvider.notifier).startVpn();
-      final completer = Completer<void>();
-      final sub = ref.listenManual(
-        ipnStateNotifierProvider,
-        (previous, next) {
-          final p = previous?.valueOrNull?.backendState;
-          final n = next.valueOrNull?.backendState;
-          _logger.d("Backend state changed from $p to $n");
-          if (n == BackendState.running && !completer.isCompleted) {
-            _logger.d("Backend reached running state");
-            completer.complete();
-          }
-        },
-      );
-
-      try {
-        await completer.future.timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            _logger.w("Timeout waiting for backend to be running");
-            throw TimeoutException(
-              'Backend did not reach running state within 5 seconds',
-            );
-          },
-        );
-      } finally {
-        sub.close();
-      }
+      // Re-authentication is an interactive login that forces control to
+      // rotate a new node key and return a fresh login URL. It re-auths against
+      // the controller the node is ALREADY on; it must never adopt the settings
+      // control URL (that is only for a new login). When the device key has not
+      // yet expired the backend renews seamlessly (stays running) and the
+      // notifier opens the returned login URL in the browser; when the key has
+      // expired the backend drops to needsLogin and the normal login UI takes
+      // over. Mirrors upstream `tailscale up --force-reauth`.
+      await ref.read(ipnStateNotifierProvider.notifier).reauthenticate();
       if (!mounted) return;
-      await showAlertDialog(
-        context,
-        'Re-authentication Successful',
-        'Your account has been re-authenticated successfully.',
-      );
-      // Navigate to home after re-authentication
       widget.onNavigateToHome();
     } catch (e) {
-      _logger.e("Failed to re-authenticate: $e");
-      _showError('Failed to re-authenticate: $e');
+      _logger.e("Failed to start re-authentication: $e");
+      _showError('Failed to start re-authentication: $e');
     } finally {
       _isReauthenticating = false;
       if (mounted) setState(() {});

@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'models/const.dart';
 import 'models/ipn.dart';
 import 'models/platform.dart';
 import 'providers/ipn.dart';
@@ -799,6 +800,18 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   Widget _buildUserSection(
       BuildContext context, WidgetRef ref, UserProfile? user) {
     final profiles = ref.watch(loginProfilesProvider);
+    // Show which control server the current account is on. Use the current
+    // profile's own controlURL (falling back to the active prefs), NOT the
+    // settings control URL which is only for a new login.
+    final currentProfile = ref.watch(currentLoginProfileProvider);
+    final serverURL = (currentProfile?.controlURL.isNotEmpty ?? false)
+        ? currentProfile!.controlURL
+        : (ref.watch(ipnStateProvider)?.prefs?.controlURL ?? '');
+    final serverName = controlServerDisplayName(serverURL);
+    final showLogin = user != null &&
+        user.loginName.isNotEmpty &&
+        user.loginName != user.displayName;
+    final hasSubtitle = user != null && (showLogin || serverName.isNotEmpty);
     return AdaptiveListSection.insetGrouped(
       header: const AdaptiveGroupedHeader(
         'ACCOUNT',
@@ -815,10 +828,24 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     ? "Select Profile or Login"
                     : "Please Login"),
           ),
-          subtitle:
-              user?.loginName != null && user?.loginName != user?.displayName
-                  ? Text((user?.loginName)!)
-                  : null,
+          subtitle: hasSubtitle
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showLogin) Text(user.loginName),
+                    if (serverName.isNotEmpty)
+                      Text(
+                        'Server: $serverName',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: CupertinoColors.secondaryLabel
+                              .resolveFrom(context),
+                        ),
+                      ),
+                  ],
+                )
+              : null,
           trailing: _trailingIcon,
           onTap: profiles.isEmpty
               ? widget.onNavigateBackHome

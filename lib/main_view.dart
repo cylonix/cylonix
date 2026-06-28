@@ -70,7 +70,6 @@ class _MainViewState extends ConsumerState<MainView> {
   bool _signInWithAppleSuccess = false;
   bool _signInWithWebSuccess = false;
   bool _showingSigninQRCode = false;
-  bool _isReauthenticating = false;
   bool _isSubmittingAuthKey = false;
   bool _showAuthKeyEntry = false;
   String? _authKeyErrorText;
@@ -356,6 +355,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final vpnState = ref.watch(vpnStateProvider);
     final errMessage = ref.watch(ipnErrMessageProvider);
     final isAndroidTV = ref.watch(isAndroidTVProvider);
+    final isReauthenticating = ref.watch(reauthInProgressProvider);
 
     if (errMessage != null) {
       return _buildCenteredWidget(
@@ -371,6 +371,21 @@ class _MainViewState extends ConsumerState<MainView> {
     if (vpnState == VpnState.connecting || vpnState == VpnState.disconnecting) {
       return _buildCenteredWidget(
         _buildConnectingView(context, vpnState == VpnState.connecting),
+      );
+    }
+
+    // An explicit re-authentication is in progress. Drop to the login page and
+    // let it auto-launch the login URL just like a normal login, even when the
+    // backend renews seamlessly and stays running. Show a connecting spinner
+    // until the login URL arrives.
+    if (isReauthenticating) {
+      final loginURL = ref.watch(ipnStateProvider)?.browseToURL;
+      if ((loginURL ?? '').isEmpty) {
+        return _buildCenteredWidget(_buildConnectingView(context, true));
+      }
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: _buildCenteredWidget(_buildConnectView(context, ref)),
       );
     }
     switch (state) {
@@ -1493,69 +1508,25 @@ class _MainViewState extends ConsumerState<MainView> {
   }
 
   void _reAuthenticate(BuildContext context, WidgetRef ref) async {
-    if (_isReauthenticating) return;
-    setState(() => _isReauthenticating = true);
-    final loginProfile = ref.read(currentLoginProfileProvider);
-
+    // Re-authentication is an interactive login that forces control to rotate a
+    // new node key and return a fresh login URL. It re-auths against the
+    // controller the node is ALREADY on; it must never adopt the settings
+    // control URL (that is only for a new login) — doing so would switch the
+    // session to a different controller. When the device key has not yet
+    // expired the backend renews seamlessly (stays running) and the notifier
+    // opens the returned login URL in the browser; when the key has expired the
+    // backend drops to needsLogin and the normal login UI takes over. Mirrors
+    // upstream `tailscale up --force-reauth`.
     try {
-      // Start re-authentication process. Basically login and generate a new
-      // node key for the current profile.
-      await ref
-          .read(ipnStateNotifierProvider.notifier)
-          .login(controlURL: loginProfile?.controlURL);
-
-      // Wait for login to rotate a new node key and then restart the VPN.
-      // Note re-authentication does not ask user to re-enter credentials.
-      // It uses existing session to generate a new node key.
-      //
-      // To completely re-authenticate, user may need to sign out and then
-      // sign in again.
-      //
-      // Since there is no state change on getting a new node key, we wait
-      // for a short duration before restarting the VPN.
-      await Future.delayed(const Duration(seconds: 2));
-
-      await ref.read(ipnStateNotifierProvider.notifier).startVpn();
-      final completer = Completer<void>();
-      final sub = ref.listenManual(
-        ipnStateNotifierProvider,
-        (previous, next) {
-          final p = previous?.valueOrNull?.backendState;
-          final n = next.valueOrNull?.backendState;
-          _logger.d("Backend state changed from $p to $n");
-          if (n == BackendState.running && !completer.isCompleted) {
-            _logger.d("Backend reached running state");
-            completer.complete();
-          }
-        },
-      );
-
-      try {
-        await completer.future.timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            _logger.w("Timeout waiting for backend to be running");
-            throw TimeoutException(
-              'Backend did not reach running state within 5 seconds',
-            );
-          },
-        );
-      } finally {
-        sub.close();
-      }
+      await ref.read(ipnStateNotifierProvider.notifier).reauthenticate();
+    } catch (e) {
+      _logger.e("Failed to start re-authentication: $e");
       if (!mounted) return;
       await showAlertDialog(
         context,
-        'Re-authentication Successful',
-        'Your account has been re-authenticated successfully.',
+        "Error",
+        "Failed to start re-authentication: $e",
       );
-    } catch (e) {
-      _logger.e("Failed to re-authenticate: $e");
-      if (!mounted) return;
-      await showAlertDialog(context, "Error", "Failed to re-authenticate: $e");
-    } finally {
-      _isReauthenticating = false;
-      if (mounted) setState(() {});
     }
   }
 

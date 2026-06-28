@@ -51,6 +51,22 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
   bool _customURL = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (!widget.isAuthKey) {
+      // If a custom control server is already selected, start on the Custom
+      // option with the field pre-filled so the user sees the current value.
+      final controlURL = ref.read(controlURLProvider);
+      if (controlURL.isNotEmpty &&
+          controlURL != cylonixURL &&
+          controlURL != tailscaleURL) {
+        _customURL = true;
+        _textController.text = controlURL;
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _textController.dispose();
     super.dispose();
@@ -203,6 +219,10 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
 
   Widget _buildSection(LoginViewStrings strings) {
     final controlURL = ref.watch(controlURLProvider);
+    final isCustomControlURL =
+        controlURL.isNotEmpty &&
+        controlURL != cylonixURL &&
+        controlURL != tailscaleURL;
 
     return Column(
       children: [
@@ -248,12 +268,16 @@ class _CustomLoginViewState extends ConsumerState<CustomLoginView> {
               ),
               AdaptiveListTile.notched(
                 title: const Text('Custom'),
-                subtitle: const Text('Enter your own control server URL'),
+                subtitle: Text(
+                  isCustomControlURL
+                      ? controlURL
+                      : 'Enter your own control server URL',
+                ),
                 leading: Icon(
                   CupertinoIcons.gear,
                   color: CupertinoColors.activeBlue.resolveFrom(context),
                 ),
-                trailing: controlURL != cylonixURL && controlURL != tailscaleURL
+                trailing: isCustomControlURL
                     ? Icon(
                         CupertinoIcons.checkmark_circle,
                         color: CupertinoColors.activeBlue.resolveFrom(context),
