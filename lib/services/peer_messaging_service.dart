@@ -414,6 +414,38 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     );
   }
 
+  /// Re-sends the content of an existing outgoing message as a brand-new
+  /// message. Unlike [resendFailedMessage] (which retries a failed message in
+  /// place), this works for any already-sent message and leaves the original
+  /// in the thread.
+  Future<void> sendMessageAgain({
+    required String conversationId,
+    required String messageId,
+  }) async {
+    final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
+    final existing = _findMessage(
+      profileId: profileId,
+      conversationId: conversationId,
+      messageId: messageId,
+    );
+    if (existing == null) {
+      throw Exception('Message not found');
+    }
+    if (existing.role != PeerMessagingMessageRole.user) {
+      throw Exception('Only outgoing messages can be sent again');
+    }
+    await sendTextMessage(
+      conversationId,
+      existing.text,
+      conversationTitle: _findConversationTitle(
+        profileId: profileId,
+        conversationId: conversationId,
+      ),
+      attachments: existing.attachments,
+    );
+  }
+
   Future<void> updateAttachmentPath({
     required String conversationId,
     required String messageId,

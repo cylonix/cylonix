@@ -674,6 +674,27 @@ class _PeerMessagingThreadViewState
     }
   }
 
+  // Re-sends an already-sent message's content as a new message (the original
+  // stays in the thread). Failed messages use _retryMessage to retry in place.
+  Future<void> _sendAgain(PeerMessagingMessage message) async {
+    if (!_isConnected()) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Cannot send: not connected')),
+      );
+      return;
+    }
+    try {
+      await ref.read(peerMessagingServiceProvider.notifier).sendMessageAgain(
+            conversationId: widget.conversationId,
+            messageId: message.id,
+          );
+    } catch (e) {
+      if (mounted) {
+        await showAlertDialog(context, 'Send Failed', '$e');
+      }
+    }
+  }
+
   void _beginReply(PeerMessagingMessage message) {
     setState(() {
       _replyToMessage = message;
@@ -1600,10 +1621,11 @@ class _PeerMessagingThreadViewState
                         ),
                         onDelete: () => _deleteMessage(message),
                         onReply: () => _beginReply(message),
-                        onSendAgain: _isLocalMessage(message) &&
-                                message.deliveryStatus ==
+                        onSendAgain: _isLocalMessage(message)
+                            ? (message.deliveryStatus ==
                                     PeerMessagingDeliveryStatus.failed
-                            ? () => _retryMessage(message)
+                                ? () => _retryMessage(message)
+                                : () => _sendAgain(message))
                             : null,
                         onShowFailureDetails: _isLocalMessage(message) &&
                                 message.deliveryStatus ==
