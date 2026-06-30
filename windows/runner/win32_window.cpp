@@ -163,6 +163,24 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    // The app calls windowManager.setPreventClose(true) so a normal user close
+    // (WM_CLOSE / clicking the X) minimizes to the system tray instead of
+    // exiting. That must NOT apply to an OS session-end or, importantly, a
+    // Restart Manager request issued by the installer during an upgrade: if we
+    // refuse to exit there, we keep cylonix.exe / flutter_windows.dll / the
+    // plugin DLLs locked, and the MSI is forced to schedule a reboot. Honor
+    // session-end here so the process actually terminates and frees its files.
+    case WM_QUERYENDSESSION:
+      // Allow the session to end (shutdown/logoff/Restart Manager).
+      return TRUE;
+
+    case WM_ENDSESSION:
+      if (wparam) {
+        Destroy();
+        PostQuitMessage(0);
+      }
+      return 0;
+
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;

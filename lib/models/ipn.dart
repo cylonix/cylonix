@@ -436,7 +436,8 @@ class Node with _$Node {
 
   bool get isShareeNode => hostinfo?.shareeNode == true;
 
-  bool get keyDoesNotExpire => keyExpiry == '0001-01-01T00:00:00Z';
+  bool get keyDoesNotExpire =>
+      keyExpiry.isEmpty || keyExpiry == '0001-01-01T00:00:00Z';
 
   String get nameWithoutTrailingDot => name.replaceAll(RegExp(r'\.$'), '');
 
@@ -460,7 +461,7 @@ class Node with _$Node {
       connectedOrSelfNode(nm) ? 'Connected' : 'Not Connected';
 
   String expiryLabel() {
-    if (keyExpiry == GoTimeUtil.zeroTimeString) {
+    if (keyExpiry.isEmpty || keyExpiry == GoTimeUtil.zeroTimeString) {
       return 'Device key never expires';
     }
     final expDate = GoTimeUtil.dateFromGoString(keyExpiry);
@@ -1076,10 +1077,14 @@ class GoTimeUtil {
   static DateTime dateFromGoString(String goTime) => DateTime.parse(goTime);
 
   static bool isWithinExpiryNotificationWindow(Duration window, String goTime) {
-    if (goTime == zeroTimeString) return false;
-    final expTime = epochMillisFromGoTime(goTime);
+    // keyExpiry may be empty (daemon sent no expiry) or the Go zero time; both
+    // mean "no expiry". Use tryParse so any unparseable value returns false
+    // instead of throwing and blanking out the whole view.
+    if (goTime.isEmpty || goTime == zeroTimeString) return false;
+    final exp = DateTime.tryParse(goTime);
+    if (exp == null) return false;
     final now = DateTime.now().millisecondsSinceEpoch;
-    return (expTime - now) ~/ 1000 < window.inSeconds;
+    return (exp.millisecondsSinceEpoch - now) ~/ 1000 < window.inSeconds;
   }
 
   static Duration? duration(String goDuration) {

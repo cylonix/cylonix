@@ -10,6 +10,7 @@ import 'app.dart';
 import 'models/platform.dart';
 import 'models/shared_file.dart';
 import 'providers/share_file.dart';
+import 'services/desktop_notifications.dart';
 import 'services/system_tray_service.dart';
 import 'utils/applog.dart';
 import 'utils/logger.dart';
@@ -32,6 +33,10 @@ void main(List<String> args) async {
     await windowManager.setPreventClose(true);
     await SystemTrayService.init();
   }
+
+  // Desktop (Windows/Linux) toast notifications for incoming files. Self-guards
+  // to supported platforms.
+  await DesktopNotifications.init();
 
   _logger.i("Starting Cylonix app with args: $args");
   _logger.i("Setting up MethodChannel for share events");

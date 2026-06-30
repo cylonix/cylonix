@@ -28,6 +28,9 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_local_notifications: ^17.2.2
+  # Desktop (Windows/Linux/macOS) toast notifications — flutter_local_notifications
+  # 17.x has no Windows backend, so local_notifier covers the desktop path.
+  local_notifier: ^0.1.6
   html: ^0.15.0
   http: ^1.2.0
   flutter_logger:

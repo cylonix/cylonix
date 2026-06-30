@@ -77,6 +77,18 @@
                             ThirdFailureActionType="restart"
                             RestartServiceDelayInSeconds="1"
                             ResetPeriodInDays="5" />
+
+        <!-- Opt the service into Taildrop's Downloads/Cylonix default root
+             (tailscale/feature/taildrop/paths_cylonix.go). A Windows service
+             reads this REG_MULTI_SZ value as extra environment variables, so the
+             LocalSystem daemon drops incoming files into the logged-in user's
+             Downloads\Cylonix instead of the ProgramData staging dir. -->
+        <RegistryValue Root="HKLM"
+                       Key="SYSTEM\CurrentControlSet\Services\$(var.ServiceName)"
+                       Name="Environment"
+                       Type="multiString"
+                       Value="CYLONIX_TAILDROP_DEFAULT_DOWNLOADS=1"
+                       Action="write" />
       </Component>
     </ComponentGroup>
 

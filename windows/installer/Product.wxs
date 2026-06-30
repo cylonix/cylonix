@@ -67,5 +67,55 @@
     <!-- License file -->
     <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
 
+    <!-- Close the running GUI before any file operation so an upgrade does not
+         require a reboot. The app uses windowManager.setPreventClose(true), so a
+         polite WM_CLOSE is ignored (it minimizes to tray); we must force-terminate
+         it. This MUST be an immediate action scheduled before InstallInitialize:
+         MajorUpgrade is afterInstallInitialize, and MSI requires RemoveExistingProducts
+         to sit immediately after InstallInitialize (anything in between -> error 2613).
+         Running before InstallInitialize keeps that adjacency intact. Once the running
+         build includes the WM_QUERYENDSESSION/WM_ENDSESSION handler (win32_window.cpp),
+         MSI's own Restart Manager could close it gracefully, but force-close also
+         covers upgrades from older builds that lack that handler. -->
+    <!-- Run via WScript.Shell.Run(..., 0, True) so the child console process is
+         hidden (window style 0) and waited on; a plain ExeCommand custom action
+         would briefly flash a console window during install. -->
+    <CustomAction Id="CloseRunningCylonixGui"
+                  Script="vbscript"
+                  Execute="immediate"
+                  Return="ignore">
+      <![CDATA[On Error Resume Next
+CreateObject("WScript.Shell").Run "taskkill.exe /F /IM cylonix.exe", 0, True]]>
+    </CustomAction>
+
+    <!-- Stop the Cylonixd service before InstallInitialize too. The old version's
+         ServiceControl does stop it, but only later in the execute sequence; by
+         then Restart Manager has already scanned during costing, seen the running
+         service holding cylonixd.exe/wintun.dll, and (because RM treats services as
+         "critical") flagged a required reboot, popping the reboot dialog. Stopping
+         it up front means RM finds nothing in use. Run hidden + wait for STOPPED. -->
+    <CustomAction Id="StopCylonixdService"
+                  Script="vbscript"
+                  Execute="immediate"
+                  Return="ignore">
+      <![CDATA[On Error Resume Next
+CreateObject("WScript.Shell").Run "net.exe stop Cylonixd", 0, True]]>
+    </CustomAction>
+
+    <!-- These must run before InstallValidate: that is where MSI/Restart Manager
+         performs the in-use scan that raises the "files in use / reboot required"
+         dialog. Freeing the service and GUI beforehand means the scan finds nothing
+         in use. (RemoveExistingProducts stays immediately after InstallInitialize,
+         so its required adjacency is untouched.) -->
+    <!-- Run unconditionally: both are harmless no-ops (Return=ignore) when nothing
+         is running, and we must also close a GUI/service left over from a prior
+         install on a *fresh* install (e.g. install after a manual uninstall while
+         the app is still running) - a condition like "WIX_UPGRADE_DETECTED OR
+         Installed" would skip those cases. -->
+    <InstallExecuteSequence>
+      <Custom Action="StopCylonixdService" Before="InstallValidate" />
+      <Custom Action="CloseRunningCylonixGui" After="StopCylonixdService" />
+    </InstallExecuteSequence>
+
   </Product>
 </Wix>

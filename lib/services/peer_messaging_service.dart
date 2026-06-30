@@ -16,6 +16,7 @@ import '../models/ipn.dart';
 import '../models/peer_messaging.dart';
 import '../providers/ipn.dart';
 import '../utils/logger.dart';
+import 'desktop_notifications.dart';
 import 'ipn.dart';
 
 class PeerMessagingService extends StateNotifier<PeerMessagingState> {
@@ -1026,6 +1027,13 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     required String name,
     required String path,
   }) async {
+    // Windows/Linux have no native notification channel, so post a desktop
+    // toast via local_notifier. (Matches the OS file-received notifications
+    // Android/macOS/iOS already show.)
+    if (Platform.isWindows || Platform.isLinux) {
+      await DesktopNotifications.showFileReceived(name: name, path: path);
+      return;
+    }
     // Only the macOS direct PKG drives this method channel — App Store
     // / iOS posts the notification from WireGuardAdapter::handleFilesWaiting
     // inside the Network Extension, and the channel handler is only
