@@ -2539,6 +2539,20 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       return payloadProfileId;
     }
 
+    // No backend-stamped profile_id (older backend build). Attribute the event
+    // to the currently active login profile: the backend runs exactly one
+    // profile at a time, so a live event belongs to whoever is active now.
+    // Do NOT fall back to a by-conversation-id lookup first — if the same
+    // conversation also exists under a stale profile (e.g. after re-adding an
+    // account whose old profile was left behind), that lookup pins new inbound
+    // messages to the old profile and they never appear in the active inbox.
+    final current = await _resolveCurrentProfileId();
+    if (current.isNotEmpty) {
+      return current;
+    }
+
+    // Last resort only when the active profile is unknown: match by
+    // conversation id / message id.
     final conversationId = _canonicalConversationId(event.conversationId);
     for (final conversation in state.conversations) {
       if ((conversationId.isNotEmpty && conversation.id == conversationId) ||
