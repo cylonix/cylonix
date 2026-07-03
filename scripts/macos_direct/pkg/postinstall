@@ -21,10 +21,17 @@ chmod 755 /var/log/cylonix
 touch /var/log/cylonix/cylonixd.log
 chmod 644 /var/log/cylonix/cylonixd.log
 
-# Stop existing daemon if running
-if launchctl list "$PLIST_NAME" &>/dev/null; then
-  launchctl unload "$PLIST_DST" 2>/dev/null || true
-fi
+# Stop any existing daemon and WAIT for launchd to fully drop the label before we
+# rewrite the plist. Deregister BY LABEL (bootout) rather than by plist path
+# (`launchctl unload "$PLIST_DST"`): unload-by-path silently fails when a prior
+# uninstall already removed the plist, leaving the label registered. bootout is
+# asynchronous for a KeepAlive job, so poll until the label is actually gone —
+# otherwise the bootstrap below hits EIO ("already loaded") and the daemon never
+# starts (the uninstall→reinstall failure mode).
+launchctl bootout "system/$PLIST_NAME" 2>/dev/null || true
+i=0; while launchctl print "system/$PLIST_NAME" >/dev/null 2>&1 && [ "$i" -lt 100 ]; do
+  i=$((i + 1)); sleep 0.1
+done
 
 # Install launchd plist
 cat > "$PLIST_DST" <<'PLIST'
@@ -68,8 +75,27 @@ PLIST
 chown root:wheel "$PLIST_DST"
 chmod 644 "$PLIST_DST"
 
-# Load and start daemon
-launchctl load "$PLIST_DST"
+# Load and start the daemon by LABEL. Do NOT suppress errors — a failure must be
+# visible in /var/log/install.log, not a silently dead daemon. If the first
+# bootstrap fails (e.g. a stubborn stale registration surviving the stop above),
+# bootout + wait once more and retry before falling back to the legacy load.
+if ! launchctl bootstrap system "$PLIST_DST"; then
+  echo "postinstall: bootstrap failed; clearing stale/ghost registration and retrying" >&2
+  # EIO with `print` reporting the label absent is a launchd "ghost": bootout has
+  # nothing to grab but bootstrap collides with a cached entry. Evict it via every
+  # available path — bootout by label, bootout by plist path, and the legacy
+  # `remove` (a different code path that can drop a cached job bootout can't) —
+  # then clear any disable override before retrying.
+  launchctl bootout "system/$PLIST_NAME" 2>/dev/null || true
+  launchctl bootout system "$PLIST_DST" 2>/dev/null || true
+  launchctl remove "$PLIST_NAME" 2>/dev/null || true
+  launchctl enable "system/$PLIST_NAME" 2>/dev/null || true
+  i=0; while launchctl print "system/$PLIST_NAME" >/dev/null 2>&1 && [ "$i" -lt 100 ]; do
+    i=$((i + 1)); sleep 0.1
+  done
+  launchctl bootstrap system "$PLIST_DST" || launchctl load "$PLIST_DST" || true
+fi
+launchctl kickstart -kp "system/$PLIST_NAME" 2>/dev/null || true
 
 # Symlink CLI to /usr/local/bin so users can run "cylonix" from the terminal
 mkdir -p /usr/local/bin

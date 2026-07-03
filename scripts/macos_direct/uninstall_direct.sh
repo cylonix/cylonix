@@ -57,8 +57,15 @@ do_services() {
   rm -f "$NOTIFIER_PLIST_DST"
   echo "• Notifier agent: removed"
 
-  # Stop and remove the background daemon.
+  # Stop and remove the background daemon. bootout is asynchronous for a
+  # KeepAlive job, so WAIT for launchd to actually drop the label before removing
+  # the plist. Deleting the plist while the label is still registered leaves
+  # launchd with a dangling job that makes the NEXT install's bootstrap fail with
+  # EIO ("already loaded") — the uninstall→reinstall daemon-won't-start bug.
   launchctl bootout "system/$PLIST_NAME" 2>/dev/null || true
+  i=0; while launchctl print "system/$PLIST_NAME" >/dev/null 2>&1 && [ "$i" -lt 100 ]; do
+    i=$((i + 1)); sleep 0.1
+  done
   rm -f "$PLIST_DST"
   echo "• Background service (cylonixd): stopped and removed"
 
