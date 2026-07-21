@@ -9,8 +9,96 @@ PLIST_DST="/Library/LaunchDaemons/$PLIST_NAME.plist"
 NOTIFIER_PLIST_NAME="io.cylonix.sase.direct.notifier"
 NOTIFIER_PLIST_DST="/Library/LaunchAgents/$NOTIFIER_PLIST_NAME.plist"
 APP_PATH="/Applications/Cylonix.app"
+DIRECT_BUNDLE_ID="io.cylonix.sase.direct"
 DAEMON_PATH="$APP_PATH/Contents/Resources/cylonixd"
 NOTIFIER_PATH="$APP_PATH/Contents/Resources/CylonixNotifier.app/Contents/MacOS/CylonixNotifier"
+
+# ---------------------------------------------------------------------------
+# Flavor/orphan hygiene (keep in sync across pkg/preinstall, pkg/postinstall
+# and uninstall_direct.sh). See pkg/preinstall for the full story: a
+# different-flavor bundle at $APP_PATH makes Installer dodge the destination
+# (BundleHasStrictIdentifier) into "/Applications/Cylonix*.localized/", and
+# the orphans' share extensions break the Share menu.
+# ---------------------------------------------------------------------------
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
+
+cylonix_bundle_id() {
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+    "$1/Contents/Info.plist" 2>/dev/null || true
+}
+
+remove_cylonix_bundle() {
+  local app="$1" gui_user
+  gui_user="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+  if [[ -n "${gui_user:-}" && "$gui_user" != "root" && "$gui_user" != "_"* \
+        && -d "$app/Contents/PlugIns/ShareExtension.appex" ]]; then
+    sudo -u "$gui_user" pluginkit -r \
+      "$app/Contents/PlugIns/ShareExtension.appex" 2>/dev/null || true
+  fi
+  "$LSREGISTER" -u "$app" 2>/dev/null || true
+  rm -rf "$app"
+}
+
+remove_cylonix_orphans() {
+  local removed=1 dir app id
+  for dir in /Applications/Cylonix*.localized(N); do
+    app="$dir/Cylonix.app"
+    id="$(cylonix_bundle_id "$app")"
+    if [[ ! -d "$app" || -z "$id" || "$id" == io.cylonix.sase* ]]; then
+      if [[ -d "$app" ]]; then
+        remove_cylonix_bundle "$app"
+      fi
+      rm -rf "$dir"
+      removed=0
+    fi
+  done
+  return $removed
+}
+
+# Restart the GUI user's Finder so ShareKit drops its cached share-service
+# identities. A plain `killall Finder` is silently ineffective from the
+# PackageKit script sandbox (the signal never lands and stderr is
+# discarded), so go through launchd — kickstart -k restarts the
+# com.apple.Finder agent — keeping killall as a fallback for contexts
+# without a GUI session.
+bounce_finder() {
+  local gui_user gui_uid
+  gui_user="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+  if [[ -n "${gui_user:-}" && "$gui_user" != "root" && "$gui_user" != "_"* ]]; then
+    gui_uid="$(id -u "$gui_user" 2>/dev/null || true)"
+    if [[ -n "${gui_uid:-}" ]] \
+        && launchctl kickstart -k "gui/${gui_uid}/com.apple.Finder" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  killall Finder 2>/dev/null || true
+}
+
+# Self-heal a strict-identifier dodge. preinstall clears the destination up
+# front, so normally the payload is already at $APP_PATH. If Installer still
+# diverted it, the FRESH install is sitting inside a Cylonix*.localized orphan
+# while $APP_PATH holds the old different-flavor bundle — move the new bundle
+# to the canonical path (newest orphan first) BEFORE the daemon below is
+# pointed at $APP_PATH, then sweep the remaining litter.
+if [[ "$(cylonix_bundle_id "$APP_PATH")" != "$DIRECT_BUNDLE_ID" ]]; then
+  for dir in /Applications/Cylonix*.localized(Nom); do
+    if [[ "$(cylonix_bundle_id "$dir/Cylonix.app")" == "$DIRECT_BUNDLE_ID" ]]; then
+      echo "postinstall: payload was diverted to $dir; restoring to $APP_PATH" >&2
+      if [[ -d "$APP_PATH" ]]; then
+        killall Cylonix 2>/dev/null || true
+        remove_cylonix_bundle "$APP_PATH"
+      fi
+      mv "$dir/Cylonix.app" "$APP_PATH"
+      rm -rf "$dir"
+      break
+    fi
+  done
+fi
+if remove_cylonix_orphans; then
+  # ShareKit caches share-service identities inside Finder; bounce it so the
+  # Share menu re-resolves against the surviving registration.
+  bounce_finder
+fi
 
 # Create required directories
 mkdir -p /var/lib/cylonix

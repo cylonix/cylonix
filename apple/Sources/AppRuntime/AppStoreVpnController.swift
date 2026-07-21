@@ -42,6 +42,49 @@ class AppStoreVpnController: AppleVpnControlling {
         }
     }
 
+    /// Deletes the Cylonix VPN configuration from the system settings.
+    /// Removing the configuration also removes its always-on (on-demand)
+    /// rules and tears down any running tunnel in one step, so the system
+    /// stops relaunching the tunnel once the app is uninstalled. Calls back
+    /// with nil on success (including when no configuration exists) or with
+    /// an error description.
+    func removeVpnConfiguration(completion: @escaping (String?) -> Void) {
+        if let tunnelsMgr = tunnelsManager {
+            removeTunnel(from: tunnelsMgr, completion: completion)
+            return
+        }
+        // Load the saved configurations directly; createTunnelsManager()
+        // would re-add the tunnel that is about to be removed.
+        TunnelsManager.create { result in
+            switch result {
+            case let .failure(error):
+                let (_, message) = error.alertText
+                completion("Failed to load VPN configurations: \(message)")
+            case let .success(tunnelsMgr):
+                self.removeTunnel(from: tunnelsMgr, completion: completion)
+            }
+        }
+    }
+
+    private func removeTunnel(
+        from tunnelsMgr: TunnelsManager, completion: @escaping (String?) -> Void
+    ) {
+        guard let tunnel = tunnelsMgr.tunnel(named: tunnelName) else {
+            wg_log(.info, message: "Remove VPN configuration: no tunnel named '\(tunnelName)'. Nothing to remove.")
+            completion(nil)
+            return
+        }
+        tunnelsMgr.remove(tunnel: tunnel) { error in
+            if let error {
+                wg_log(.error, message: "Failed to remove VPN configuration: \(error)")
+                completion("\(error)")
+                return
+            }
+            wg_log(.info, message: "VPN configuration '\(self.tunnelName)' removed.")
+            completion(nil)
+        }
+    }
+
     func handleGetLogs(_ id: String) -> String {
         wg_log(.debug, message: "handleGetWgLogs")
         tunnelsManager?.getWgLogs { logs in

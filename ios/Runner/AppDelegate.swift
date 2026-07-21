@@ -332,6 +332,18 @@ import UserNotifications
                     self.requestLocalNetworkPermission(result)
                     return
                 }
+                if call.method == "removeVpnConfiguration" {
+                    self.vpnController.removeVpnConfiguration { error in
+                        DispatchQueue.main.async {
+                            if let error = error {
+                                result(FlutterError(code: "remove_failed", message: error, details: nil))
+                            } else {
+                                result("Success")
+                            }
+                        }
+                    }
+                    return
+                }
                 #if os(iOS)
                 if call.method == "previewLocalFile" {
                     guard let path = call.arguments as? String, !path.isEmpty else {
@@ -368,6 +380,15 @@ import UserNotifications
                     }
                     self.startWebAuth(url: url)
                     result("Success")
+                    return
+                }
+                if call.method == "deleteApp" {
+                    self.moveAppToTrash(result)
+                    return
+                }
+                if call.method == "quitApp" {
+                    result("Success")
+                    self.terminateForUninstall(afterSeconds: 0.2)
                     return
                 }
                 #endif
@@ -927,6 +948,95 @@ import UserNotifications
     }
 
 #if os(macOS)
+    /// Final step of the NE-build uninstall: move this app's bundle to the
+    /// Trash. A direct trash only works where the sandbox allows it; for
+    /// /Applications an open panel asks the user to confirm the selection,
+    /// which makes the powerbox grant write access to the bundle
+    /// (com.apple.security.files.user-selected.read-write). If the user
+    /// cancels or the move still fails, the bundle is revealed in Finder for
+    /// a manual drag to the Trash; the returned "trashed"/"revealed" tells
+    /// Dart which outcome to explain. On "trashed" the app terminates itself
+    /// shortly after replying; on "revealed" Dart quits it via "quitApp"
+    /// once the user has read the instructions.
+    private func moveAppToTrash(_ result: @escaping FlutterResult) {
+        DispatchQueue.main.async {
+            let bundleURL = Bundle.main.bundleURL
+            if (try? FileManager.default.trashItem(at: bundleURL, resultingItemURL: nil)) != nil {
+                wg_log(.info, message: "Moved \(bundleURL.path) to Trash. Terminating.")
+                result("trashed")
+                self.terminateForUninstall(afterSeconds: 1.5)
+                return
+            }
+
+            let panel = NSOpenPanel()
+            panel.message = "Select “\(bundleURL.lastPathComponent)” — the only enabled item — and click Move to Trash to finish uninstalling Cylonix."
+            panel.prompt = "Move to Trash"
+            panel.directoryURL = bundleURL.deletingLastPathComponent()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            // An .app is a package, so the panel cannot pre-select it
+            // (directoryURL pointed at it just navigates inside). Instead
+            // the delegate greys out every item except this bundle, so the
+            // selection the user confirms is unambiguous.
+            let delegate = UninstallPanelDelegate(targetURL: bundleURL)
+            panel.delegate = delegate
+            NSApp.activate(ignoringOtherApps: true)
+            let response = panel.runModal()
+            _ = delegate // keep the delegate alive for the panel's lifetime
+
+            // Only ever trash this app's own bundle, no matter what was
+            // selected in the panel.
+            let ourPath = bundleURL.resolvingSymlinksInPath().path.lowercased()
+            let selectedPath = panel.url?.resolvingSymlinksInPath().path.lowercased()
+            if response == .OK, selectedPath == ourPath {
+                do {
+                    try FileManager.default.trashItem(at: bundleURL, resultingItemURL: nil)
+                    wg_log(.info, message: "Moved \(bundleURL.path) to Trash via user grant. Terminating.")
+                    result("trashed")
+                    self.terminateForUninstall(afterSeconds: 1.5)
+                    return
+                } catch {
+                    wg_log(.error, message: "Failed to move \(bundleURL.path) to Trash: \(error.localizedDescription)")
+                }
+            } else if response == .OK {
+                wg_log(.error, message: "Uninstall: selection \(panel.url?.path ?? "<none>") is not this app's bundle; not trashing it.")
+            } else {
+                wg_log(.info, message: "Uninstall: user cancelled the Move to Trash panel.")
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([bundleURL])
+            result("revealed")
+        }
+    }
+
+    /// Restricts the uninstall open panel to this app's own bundle: every
+    /// other item is greyed out, so the confirmed selection is unambiguous.
+    private class UninstallPanelDelegate: NSObject, NSOpenSavePanelDelegate {
+        private let targetPath: String
+
+        init(targetURL: URL) {
+            targetPath = targetURL.resolvingSymlinksInPath().path.lowercased()
+        }
+
+        func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+            return url.resolvingSymlinksInPath().path.lowercased() == targetPath
+        }
+    }
+
+    /// NSApp.terminate routes through the Flutter framework's cancelable
+    /// app-exit request and can be silently dropped, so force the process to
+    /// exit if graceful termination has not happened shortly after. There is
+    /// nothing left to clean up at this point of the uninstall.
+    private func terminateForUninstall(afterSeconds delay: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            NSApp.terminate(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                wg_log(.info, message: "Graceful terminate did not complete. Exiting.")
+                exit(0)
+            }
+        }
+    }
+
     private var authSession: ASWebAuthenticationSession?
 
     func startWebAuth(url: String) {

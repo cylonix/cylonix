@@ -4,6 +4,7 @@
 import AVFoundation
 import Cocoa
 import FlutterMacOS
+import Security
 import UserNotifications
 
 class MainFlutterWindow: NSWindow {
@@ -152,17 +153,23 @@ class MainFlutterWindow: NSWindow {
     )
     channel.setMethodCallHandler { call, result in
       switch call.method {
-      case "uninstallServices":
-        // Phase 1: stop/remove the daemon, notifier, CLI and receipt; return a
-        // status report. Does NOT delete the app bundle or quit the app.
+      case "uninstallDirect":
+        // Stop/remove the daemon, notifier, CLI and receipt AND delete the app
+        // bundle behind a SINGLE authorization prompt. The script runs with
+        // `--no-kill`, so the app stays alive to return the status report;
+        // Dart shows it, then calls "quitApp".
         let args = call.arguments as? [String: Any] ?? [:]
         let purgeState = (args["purgeState"] as? NSNumber)?.boolValue ?? false
-        MainFlutterWindow.runUninstallPhase(
-          mode: "services", purgeState: purgeState, result: result)
-      case "deleteApp":
-        // Phase 2: delete /Applications/Cylonix.app and terminate this app.
-        MainFlutterWindow.runUninstallPhase(
-          mode: "app", purgeState: false, result: result)
+        MainFlutterWindow.runPrivilegedUninstall(purgeState: purgeState, result: result)
+      case "quitApp":
+        // Terminate after the uninstall report is dismissed. NSApp.terminate
+        // routes through Flutter's cancelable exit request, so hard-exit as a
+        // fallback — there is nothing left to clean up.
+        result(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+          NSApp.terminate(nil)
+          DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exit(0) }
+        }
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -170,26 +177,28 @@ class MainFlutterWindow: NSWindow {
     directChannel = channel
   }
 
-  /// Runs one phase of the bundled uninstall_direct.sh as root.
+  /// Runs the bundled uninstall_direct.sh as root behind a SINGLE, descriptive
+  /// authorization prompt, using AuthorizationExecuteWithPrivileges.
   ///
-  /// The script is copied to a temp path first so the "app" phase can delete
-  /// the app bundle without removing the file it is executing. It runs
-  /// synchronously under security_authtrampoline (an independent privileged
-  /// process tree), so the "app" phase's trailing `killall Cylonix` terminates
-  /// this app only after deletion has finished. macOS caches the admin
-  /// authorization for ~5 minutes, so the second phase does not re-prompt.
+  /// The script is staged to a temp path so deleting the app bundle does not
+  /// remove the file being executed, and it runs in mode `all --no-kill`:
+  /// the daemon, notifier, CLI, receipt and the app bundle are all removed,
+  /// but the running app is left alive so Dart can present the status report
+  /// before quitting via "quitApp".
   ///
-  /// The phase's stdout (a "• …" status report) is returned to Dart on
-  /// success; a dismissed password prompt maps to the `cancelled` error code.
-  static func runUninstallPhase(
-    mode: String, purgeState: Bool, result: @escaping FlutterResult
-  ) {
+  /// The custom prompt is attached to the `kAuthorizationRightExecute` right
+  /// via `kAuthorizationEnvironmentPrompt` and pre-authorized, so the system
+  /// password dialog explains what is being removed. AuthorizationExecute-
+  /// WithPrivileges is deprecated and not exported to Swift, so it is resolved
+  /// dynamically with dlsym; this API requires the app not be sandboxed (the
+  /// direct build is not). Returns the script's stdout on success, or the
+  /// `cancelled` error code when the prompt is dismissed.
+  static func runPrivilegedUninstall(purgeState: Bool, result: @escaping FlutterResult) {
     guard let bundled = Bundle.main.path(forResource: "uninstall_direct", ofType: "sh") else {
       result(FlutterError(
         code: "missing_script",
         message: "uninstall_direct.sh not found in app bundle",
-        details: nil
-      ))
+        details: nil))
       return
     }
 
@@ -201,62 +210,116 @@ class MainFlutterWindow: NSWindow {
       result(FlutterError(
         code: "copy_failed",
         message: "Failed to stage uninstaller: \(error)",
-        details: nil
-      ))
+        details: nil))
       return
     }
 
-    let flag = purgeState ? " --purge-state" : ""
-    let shellCmd = "/bin/zsh \(tmpPath) \(mode)\(flag)"
-    // Escape for embedding inside an AppleScript double-quoted string.
-    let escaped = shellCmd
-      .replacingOccurrences(of: "\\", with: "\\\\")
-      .replacingOccurrences(of: "\"", with: "\\\"")
-    let appleScript = "do shell script \"\(escaped)\" with administrator privileges"
-
     DispatchQueue.global(qos: .userInitiated).async {
-      let task = Process()
-      task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-      task.arguments = ["-e", appleScript]
-      let stdoutPipe = Pipe()
-      let stderrPipe = Pipe()
-      task.standardOutput = stdoutPipe
-      task.standardError = stderrPipe
-      do {
-        try task.run()
-      } catch {
-        DispatchQueue.main.async {
-          result(FlutterError(
+      func finish(_ value: Any?) { DispatchQueue.main.async { result(value) } }
+
+      var authRef: AuthorizationRef?
+      let createStatus = AuthorizationCreate(nil, nil, [], &authRef)
+      guard createStatus == errAuthorizationSuccess, let auth = authRef else {
+        finish(FlutterError(
+          code: "auth_failed",
+          message: "AuthorizationCreate failed (\(createStatus))",
+          details: nil))
+        return
+      }
+      defer { AuthorizationFree(auth, [.destroyRights]) }
+
+      // Pre-authorize the execute right with a descriptive prompt so the
+      // single system password dialog explains what Cylonix will remove.
+      let prompt = "Cylonix needs administrator access to finish uninstalling. "
+        + "This stops and removes its background service (cylonixd), the "
+        + "command-line tool, and the notifier, and deletes the Cylonix app."
+      let promptName = strdup(kAuthorizationEnvironmentPrompt)
+      let promptValue = strdup(prompt)
+      let rightName = strdup(kAuthorizationRightExecute)
+      defer { free(promptName); free(promptValue); free(rightName) }
+
+      var promptItem = AuthorizationItem(
+        name: UnsafePointer(promptName!),
+        valueLength: strlen(promptValue!),
+        value: UnsafeMutableRawPointer(promptValue!),
+        flags: 0)
+      var rightItem = AuthorizationItem(
+        name: UnsafePointer(rightName!),
+        valueLength: 0, value: nil, flags: 0)
+
+      let copyStatus: OSStatus = withUnsafeMutablePointer(to: &promptItem) { promptPtr in
+        withUnsafeMutablePointer(to: &rightItem) { rightPtr in
+          var environment = AuthorizationEnvironment(count: 1, items: promptPtr)
+          var rights = AuthorizationRights(count: 1, items: rightPtr)
+          let flags: AuthorizationFlags = [.interactionAllowed, .extendRights, .preAuthorize]
+          return AuthorizationCopyRights(auth, &rights, &environment, flags, nil)
+        }
+      }
+      if copyStatus == errAuthorizationCanceled {
+        finish(FlutterError(code: "cancelled", message: "User cancelled", details: nil))
+        return
+      }
+      guard copyStatus == errAuthorizationSuccess else {
+        finish(FlutterError(
+          code: "auth_failed",
+          message: "Authorization denied (\(copyStatus))",
+          details: nil))
+        return
+      }
+
+      // AuthorizationExecuteWithPrivileges is deprecated and not surfaced to
+      // Swift; resolve it dynamically (RTLD_DEFAULT == (void *) -2).
+      typealias AEWPFn = @convention(c) (
+        AuthorizationRef,
+        UnsafePointer<CChar>,
+        AuthorizationFlags,
+        UnsafePointer<UnsafeMutablePointer<CChar>?>,
+        UnsafeMutablePointer<UnsafeMutablePointer<FILE>?>?
+      ) -> OSStatus
+      guard let sym = dlsym(
+        UnsafeMutableRawPointer(bitPattern: -2), "AuthorizationExecuteWithPrivileges")
+      else {
+        finish(FlutterError(
+          code: "exec_unavailable",
+          message: "AuthorizationExecuteWithPrivileges unavailable",
+          details: nil))
+        return
+      }
+      let execFn = unsafeBitCast(sym, to: AEWPFn.self)
+
+      var scriptArgs = [tmpPath, "all", "--no-kill"]
+      if purgeState { scriptArgs.append("--purge-state") }
+      var cArgs: [UnsafeMutablePointer<CChar>?] = scriptArgs.map { strdup($0) }
+      cArgs.append(nil)
+      defer { for a in cArgs where a != nil { free(a) } }
+
+      var pipe: UnsafeMutablePointer<FILE>?
+      let execStatus = "/bin/zsh".withCString { toolPtr in
+        cArgs.withUnsafeBufferPointer { argsBuf in
+          execFn(auth, toolPtr, [], argsBuf.baseAddress!, &pipe)
+        }
+      }
+      guard execStatus == errAuthorizationSuccess else {
+        if execStatus == errAuthorizationCanceled {
+          finish(FlutterError(code: "cancelled", message: "User cancelled", details: nil))
+        } else {
+          finish(FlutterError(
             code: "uninstall_failed",
-            message: "Failed to launch osascript: \(error)",
-            details: nil
-          ))
+            message: "Privileged execution failed (\(execStatus))",
+            details: nil))
         }
         return
       }
-      let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-      let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-      task.waitUntilExit()
-      let outStr = String(data: outData, encoding: .utf8)?
-        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      let errStr = String(data: errData, encoding: .utf8) ?? ""
-      DispatchQueue.main.async {
-        if task.terminationStatus == 0 {
-          // do shell script returns the command's stdout — the status report.
-          result(outStr)
-        } else if errStr.contains("-128")
-          || errStr.localizedCaseInsensitiveContains("User canceled") {
-          // User dismissed the authorization prompt.
-          result(FlutterError(code: "cancelled", message: "User cancelled", details: nil))
-        } else {
-          result(FlutterError(
-            code: "uninstall_failed",
-            message: errStr.isEmpty
-              ? "osascript exited \(task.terminationStatus)" : errStr,
-            details: nil
-          ))
-        }
+
+      var output = ""
+      if let pipe = pipe {
+        let handle = FileHandle(fileDescriptor: fileno(pipe), closeOnDealloc: false)
+        let data = handle.readDataToEndOfFile()
+        output = String(data: data, encoding: .utf8)?
+          .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        fclose(pipe)
       }
+      finish(output)
     }
   }
 

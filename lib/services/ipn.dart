@@ -2214,25 +2214,32 @@ class IpnService {
   static bool get isDirectDistribution =>
       Platform.isMacOS && _distributionMode == 'direct';
 
+  /// The sandboxed macOS build that runs the VPN as a Network Extension
+  /// (i.e. the non-direct macOS distribution).
+  static bool get isMacosAppStoreDistribution =>
+      Platform.isMacOS && !isDirectDistribution;
+
   /// Phase 1 of the direct-build uninstall: stops and removes the `cylonixd`
-  /// LaunchDaemon, the notifier LaunchAgent, the CLI symlink and the pkg
-  /// receipt — leaving the app bundle in place. The native side prompts once
-  /// for an administrator password and runs the bundled `uninstall_direct.sh`
-  /// as root.
+  /// LaunchDaemon, the notifier LaunchAgent, the CLI symlink, the pkg receipt
+  /// AND the app bundle — all behind a SINGLE administrator-password prompt.
+  /// The native side runs the bundled `uninstall_direct.sh` as root via
+  /// AuthorizationExecuteWithPrivileges with a descriptive prompt, in
+  /// `--no-kill` mode so the app stays alive to show the result; the caller
+  /// then quits it with [quitDirectApp].
   ///
   /// Node state under /var/lib/cylonix is preserved unless [purgeState] is
   /// true, so a later reinstall keeps this device's identity.
   ///
   /// Returns the human-readable status report to show the user, or null if the
   /// user dismissed the administrator-password prompt.
-  Future<String?> uninstallDirectServices({bool purgeState = false}) async {
+  Future<String?> uninstallDirect({bool purgeState = false}) async {
     if (!isDirectDistribution) {
       throw UnsupportedError(
-          "uninstallDirectServices is only available on the macOS direct build.");
+          "uninstallDirect is only available on the macOS direct build.");
     }
     try {
       final status = await _directChannel.invokeMethod<String>(
-        'uninstallServices',
+        'uninstallDirect',
         {'purgeState': purgeState},
       );
       return status ?? '';
@@ -2242,23 +2249,46 @@ class IpnService {
     }
   }
 
-  /// Phase 2 of the direct-build uninstall: deletes /Applications/Cylonix.app
-  /// and terminates the app. On success this process is killed, so the returned
-  /// future typically does not complete normally. Returns false if the user
-  /// dismissed the administrator-password prompt (admin auth from phase 1 is
-  /// normally still cached, so no second prompt appears).
-  Future<bool> deleteDirectApp() async {
+  /// Quits the direct-build app after the uninstall report is dismissed. The
+  /// app bundle has already been deleted at this point, so this just
+  /// terminates the running process.
+  Future<void> quitDirectApp() async {
     if (!isDirectDistribution) {
       throw UnsupportedError(
-          "deleteDirectApp is only available on the macOS direct build.");
+          "quitDirectApp is only available on the macOS direct build.");
     }
-    try {
-      await _directChannel.invokeMethod('deleteApp');
-      return true;
-    } on PlatformException catch (e) {
-      if (e.code == 'cancelled') return false;
-      rethrow;
+    await _directChannel.invokeMethod('quitApp');
+  }
+
+  /// Phase 1 of the NE-build (sandboxed macOS app) uninstall: deletes the
+  /// Cylonix VPN configuration from the system settings. This disconnects
+  /// the tunnel and removes its always-on rules in one step, so macOS stops
+  /// restarting the tunnel after the app itself is gone. No administrator
+  /// password is required. Throws on failure.
+  Future<void> removeVpnConfiguration() async {
+    if (!isMacosAppStoreDistribution) {
+      throw UnsupportedError(
+          "removeVpnConfiguration is only available on the macOS NE build.");
     }
+    await _channel.invokeMethod('removeVpnConfiguration');
+  }
+
+  /// Phase 2 of the NE-build uninstall: moves the app bundle to the Trash.
+  /// Returns 'trashed' when it worked — the app terminates itself moments
+  /// later — or 'revealed' when the sandbox blocked the move; the bundle is
+  /// then shown in Finder and the caller should tell the user to drag it to
+  /// the Trash after quitting the app via [quitApp].
+  Future<String> deleteNeApp() async {
+    if (!isMacosAppStoreDistribution) {
+      throw UnsupportedError(
+          "deleteNeApp is only available on the macOS NE build.");
+    }
+    return await _channel.invokeMethod<String>('deleteApp') ?? 'revealed';
+  }
+
+  /// Quits the macOS app; used to finish the NE-build uninstall flow.
+  Future<void> quitApp() async {
+    await _channel.invokeMethod('quitApp');
   }
 
   static bool get _useHttpLocalApi {

@@ -9,6 +9,79 @@ PLIST_DST="/Library/LaunchDaemons/$PLIST_NAME.plist"
 NOTIFIER_PLIST_NAME="io.cylonix.sase.direct.notifier"
 NOTIFIER_PLIST_DST="/Library/LaunchAgents/$NOTIFIER_PLIST_NAME.plist"
 PKG_ID="io.cylonix.sase.direct.installer"
+APP_PATH="/Applications/Cylonix.app"
+DIRECT_BUNDLE_ID="io.cylonix.sase.direct"
+
+# ---------------------------------------------------------------------------
+# Flavor/orphan hygiene (keep in sync across pkg/preinstall, pkg/postinstall
+# and uninstall_direct.sh).
+#
+# Installing this PKG while the network-extension flavor (io.cylonix.sase)
+# occupies /Applications/Cylonix.app makes Installer refuse the destination
+# (BundleHasStrictIdentifier) and drop the payload into a fresh
+# "/Applications/Cylonix*.localized/Cylonix.app" instead. Each orphan keeps a
+# second share extension registered under the same visible name "Cylonix";
+# ShareKit then launches one extension but connects to the other's service
+# name (NSCocoaError 4099), and the share sheet silently never appears.
+# ---------------------------------------------------------------------------
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
+
+cylonix_bundle_id() {
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+    "$1/Contents/Info.plist" 2>/dev/null || true
+}
+
+# Unregister one Cylonix app bundle (pluginkit's DB is per-user — run it as
+# the GUI user) and delete it.
+remove_cylonix_bundle() {
+  local app="$1" gui_user
+  gui_user="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+  if [[ -n "${gui_user:-}" && "$gui_user" != "root" && "$gui_user" != "_"* \
+        && -d "$app/Contents/PlugIns/ShareExtension.appex" ]]; then
+    sudo -u "$gui_user" pluginkit -r \
+      "$app/Contents/PlugIns/ShareExtension.appex" 2>/dev/null || true
+  fi
+  "$LSREGISTER" -u "$app" 2>/dev/null || true
+  rm -rf "$app"
+}
+
+# Delete every orphaned Cylonix flavor under /Applications/Cylonix*.localized.
+# Returns 0 if anything was removed (callers then restart Finder so ShareKit
+# drops the poisoned service identity it may have cached from an orphan).
+remove_cylonix_orphans() {
+  local removed=1 dir app id
+  for dir in /Applications/Cylonix*.localized(N); do
+    app="$dir/Cylonix.app"
+    id="$(cylonix_bundle_id "$app")"
+    if [[ ! -d "$app" || -z "$id" || "$id" == io.cylonix.sase* ]]; then
+      if [[ -d "$app" ]]; then
+        remove_cylonix_bundle "$app"
+      fi
+      rm -rf "$dir"
+      removed=0
+    fi
+  done
+  return $removed
+}
+
+# Restart the GUI user's Finder so ShareKit drops its cached share-service
+# identities. A plain `killall Finder` is silently ineffective from the
+# PackageKit script sandbox (the signal never lands and stderr is
+# discarded), so go through launchd — kickstart -k restarts the
+# com.apple.Finder agent — keeping killall as a fallback for contexts
+# without a GUI session.
+bounce_finder() {
+  local gui_user gui_uid
+  gui_user="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+  if [[ -n "${gui_user:-}" && "$gui_user" != "root" && "$gui_user" != "_"* ]]; then
+    gui_uid="$(id -u "$gui_user" 2>/dev/null || true)"
+    if [[ -n "${gui_uid:-}" ]] \
+        && launchctl kickstart -k "gui/${gui_uid}/com.apple.Finder" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  killall Finder 2>/dev/null || true
+}
 
 # Stop existing daemon before overwriting the app
 if launchctl list "$PLIST_NAME" &>/dev/null; then
@@ -35,6 +108,30 @@ pkgutil --forget "$PKG_ID" 2>/dev/null || true
 # Remove old-named app if present (renamed from cylonix-direct to Cylonix)
 if [[ -d "/Applications/cylonix-direct.app" ]]; then
   rm -rf "/Applications/cylonix-direct.app"
+fi
+
+# Clear the destination for the payload: if a different Cylonix flavor owns
+# /Applications/Cylonix.app, Installer would dodge the path and create a new
+# orphan (see hygiene note above). Both flavors are ours, and the user is
+# explicitly installing the direct flavor — replace it. Also sweep orphans
+# left by collisions from before this guard existed.
+NEED_FINDER_RESTART=0
+if [[ -d "$APP_PATH" ]]; then
+  EXISTING_ID="$(cylonix_bundle_id "$APP_PATH")"
+  if [[ "$EXISTING_ID" != "$DIRECT_BUNDLE_ID" ]]; then
+    killall Cylonix 2>/dev/null || true
+    remove_cylonix_bundle "$APP_PATH"
+    NEED_FINDER_RESTART=1
+  fi
+fi
+if remove_cylonix_orphans; then
+  NEED_FINDER_RESTART=1
+fi
+# Finder's ShareKit resolves share services once and caches the result
+# in-process; after removing a bundle registered under the same visible name,
+# bounce Finder so the Share menu re-resolves against the surviving copy.
+if [[ $NEED_FINDER_RESTART -eq 1 ]]; then
+  bounce_finder
 fi
 
 exit 0

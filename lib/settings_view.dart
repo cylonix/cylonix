@@ -288,10 +288,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     final confirmed = await showAlertDialog(
       context,
       'Uninstall Cylonix?',
-      'This stops and removes the Cylonix background service, command-line '
-          'tool, and notifier. You will be asked for an administrator '
-          'password. The app itself is deleted in a second step, after you '
-          'review what was removed.',
+      'Cylonix installs root-owned system components, so removing it '
+          'requires administrator access. macOS will ask for your '
+          'administrator password once, then remove:\n\n'
+          '•  The background service (the "cylonixd" daemon)\n'
+          '•  The command-line tool and notifier\n'
+          '•  The Cylonix app itself\n\n'
+          'Your saved node state is preserved so a future reinstall keeps '
+          "this device's identity.",
       okText: 'Uninstall',
       destructiveButton: 'Uninstall',
       showCancel: true,
@@ -299,19 +303,21 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
     if (confirmed != true || !mounted) return;
 
-    // Phase 1: stop/remove the daemon, notifier, CLI and receipt.
-    _showUninstallProgress('Uninstalling services…');
+    // Single privileged step: the daemon, notifier, CLI, receipt and the app
+    // bundle are all removed behind one administrator-password prompt. The app
+    // is left running (--no-kill) so its result can be shown before quitting.
+    _showUninstallProgress('Uninstalling Cylonix…');
     String? status;
     try {
-      status = await ref.read(ipnServiceProvider).uninstallDirectServices();
+      status = await ref.read(ipnServiceProvider).uninstallDirect();
     } catch (e) {
-      _logger.e("Uninstall (services) failed: $e");
+      _logger.e("Uninstall failed: $e");
       if (!mounted) return;
       _dismissUninstallProgress();
       await showAlertDialog(
         context,
         "Uninstall Failed",
-        "Could not remove Cylonix services: $e",
+        "Could not uninstall Cylonix: $e",
       );
       return;
     }
@@ -322,18 +328,18 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       return;
     }
 
-    // Show what was removed, then confirm deleting the app itself. There is
-    // no going back from here — services are already removed — so the only
-    // action is to delete the app. (do shell script returns CR line endings;
-    // split on any newline variant so each item renders on its own line.)
+    // Show what was removed, then quit. The app bundle is already gone; the
+    // running process continues until we terminate it. (do shell script and
+    // AuthorizationExecuteWithPrivileges may return CR line endings; split on
+    // any newline variant so each item renders on its own line.)
     final statusLines = status
         .split(RegExp(r'\r\n|\r|\n'))
         .map((l) => l.trim())
         .where((l) => l.isNotEmpty)
         .toList();
-    final proceed = await showAlertDialog(
+    await showAlertDialog(
       context,
-      'Services Removed',
+      'Cylonix Removed',
       null,
       child: SizedBox(
         width: double.maxFinite,
@@ -342,8 +348,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'The Cylonix background service and tools were removed '
-              'from this Mac:',
+              'Cylonix was removed from this Mac:',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),
@@ -357,6 +362,86 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   // green checkmark replaces it here.
                   line.replaceFirst(RegExp(r'^[•\-\*]\s*'), ''),
                 ),
+            const SizedBox(height: 12),
+            const Text(
+              'Cylonix will now quit.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+      okText: 'Quit Cylonix',
+      showCancel: false,
+    );
+    if (!mounted) return;
+    await ref.read(ipnServiceProvider).quitDirectApp();
+  }
+
+  Future<void> _confirmUninstallNe() async {
+    final confirmed = await showAlertDialog(
+      context,
+      'Uninstall Cylonix?',
+      'This disconnects Cylonix and removes its VPN configuration from this '
+          'Mac, so the tunnel will no longer start automatically. The app '
+          'itself is deleted in a second step.',
+      okText: 'Uninstall',
+      destructiveButton: 'Uninstall',
+      showCancel: true,
+      cancelText: 'Cancel',
+    );
+    if (confirmed != true || !mounted) return;
+
+    // Phase 1: delete the VPN configuration. This stops the tunnel and
+    // removes its always-on rules in one step; no administrator password is
+    // required.
+    _showUninstallProgress('Removing VPN configuration…');
+    try {
+      await ref.read(ipnServiceProvider).removeVpnConfiguration();
+    } catch (e) {
+      _logger.e("Uninstall (VPN configuration) failed: $e");
+      if (!mounted) return;
+      _dismissUninstallProgress();
+      await showAlertDialog(
+        context,
+        "Uninstall Failed",
+        "Could not remove the Cylonix VPN configuration: $e",
+      );
+      return;
+    }
+    if (!mounted) return;
+    _dismissUninstallProgress();
+
+    // Show what was removed, then confirm deleting the app itself. As with
+    // the direct build, the configuration is already gone at this point, so
+    // the only action left is to delete the app.
+    final proceed = await showAlertDialog(
+      context,
+      'VPN Configuration Removed',
+      null,
+      child: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'The Cylonix VPN configuration was removed from this Mac:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            _uninstallStatusRow(context, 'VPN tunnel disconnected'),
+            _uninstallStatusRow(
+              context,
+              'VPN configuration and its always-on rules removed from '
+              'System Settings',
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Next, macOS will ask you to confirm moving the Cylonix app '
+              'to the Trash: in the panel that appears, select the Cylonix '
+              'app — the only enabled item — and click "Move to Trash".',
+              style: TextStyle(fontSize: 13),
+            ),
           ],
         ),
       ),
@@ -366,17 +451,16 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
     if (proceed != true || !mounted) return;
 
-    // Phase 2: delete the app bundle and quit. On success this app is
-    // terminated, so the progress dialog stays up until the app disappears.
+    // Phase 2: move the app bundle to the Trash. The sandbox cannot delete
+    // from /Applications on its own, so the native side shows an open panel
+    // whose selection grants write access (powerbox). On success the app
+    // terminates itself, so the progress dialog stays up until it
+    // disappears; if the user cancels the panel the bundle is revealed in
+    // Finder for a manual drag instead.
     _showUninstallProgress('Deleting Cylonix…');
+    String outcome;
     try {
-      final started = await ref.read(ipnServiceProvider).deleteDirectApp();
-      if (!mounted) return;
-      if (started) {
-        return;
-      }
-      // Cancelled at the (normally cached) administrator-password prompt.
-      _dismissUninstallProgress();
+      outcome = await ref.read(ipnServiceProvider).deleteNeApp();
     } catch (e) {
       _logger.e("Uninstall (app) failed: $e");
       if (!mounted) return;
@@ -384,9 +468,27 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       await showAlertDialog(
         context,
         "Delete Failed",
-        "Could not delete the Cylonix app: $e",
+        "Could not delete the Cylonix app: $e. You can remove it by "
+            "dragging it to the Trash from the Applications folder.",
       );
+      return;
     }
+    if (!mounted) return;
+    if (outcome == 'trashed') {
+      // The app is about to terminate; leave the progress dialog up.
+      return;
+    }
+    _dismissUninstallProgress();
+    await showAlertDialog(
+      context,
+      'One Last Step',
+      'The app was not moved to the Trash. It has been revealed in Finder '
+          'instead — after Cylonix quits, drag it to the Trash to finish.',
+      okText: 'Quit Cylonix',
+      showCancel: false,
+    );
+    if (!mounted) return;
+    await ref.read(ipnServiceProvider).quitApp();
   }
 
   Future<void> _launchBugReport() async {
@@ -716,15 +818,19 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 'stability of the application.',
               ),
             ),
-            if (IpnService.isDirectDistribution)
+            if (IpnService.isDirectDistribution ||
+                IpnService.isMacosAppStoreDistribution)
               AdaptiveListSection.insetGrouped(
                 header: const AdaptiveGroupedHeader('UNINSTALL'),
                 children: [
                   AdaptiveListTile.notched(
                     title: const Text('Uninstall Cylonix'),
-                    subtitle: const Text(
-                      'Remove the app, background service, command-line '
-                      'tool, and notifier from this Mac',
+                    subtitle: Text(
+                      IpnService.isDirectDistribution
+                          ? 'Remove the app, background service, command-line '
+                              'tool, and notifier from this Mac'
+                          : 'Remove the VPN configuration and the app from '
+                              'this Mac',
                       softWrap: true,
                       maxLines: 3,
                     ),
@@ -737,15 +843,22 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                               CupertinoColors.systemRed.resolveFrom(context),
                         ),
                       ),
-                      onPressed: _confirmUninstall,
+                      onPressed: IpnService.isDirectDistribution
+                          ? _confirmUninstall
+                          : _confirmUninstallNe,
                     ),
                   ),
                 ],
-                footer: const AdaptiveGroupedFooter(
-                  'You will be asked for an administrator password, and '
-                  'Cylonix will quit once removal completes. Your saved node '
-                  'state is preserved so a future reinstall keeps this '
-                  "device's identity.",
+                footer: AdaptiveGroupedFooter(
+                  IpnService.isDirectDistribution
+                      ? 'You will be asked for an administrator password, and '
+                          'Cylonix will quit once removal completes. Your '
+                          'saved node state is preserved so a future '
+                          "reinstall keeps this device's identity."
+                      : 'Removing the VPN configuration disconnects Cylonix '
+                          'and stops macOS from restarting the tunnel after '
+                          'the app is gone. Your saved login is preserved so '
+                          "a future reinstall keeps this device's identity.",
                 ),
               ),
             if (const bool.fromEnvironment('DEBUG') || forceDebug)

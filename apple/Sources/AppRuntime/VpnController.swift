@@ -15,6 +15,7 @@ protocol AppleVpnControlling: AnyObject {
     func checkVPNPermission(_ id: String)
     func handleGetLogs(_ id: String) -> String
     func handleSendCommand(_ arguments: [String: String]) -> String
+    func removeVpnConfiguration(completion: @escaping (String?) -> Void)
 }
 
 enum CylonixDistributionMode: String {
