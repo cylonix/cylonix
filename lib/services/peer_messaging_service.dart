@@ -107,6 +107,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     await _consumeAutoSavedAttachmentPaths();
     await _startProxyServer();
     await _persistState();
+    _scheduleStuckMessageRecovery(const Duration(seconds: 5));
   }
 
   Future<void> onCurrentProfileChanged(LoginProfile? profile) async {
@@ -130,6 +131,103 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       return;
     }
     await _ipnService.replayPendingPeerMessageEvents();
+    _scheduleStuckMessageRecovery(const Duration(seconds: 3));
+  }
+
+  /// Age past which an outgoing `pending` message with no `queued` metadata
+  /// is considered stuck (the send never reached the daemon, e.g. iOS
+  /// suspended the app mid-send) and is re-submitted.
+  static const _stuckPendingRecoveryAge = Duration(seconds: 30);
+
+  /// Slightly beyond the daemon queue's 24h give-up TTL: a queued message
+  /// still `pending` after this long means the daemon's failed event was
+  /// lost, so it is failed locally.
+  static const _queuedMessageExpiry = Duration(hours: 25);
+
+  bool _recoveringStuckMessages = false;
+
+  /// Runs [_recoverStuckOutgoingMessages] after [delay], giving replayed
+  /// delivery-update events (which may resolve pending messages) a chance to
+  /// land first.
+  void _scheduleStuckMessageRecovery(Duration delay) {
+    unawaited(Future<void>.delayed(delay, () {
+      if (!mounted) return;
+      _recoverStuckOutgoingMessages();
+    }));
+  }
+
+  /// Re-drives outgoing messages stuck in `pending`:
+  ///  - Messages the daemon queue owns (metadata `queued`) past the daemon's
+  ///    give-up TTL are marked failed locally — their failed event was most
+  ///    likely emitted while the app couldn't receive it.
+  ///  - Messages that never reached the daemon are re-submitted with the
+  ///    queue policy. Receivers de-duplicate by message ID, so a rare double
+  ///    delivery is harmless.
+  Future<void> _recoverStuckOutgoingMessages() async {
+    if (_recoveringStuckMessages) return;
+    _recoveringStuckMessages = true;
+    try {
+      final profileId = _activeProfileId;
+      if (profileId.isEmpty) return;
+      final now = DateTime.now().toUtc();
+      final resubmits = <MapEntry<String, PeerMessagingMessage>>[];
+      final expired = <MapEntry<String, PeerMessagingMessage>>[];
+      for (final conversation in state.conversations) {
+        if (conversation.profileId != profileId) continue;
+        for (final message in conversation.messages) {
+          if (message.role != PeerMessagingMessageRole.user ||
+              message.deliveryStatus != PeerMessagingDeliveryStatus.pending) {
+            continue;
+          }
+          final age = now.difference(message.createdAt.toUtc());
+          if (message.metadata['queued'] == true) {
+            if (age > _queuedMessageExpiry) {
+              expired.add(MapEntry(conversation.id, message));
+            }
+          } else if (age > _stuckPendingRecoveryAge) {
+            resubmits.add(MapEntry(conversation.id, message));
+          }
+        }
+      }
+      for (final entry in expired) {
+        await _applyDeliveryStatus(
+          entry.key,
+          entry.value.id,
+          PeerMessagingDeliveryStatus.failed,
+          profileId: profileId,
+          failureMessage: 'Message expired before it could be delivered.',
+        );
+      }
+      for (final entry in resubmits) {
+        final conversationId = entry.key;
+        final message = entry.value;
+        final title = _findConversationTitle(
+          profileId: profileId,
+          conversationId: conversationId,
+        );
+        _logger.i(
+          'Re-submitting stuck pending message ${message.id} in conversation $conversationId',
+        );
+        try {
+          await _sendOutgoingMessage(
+            profileId: profileId,
+            conversationId: conversationId,
+            messageId: message.id,
+            payload: {
+              'peer_id': conversationId,
+              'conversation_id': conversationId,
+              'message': message.toJson(),
+              if ((title ?? '').isNotEmpty) 'conversation_title': title,
+            },
+            attachments: message.attachments,
+          );
+        } catch (e) {
+          _logger.w('Recovery re-send of ${message.id} failed: $e');
+        }
+      }
+    } finally {
+      _recoveringStuckMessages = false;
+    }
   }
 
   Future<void> disposeService() async {
@@ -641,6 +739,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final payload = {
       'peer_id': conversationId,
       'conversation_id': conversationId,
+      'delivery_policy': 'queue',
       'message': message.toJson(),
       'approval_id': approvalId,
       'approved': approved,
@@ -656,6 +755,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             ? PeerMessagingDeliveryStatus.pending
             : PeerMessagingDeliveryStatus.delivered,
         profileId: profileId,
+        queued: sendResult.queued,
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -663,6 +763,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         message.id,
         PeerMessagingDeliveryStatus.failed,
         profileId: profileId,
+        failureMessage: e.toString(),
       );
       rethrow;
     }
@@ -702,6 +803,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final payload = {
       'peer_id': conversationId,
       'conversation_id': conversationId,
+      'delivery_policy': 'queue',
       'message': message.toJson(),
       'message_id': messageId,
       'action': action,
@@ -717,6 +819,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             ? PeerMessagingDeliveryStatus.pending
             : PeerMessagingDeliveryStatus.delivered,
         profileId: profileId,
+        queued: sendResult.queued,
       );
     } catch (e) {
       await _applyDeliveryStatus(
@@ -724,6 +827,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         message.id,
         PeerMessagingDeliveryStatus.failed,
         profileId: profileId,
+        failureMessage: e.toString(),
       );
       rethrow;
     }
@@ -890,12 +994,15 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         final targetMessageId = event.messageId ??
             event.payload['message_id'] as String? ??
             (event.payload['message'] as Map?)?['id'] as String?;
+        final failureMessage = event.payload['failure_message'] as String? ??
+            (event.payload['message'] as Map?)?['failure_message'] as String?;
         if ((targetMessageId ?? '').isNotEmpty) {
           await _applyDeliveryStatus(
             targetConversationId,
             targetMessageId!,
             status,
             profileId: profileId,
+            failureMessage: failureMessage,
           );
         }
         break;
@@ -2227,6 +2334,8 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     String messageId,
     PeerMessagingDeliveryStatus deliveryStatus, {
     required String profileId,
+    bool? queued,
+    String? failureMessage,
   }) async {
     conversationId = _canonicalConversationId(conversationId);
     var changed = false;
@@ -2239,8 +2348,39 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         if (conversationId.isNotEmpty && conversation.id != conversationId) {
           return message;
         }
+        if (deliveryStatus == PeerMessagingDeliveryStatus.pending &&
+            (message.deliveryStatus == PeerMessagingDeliveryStatus.delivered ||
+                message.deliveryStatus ==
+                    PeerMessagingDeliveryStatus.failed)) {
+          // A daemon delivery update already resolved this message (its
+          // event can race ahead of the send call returning); never
+          // downgrade a terminal status back to pending.
+          return message;
+        }
         changed = true;
-        return message.copyWith(deliveryStatus: deliveryStatus);
+        final metadata = {...message.metadata};
+        final failed = deliveryStatus == PeerMessagingDeliveryStatus.failed;
+        if (failed) {
+          if (failureMessage != null) {
+            metadata['failure_message'] = failureMessage;
+          }
+        } else {
+          metadata.remove('failure_message');
+        }
+        if (queued == true) {
+          metadata['queued'] = true;
+          metadata['delivery_policy'] = 'queue';
+        } else if (deliveryStatus == PeerMessagingDeliveryStatus.delivered ||
+            failed) {
+          // Terminal status: the daemon queue no longer owns this message.
+          metadata.remove('queued');
+        }
+        return message.copyWith(
+          deliveryStatus: deliveryStatus,
+          failureMessage:
+              failed ? (failureMessage ?? message.failureMessage) : null,
+          metadata: metadata,
+        );
       }).toList();
       return conversation.copyWith(messages: messages);
     }).toList();
@@ -2301,25 +2441,61 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           )
           .toList();
       if (filePayloads.isNotEmpty) {
-        await _ipnService.sendPeerFiles(conversationId, filePayloads);
+        if (_ipnService.sendsPeerMessageAttachmentsViaDaemon) {
+          // Hand the staged paths to the daemon inside the send payload so
+          // its outbound queue pushes (and retries) the files together with
+          // the message, even while the app is suspended.
+          outgoingPayload = {
+            ...outgoingPayload,
+            'outgoing_attachments': [
+              for (final file in filePayloads)
+                {
+                  'transfer_id': file.id,
+                  'name': file.name,
+                  'path': file.path,
+                  'declared_size': file.declaredSize,
+                },
+            ],
+          };
+        } else {
+          await _ipnService.sendPeerFiles(conversationId, filePayloads);
+        }
       }
+      // Queue unless the caller (e.g. an external bridge client) asked for a
+      // specific policy: the daemon retries queued messages with backoff and
+      // reports the outcome through message_delivery_update events.
+      outgoingPayload = {
+        'delivery_policy': 'queue',
+        ...outgoingPayload,
+      };
       final sendResult =
           await _ipnService.sendPeerMessagingMessage(outgoingPayload);
       await _updateMessage(
         profileId: profileId,
         conversationId: conversationId,
         messageId: messageId,
-        transform: (current) => current.copyWith(
-          deliveryStatus: sendResult.queued
-              ? PeerMessagingDeliveryStatus.pending
-              : PeerMessagingDeliveryStatus.delivered,
-          failureMessage: null,
-          metadata: {
-            ...current.metadata,
-            if (sendResult.queued) 'delivery_policy': 'queue',
-            if (sendResult.queued) 'queued': true,
-          }..remove('failure_message'),
-        ),
+        transform: (current) {
+          if (sendResult.queued &&
+              (current.deliveryStatus ==
+                      PeerMessagingDeliveryStatus.delivered ||
+                  current.deliveryStatus ==
+                      PeerMessagingDeliveryStatus.failed)) {
+            // The daemon's delivery update raced ahead of the send call
+            // returning; keep the terminal status.
+            return current;
+          }
+          return current.copyWith(
+            deliveryStatus: sendResult.queued
+                ? PeerMessagingDeliveryStatus.pending
+                : PeerMessagingDeliveryStatus.delivered,
+            failureMessage: null,
+            metadata: {
+              ...current.metadata,
+              if (sendResult.queued) 'delivery_policy': 'queue',
+              if (sendResult.queued) 'queued': true,
+            }..remove('failure_message'),
+          );
+        },
       );
       final updatedMessage = _findMessage(
         profileId: profileId,

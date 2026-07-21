@@ -1037,6 +1037,36 @@ class IpnService {
     _logger.i("Watching notifications started successfully.");
   }
 
+  /// The backend can be mid-restart when the app comes up — e.g. iOS
+  /// terminates both the app and the network extension when a privacy
+  /// permission changes, and on-demand brings the tunnel back a few
+  /// seconds later. During that window the command endpoint answers with
+  /// an error body; surfacing that to the state notifier paints an error
+  /// UI even though everything recovers on its own moments later. Retry
+  /// with backoff (~15s total) before giving up.
+  Future<void> _watchNotificationsWithRetry(
+    Function(Object error, StackTrace stack) onError,
+  ) async {
+    const maxAttempts = 6;
+    var delayMs = 500;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await watchNotifications(onError);
+        return;
+      } catch (e) {
+        if (attempt == maxAttempts) {
+          rethrow;
+        }
+        _logger.w(
+          "Watch notifications attempt $attempt/$maxAttempts failed ($e); "
+          "retrying in ${delayMs}ms",
+        );
+        await Future.delayed(Duration(milliseconds: delayMs));
+        delayMs = (delayMs * 2).clamp(500, 8000);
+      }
+    }
+  }
+
   Future<String> _getMdmControlURL() async {
     // Not yet implemented.
     return "";
@@ -1216,6 +1246,13 @@ class IpnService {
     }
   }
 
+  /// Whether peer-message attachments are handed to the Go backend as staged
+  /// file paths (method-channel platforms: iOS, macOS NE app, Android)
+  /// rather than streamed over the HTTP LocalAPI by the app. Path-based
+  /// sends let the daemon-side outbound queue retry attachments while the
+  /// app is suspended.
+  bool get sendsPeerMessageAttachmentsViaDaemon => !_useHttpLocalApi;
+
   Future<PeerMessagingSendResult> sendPeerMessagingMessage(
     Map<String, dynamic> payload,
   ) async {
@@ -1389,6 +1426,26 @@ class IpnService {
     if (result != null && result != 'Success') {
       throw Exception('Failed to set notification preview preference: $result');
     }
+  }
+
+  /// Opens this app's page in the system Settings app so the user can
+  /// grant a permission that was previously denied (camera, photos,
+  /// microphone). Neither iOS nor Android re-prompts once the user has
+  /// denied a permission, so a Settings deep link is the only in-app
+  /// recovery path.
+  Future<bool> openAppSettings() async {
+    try {
+      if (Platform.isIOS) {
+        return await launchUrl(Uri.parse('app-settings:'));
+      }
+      if (Platform.isAndroid) {
+        final ok = await _channel.invokeMethod<bool>('openAppSettings');
+        return ok ?? false;
+      }
+    } catch (e) {
+      _logger.e('Failed to open app settings: $e');
+    }
+    return false;
   }
 
   Future<Map<String, String>> consumeAutoSavedFilePaths() async {
@@ -1991,7 +2048,7 @@ class IpnService {
             "Failed to get status: $e. Starting tunnel anyway and watching notifications.");
       }
       _logger.d("Status unknown; starting tunnel and watching notifications.");
-      await watchNotifications(onError);
+      await _watchNotificationsWithRetry(onError);
       // Without a successful status read we don't know what state the
       // backend is in, but the only state from which we'd want to skip
       // _start is "already running past needsLogin". If the backend was

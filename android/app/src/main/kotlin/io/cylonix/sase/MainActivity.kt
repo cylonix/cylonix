@@ -402,6 +402,19 @@ class MainActivity: FlutterFragmentActivity() {
 						result.error("OPEN_SETTINGS_FAILED", e.message, null)
 					}
 				}
+				"openAppSettings" -> {
+					try {
+						val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+							data = Uri.fromParts("package", packageName, null)
+							addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+						}
+						startActivity(intent)
+						result.success(true)
+					} catch (e: Exception) {
+						Log.e(LOG_TAG, "openAppSettings failed: ${e.message}")
+						result.error("OPEN_SETTINGS_FAILED", e.message, null)
+					}
+				}
                 "checkVPNPermission" -> {
                     Log.d(LOG_TAG, "checkVPNPermission")
                     val state = vpnViewModel.vpnPrepared.value ?: false

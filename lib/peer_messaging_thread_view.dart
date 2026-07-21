@@ -163,8 +163,13 @@ class _PeerMessagingThreadViewState
     FocusScope.of(context).unfocus();
   }
 
+  // Sending is allowed while the VPN is connected or still connecting: the
+  // daemon queues the message and retries with backoff, so a send during a
+  // reconnect goes out as soon as the peer is reachable. Only a deliberately
+  // stopped (or errored) VPN blocks composing.
   bool _isConnected() {
-    return ref.read(vpnStateProvider) == VpnState.connected;
+    final state = ref.read(vpnStateProvider);
+    return state == VpnState.connected || state == VpnState.connecting;
   }
 
   Future<void> _chooseAttachmentSource() async {
@@ -275,6 +280,22 @@ class _PeerMessagingThreadViewState
         return;
       }
       await _ingestXFiles([file]);
+    } on PlatformException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      if (e.code == 'camera_access_denied' ||
+          e.code == 'camera_access_restricted') {
+        await _showPermissionDeniedDialog(
+          title: 'Camera Access Needed',
+          message: video
+              ? 'Cylonix needs camera access to record videos.'
+              : 'Cylonix needs camera access to take photos.',
+          restricted: e.code == 'camera_access_restricted',
+        );
+        return;
+      }
+      await showAlertDialog(context, 'Capture Failed', e.message ?? '$e');
     } catch (e) {
       if (mounted) {
         await showAlertDialog(context, 'Capture Failed', '$e');
@@ -290,11 +311,61 @@ class _PeerMessagingThreadViewState
         return;
       }
       await _ingestXFiles(files);
+    } on PlatformException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      if (e.code == 'photo_access_denied' ||
+          e.code == 'photo_access_restricted') {
+        await _showPermissionDeniedDialog(
+          title: 'Photo Library Access Needed',
+          message: 'Cylonix needs photo library access to attach photos '
+              'and videos.',
+          restricted: e.code == 'photo_access_restricted',
+        );
+        return;
+      }
+      await showAlertDialog(context, 'Photo Library Failed', e.message ?? '$e');
     } catch (e) {
       if (mounted) {
         await showAlertDialog(context, 'Photo Library Failed', '$e');
       }
     }
+  }
+
+  /// The OS shows its own permission prompt the first time the picker is
+  /// used; an access-denied error here means the user previously declined
+  /// (or a policy restricts access) and the OS will not ask again, so the
+  /// only way forward is the Settings app.
+  Future<void> _showPermissionDeniedDialog({
+    required String title,
+    required String message,
+    required bool restricted,
+  }) async {
+    if (restricted) {
+      await showAlertDialog(
+        context,
+        title,
+        '$message Access is restricted on this device, for example by '
+        'parental controls or a device management profile.',
+      );
+      return;
+    }
+    // Changing a privacy permission makes iOS terminate the running app
+    // (a TCC kill); warn so the restart doesn't read as a crash.
+    final restartNote = Platform.isIOS
+        ? ' iOS will restart Cylonix when you change this permission.'
+        : '';
+    await showAlertDialog(
+      context,
+      title,
+      '$message Please allow access in Settings.$restartNote',
+      okText: 'Open Settings',
+      showCancel: true,
+      onPressOK: () {
+        ref.read(ipnServiceProvider).openAppSettings();
+      },
+    );
   }
 
   Future<void> _pickAttachments() async {
@@ -2565,7 +2636,7 @@ class _MessageBubble extends StatelessWidget {
   }
 
   String get _headerText {
-    return _timestamp(message.createdAt);
+    return formatMessageTimestamp(message.createdAt);
   }
 
   String _senderNameFor(PeerMessagingMessage value) {
@@ -2833,17 +2904,6 @@ class _MessageBubble extends StatelessWidget {
     }
   }
 
-  String _timestamp(DateTime value) {
-    final local = value.toLocal();
-    final hour = local.hour == 0
-        ? 12
-        : local.hour > 12
-            ? local.hour - 12
-            : local.hour;
-    final minute = local.minute.toString().padLeft(2, '0');
-    final suffix = local.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $suffix';
-  }
 }
 
 class _AttachmentLine extends StatelessWidget {

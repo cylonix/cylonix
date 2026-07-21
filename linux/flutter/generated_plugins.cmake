@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   charset_converter
   file_selector_linux
+  local_notifier
   screen_retriever
   system_tray
   url_launcher_linux

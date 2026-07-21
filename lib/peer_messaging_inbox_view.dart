@@ -481,7 +481,7 @@ class _ConversationTile extends ConsumerWidget {
                 ),
               )
             : Text(
-                _formatTimestamp(conversation.updatedAt),
+                formatConversationTimestamp(conversation.updatedAt),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
         onTap: () {
@@ -647,17 +647,6 @@ class _ConversationTile extends ConsumerWidget {
     );
   }
 
-  String _formatTimestamp(DateTime value) {
-    final local = value.toLocal();
-    final hour = local.hour == 0
-        ? 12
-        : local.hour > 12
-            ? local.hour - 12
-            : local.hour;
-    final minute = local.minute.toString().padLeft(2, '0');
-    final suffix = local.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $suffix';
-  }
 }
 
 class _EmptyState extends StatelessWidget {

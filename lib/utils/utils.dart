@@ -140,6 +140,74 @@ String formatBytes(int bytes, [int decimals = 2]) {
   return ((bytes / pow(1024, i)).toStringAsFixed(decimals)) + ' ' + suffixes[i];
 }
 
+const _monthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+const _weekdayNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+String _format12HourTime(DateTime local) {
+  final hour = local.hour == 0
+      ? 12
+      : local.hour > 12
+          ? local.hour - 12
+          : local.hour;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final suffix = local.hour >= 12 ? 'PM' : 'AM';
+  return '$hour:$minute $suffix';
+}
+
+/// Returns null for today, otherwise 'Yesterday', a weekday name for the
+/// past week, or a date such as 'Jun 11' ('Jun 11, 2025' if another year).
+String? _messageDateLabel(DateTime local) {
+  final now = DateTime.now();
+  // Construct as UTC so the difference is an exact number of days even
+  // across DST transitions.
+  final today = DateTime.utc(now.year, now.month, now.day);
+  final day = DateTime.utc(local.year, local.month, local.day);
+  final days = today.difference(day).inDays;
+  if (days <= 0) return null;
+  if (days == 1) return 'Yesterday';
+  if (days < 7) return _weekdayNames[local.weekday - 1];
+  final date = '${_monthNames[local.month - 1]} ${local.day}';
+  return local.year == now.year ? date : '$date, ${local.year}';
+}
+
+/// Timestamp for a message header: time only for today, otherwise the date
+/// followed by the time, e.g. 'Yesterday 3:45 PM' or 'Jun 11 3:45 PM'.
+String formatMessageTimestamp(DateTime value) {
+  final local = value.toLocal();
+  final time = _format12HourTime(local);
+  final label = _messageDateLabel(local);
+  return label == null ? time : '$label $time';
+}
+
+/// Compact timestamp for a conversation list: time for today, otherwise
+/// 'Yesterday', a weekday name, or a date without the time.
+String formatConversationTimestamp(DateTime value) {
+  final local = value.toLocal();
+  return _messageDateLabel(local) ?? _format12HourTime(local);
+}
+
 /// ShowBySide base on the screen size
 bool showSideBySide(BuildContext context) {
   final screenSize = MediaQuery.of(context).size;
