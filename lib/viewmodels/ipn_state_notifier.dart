@@ -311,6 +311,18 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         _logger.d("Reauth: completed (loginFinished="
             "${notification.loginFinished != null}, keyChanged=$keyChanged)");
         _setReauthInProgress(false);
+        // Reauth keeps the backend in the running state and relaunches the
+        // login URL in a fresh in-app web view, so the needsLogin-crossing
+        // close below never fires for that relaunched view. Close it here on
+        // completion, mirroring the normal-login close path.
+        if (isMobile() && urlBrowsed != null) {
+          _logger.d("Closing in-app web view after reauth completion.");
+          closeInAppWebView();
+          if (Platform.isAndroid) {
+            _ipnService.loginComplete();
+          }
+        }
+        urlBrowsed = null;
       }
     }
 
@@ -1082,8 +1094,16 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         return true;
       }
       _logger.d("Launching to URL $url");
+      // iOS: open in the in-app web view (SFSafariViewController) so the app
+      // can dismiss it with closeInAppWebView() once login completes — same
+      // auto-return the Android custom-tab path already does. Android keeps
+      // the platform default (Chrome Custom Tab), which it closes natively via
+      // loginComplete().
       final launched = await launchUrl(
         Uri.parse(url),
+        mode: Platform.isIOS
+            ? LaunchMode.inAppWebView
+            : LaunchMode.platformDefault,
       );
       if (!launched) {
         throw Exception("Failed to launch login URL at '$url'");
