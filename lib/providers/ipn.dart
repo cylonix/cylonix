@@ -26,6 +26,12 @@ final ipnStateNotifierProvider =
 // stays running. Not part of IpnState to avoid regenerating freezed code.
 final reauthInProgressProvider = StateProvider<bool>((ref) => false);
 
+// True from LoginFinished (in-app login browser dismissed) until the backend
+// leaves needsLogin. Bridges the gap where the login page would otherwise
+// flash while the first netmap loads: the UI shows a connecting spinner
+// instead. Not part of IpnState to avoid regenerating freezed code.
+final loginFinishingProvider = StateProvider<bool>((ref) => false);
+
 // Derived providers with error handling
 final ipnStateProvider = Provider<IpnState?>((ref) {
   final state = ref.watch(ipnStateNotifierProvider);

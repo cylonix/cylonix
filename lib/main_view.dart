@@ -396,6 +396,12 @@ class _MainViewState extends ConsumerState<MainView> {
       case BackendState.starting:
         return _buildCenteredWidget(_buildConnectingView(context, true));
       default:
+        // Login just finished in the browser; the backend is still fetching
+        // the first netmap before leaving needsLogin. Show progress instead
+        // of flashing the login page under the dismissed browser view.
+        if (ref.watch(loginFinishingProvider)) {
+          return _buildCenteredWidget(_buildConnectingView(context, true));
+        }
         if (_isSubmittingAuthKey) {
           return _buildCenteredWidget(_buildConnectingView(context, true));
         }

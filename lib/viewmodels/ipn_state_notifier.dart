@@ -265,6 +265,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         }
       }
       if (ns > BackendState.needsLogin.value) {
+        // Past needsLogin: the post-login progress bridge (if any) is over.
+        _setLoginFinishing(false);
         if (urlBrowsed != null) {
           if (isMobile()) {
             // Mobile platform with URL browsed and state changed to past
@@ -280,6 +282,28 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         }
       }
     }
+    // Login finished: the auth session is established even though the backend
+    // may still be fetching the first netmap before it leaves needsLogin and
+    // reaches running. Close the in-app login view now so the user returns to
+    // the app immediately and watches the native connecting state instead of
+    // a browser page waiting out the transitions. This covers both new login
+    // and reauth; the needsLogin-crossing close above stays as a fallback for
+    // flows that never emit LoginFinished (e.g. machine auth approval).
+    if (notification.loginFinished != null &&
+        urlBrowsed != null &&
+        isMobile()) {
+      _logger.d("Closing in-app web view: login finished.");
+      closeInAppWebView();
+      if (Platform.isAndroid) {
+        _ipnService.loginComplete();
+      }
+      urlBrowsed = null;
+      // The backend stays in needsLogin until the first netmap arrives; mark
+      // login as finishing so the UI shows progress instead of flashing the
+      // login page underneath the dismissed browser.
+      _setLoginFinishing(true);
+    }
+
     final vpnState = _determineVpnState(notification);
     if (state.valueOrNull?.vpnState != vpnState) {
       _logger.d("\n\n******** VPN state -> $vpnState **********\n\n");
@@ -291,6 +315,9 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       _logger.d("Received browseToURL: ${notification.browseToURL}, "
           "clearing urlBrowsed");
       urlBrowsed = null;
+      // A new login URL supersedes any post-login progress bridge: drop back
+      // to the login page so it can (re)launch the URL.
+      _setLoginFinishing(false);
     }
 
     // Track an in-progress explicit re-authentication. When the device key has
@@ -311,10 +338,10 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         _logger.d("Reauth: completed (loginFinished="
             "${notification.loginFinished != null}, keyChanged=$keyChanged)");
         _setReauthInProgress(false);
-        // Reauth keeps the backend in the running state and relaunches the
-        // login URL in a fresh in-app web view, so the needsLogin-crossing
-        // close below never fires for that relaunched view. Close it here on
-        // completion, mirroring the normal-login close path.
+        // Completion detected by the node key changing without a
+        // LoginFinished event: the unified loginFinished close above never
+        // ran, so close the relaunched in-app view here. (When LoginFinished
+        // did fire, urlBrowsed is already null and this is a no-op.)
         if (isMobile() && urlBrowsed != null) {
           _logger.d("Closing in-app web view after reauth completion.");
           closeInAppWebView();
@@ -677,6 +704,24 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     } catch (e) {
       _setReauthInProgress(false);
       rethrow;
+    }
+  }
+
+  Timer? _loginFinishingTimer;
+
+  // Marks the post-login progress bridge (LoginFinished seen, backend not yet
+  // past needsLogin). A safety timeout clears it so the UI can never wedge on
+  // the spinner if the backend stalls before the first netmap.
+  void _setLoginFinishing(bool value) {
+    _loginFinishingTimer?.cancel();
+    _loginFinishingTimer = null;
+    if (ref.read(loginFinishingProvider) != value) {
+      ref.read(loginFinishingProvider.notifier).state = value;
+    }
+    if (value) {
+      _loginFinishingTimer = Timer(const Duration(seconds: 30), () {
+        ref.read(loginFinishingProvider.notifier).state = false;
+      });
     }
   }
 
