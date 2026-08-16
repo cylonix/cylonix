@@ -606,7 +606,11 @@ class IpnService {
   Future<List<String>> _getDebugStateTraceLines() async {
     try {
       final raw = await getDebugStateTraces();
-      if (raw.trim().isEmpty) return const [];
+      // The command bridge reports failures as an "Error: ..." string
+      // result rather than an exception; don't embed those in exports.
+      if (raw.trim().isEmpty || raw.trimLeft().startsWith('Error:')) {
+        return const [];
+      }
       const header = '===== IPN state-send trace ring buffer =====';
       return [header, ...raw.split('\n')];
     } catch (e) {
