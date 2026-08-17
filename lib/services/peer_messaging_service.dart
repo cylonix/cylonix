@@ -52,6 +52,11 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   // Multiple windows / split-screen support is handled by counting registrations.
   final Map<String, int> _activeThreadRefs = {};
   Timer? _activePeersHeartbeatTimer;
+  // Coalesces the opportunistic auto-saved-attachment sweep that runs after
+  // every peer-messaging event. During an event flood (e.g. delivery/warm
+  // status churn while the tunnel is reconnecting) this otherwise fires a
+  // native NE round-trip per event, tens of times a second.
+  Timer? _consumeAutoSavedDebounce;
   static const _activePeersHeartbeatInterval = Duration(seconds: 60);
 
   // Per-peer warm status reported by the daemon (warm_status events). UI
@@ -234,6 +239,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     await _bridgeSubscription?.cancel();
     await _notificationSubscription?.cancel();
     _activePeersHeartbeatTimer?.cancel();
+    _consumeAutoSavedDebounce?.cancel();
     _activePeersHeartbeatTimer = null;
     _activeThreadRefs.clear();
     _warmStatus.clear();
@@ -1037,10 +1043,28 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
 
     await _persistState();
-    await _consumeAutoSavedAttachmentPaths();
+    _scheduleConsumeAutoSavedAttachmentPaths();
     if (_shouldBroadcastEvent(event)) {
       await _broadcast(event);
     }
+  }
+
+  // Schedules a single coalesced run of the opportunistic auto-saved
+  // attachment sweep. A burst of events collapses into one sweep rather
+  // than one per event. Inbound messages that need their attachment
+  // resolved immediately still call _consumeAutoSavedAttachmentPaths
+  // directly (see inbound handling), so this path is best-effort only.
+  void _scheduleConsumeAutoSavedAttachmentPaths() {
+    if (_consumeAutoSavedDebounce?.isActive ?? false) {
+      return;
+    }
+    _consumeAutoSavedDebounce = Timer(
+      const Duration(milliseconds: 500),
+      () {
+        _consumeAutoSavedDebounce = null;
+        unawaited(_consumeAutoSavedAttachmentPaths());
+      },
+    );
   }
 
   Future<void> _handleBridgeEventFromStream(PeerMessagingEvent event) async {
@@ -1287,7 +1311,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       );
     }
     if (_pendingAutoSavedPaths.isEmpty) {
-      _logger.d('No auto-saved attachment paths available to consume');
+      // Common no-op case (fires after most events); intentionally not
+      // logged — it previously flooded the log tens of times a second
+      // during event bursts.
       return;
     }
     _logger.d(
