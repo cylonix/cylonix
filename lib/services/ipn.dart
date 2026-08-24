@@ -1220,6 +1220,33 @@ class IpnService {
     }
   }
 
+  /// Android only: whether the app is exempt from battery optimization.
+  /// OEM app freezers suspend the VPN process in the background without
+  /// this exemption, blackholing all device traffic. Non-Android
+  /// platforms report true (nothing to request).
+  Future<bool> isBatteryOptExempt() async {
+    if (!Platform.isAndroid) {
+      return true;
+    }
+    try {
+      return await _channel.invokeMethod('isBatteryOptExempt') as bool? ??
+          true;
+    } catch (e) {
+      _logger.e("isBatteryOptExempt failed: $e");
+      // Fail closed: don't nag the user when the state can't be read.
+      return true;
+    }
+  }
+
+  /// Android only: open the system dialog requesting the
+  /// battery-optimization exemption for this app.
+  Future<void> requestBatteryOptExemption() async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+    await _channel.invokeMethod('requestBatteryOptExemption');
+  }
+
   /// Android only: copy a MediaStore content:// URI's bytes to a plain
   /// file path the Dart side can read. Taildrop receives on Android 10+
   /// land in MediaStore as content URIs that dart:io cannot open.

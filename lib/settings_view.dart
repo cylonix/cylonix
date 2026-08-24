@@ -21,6 +21,7 @@ import 'viewmodels/settings.dart';
 import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
+import 'widgets/battery_optimization_dialog.dart';
 import 'widgets/dns_query.dart';
 import 'widgets/ipn_logs_widget.dart';
 import 'widgets/ui_logs_widget.dart';
@@ -603,6 +604,22 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     ),
                     trailing: _trailingIcon,
                     onTap: widget.onNavigateToSplitTunneling,
+                  ),
+                if (Platform.isAndroid)
+                  AdaptiveListTile.notched(
+                    title: const Text('Background Running'),
+                    subtitle: const Text(
+                      'Allow running without battery restrictions so the '
+                      'VPN stays connected in the background',
+                      softWrap: true,
+                      maxLines: 3,
+                    ),
+                    trailing: _trailingIcon,
+                    onTap: () => showBatteryOptimizationDialog(
+                      context,
+                      ref.read(ipnServiceProvider),
+                      fromSettings: true,
+                    ),
                   ),
                 if (showTailnetLock)
                   AdaptiveListTile.notched(

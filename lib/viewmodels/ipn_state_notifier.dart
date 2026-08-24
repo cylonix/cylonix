@@ -122,7 +122,28 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
-  Future<void> _syncStateFromBackendStatus() async {
+  Timer? _stateResyncTimer;
+  int _stateNotifySeq = 0;
+
+  /// Schedules a forced backend-status resync shortly after a notification
+  /// lands the UI in a disconnected-family state. On iOS the app process is
+  /// routinely evicted while the network extension keeps running; on
+  /// relaunch the bridge replays the queued notification backlog, and a
+  /// minutes-old State transition from that history (e.g. a transient
+  /// needsLogin) can drive the UI to "disconnected" while the tunnel is
+  /// actually up — and nothing else ever corrects it (observed 2026-08-23,
+  /// UI stuck disconnected with the NE healthy). Stale notifications are
+  /// history, not truth: after the burst settles, ask the backend what
+  /// state it is really in. For a genuine disconnect the status call just
+  /// confirms the current state and changes nothing.
+  void _scheduleStateResync() {
+    _stateResyncTimer?.cancel();
+    _stateResyncTimer = Timer(const Duration(seconds: 2), () {
+      _syncStateFromBackendStatus(force: true);
+    });
+  }
+
+  Future<void> _syncStateFromBackendStatus({bool force = false}) async {
     // Cold-start sync: don't pass fast:true. The 500ms fast-path timeout
     // races libtailscale's runBackend cold start (lb.Start holds b.mu while
     // the LocalAPI status handler waits for it); using the regular 5s
@@ -135,12 +156,19 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     var delayMs = 500;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
+        final seqAtFetch = _stateNotifySeq;
         final status = await _ipnService.status(light: true);
         final backendState = BackendState.fromString(status.backendState);
         final currentState = state.valueOrNull ?? const IpnState();
-        final shouldSync =
-            currentState.backendState == BackendState.noState ||
-                currentState.vpnState == VpnState.connecting;
+        // force mode (stale-replay recovery): apply the fetched state
+        // whenever it disagrees with the UI, unless a fresh state-bearing
+        // notification arrived while the fetch was in flight — that newer
+        // transition wins over our snapshot.
+        final shouldSync = force
+            ? (backendState != currentState.backendState &&
+                _stateNotifySeq == seqAtFetch)
+            : (currentState.backendState == BackendState.noState ||
+                currentState.vpnState == VpnState.connecting);
 
         if (!shouldSync) {
           return;
@@ -248,6 +276,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
 
     final ns = notification.state;
     if (ns != null) {
+      _stateNotifySeq++;
       backendState = BackendState.fromInt(ns);
       _logger.d(
         "\n\n\n********** NEW STATE -> ${backendState.name} ***********\n\n\n",
@@ -262,6 +291,10 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           netmap = null;
           peerCategorizer = PeerCategorizer();
           currentProfile = null;
+          // This may be a stale transition replayed from the notification
+          // backlog after an app relaunch; verify against the live backend
+          // before letting "disconnected" stand (see _scheduleStateResync).
+          _scheduleStateResync();
         }
       }
       if (ns > BackendState.needsLogin.value) {
@@ -761,12 +794,26 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
-  Future<LoginProfile?> getCurrentProfile() async {
+  Future<LoginProfile?>? _profileFetch;
+
+  Future<LoginProfile?> getCurrentProfile() {
+    // Coalesce concurrent callers: a replayed notification backlog after an
+    // app relaunch otherwise fans out into one current_profile round-trip
+    // per queued netmap notification (297 calls in one 4.5-minute iOS log).
+    return _profileFetch ??= _fetchCurrentProfile().whenComplete(() {
+      _profileFetch = null;
+    });
+  }
+
+  Future<LoginProfile?> _fetchCurrentProfile() async {
     try {
       return await _ipnService.currentProfile();
-    } catch (error, stack) {
-      state = AsyncValue.error(error, stack);
-      return null;
+    } catch (error) {
+      // A failed profile read must not poison the whole IpnState (it used
+      // to set AsyncValue.error, blanking the UI to the error/disconnected
+      // view even though the tunnel was fine). Keep the last known profile.
+      _logger.w("Failed to fetch current profile: $error");
+      return state.valueOrNull?.currentProfile;
     }
   }
 

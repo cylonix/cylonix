@@ -129,6 +129,32 @@ class MainActivity: FlutterFragmentActivity() {
         //checkDownloadsFolderPermission()
 	}
 
+    // OEM app freezers (MIUI Greezer/Millet observed 2026-08-24) suspend
+    // this process despite the VPN foreground service, blackholing all
+    // device traffic until the user reopens the app. The system
+    // battery-optimization exemption is the sanctioned opt-out these
+    // freezers honor. The Flutter side owns the UX (startup dialog plus a
+    // Settings row so the flow can be relaunched anytime); these two
+    // helpers are its method-channel surface.
+    private fun isBatteryOptimizationExempt(): Boolean {
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun requestBatteryOptimizationExemption(): String? {
+        return try {
+            Log.d(LOG_TAG, "Requesting battery optimization exemption")
+            startActivity(Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:$packageName"),
+            ))
+            null
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Failed to request battery optimization exemption: $e")
+            e.toString()
+        }
+    }
+
     private var downloadsUri: Uri? = null
 
     private val openDocumentTreeLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -342,6 +368,17 @@ class MainActivity: FlutterFragmentActivity() {
 				}
 				"getDeviceManufacturer" -> {
 					result.success(Build.MANUFACTURER.lowercase())
+				}
+				"isBatteryOptExempt" -> {
+					result.success(isBatteryOptimizationExempt())
+				}
+				"requestBatteryOptExemption" -> {
+					val err = requestBatteryOptimizationExemption()
+					if (err != null) {
+						result.error("ERROR", err, null)
+					} else {
+						result.success("DONE")
+					}
 				}
 				"copyContentUri" -> {
 					// Copy a MediaStore content:// URI's bytes to a plain

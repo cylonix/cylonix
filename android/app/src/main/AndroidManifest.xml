@@ -5,6 +5,14 @@
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <!--
+      Battery-optimization exemption: OEM app freezers (MIUI Greezer/Millet
+      observed 2026-08-24) suspend the VPN process despite its foreground
+      service, blackholing all device traffic until the app is manually
+      reopened. The app prompts for the system exemption at startup when
+      not yet granted.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!--
       No READ_MEDIA_* / READ_EXTERNAL_STORAGE: media access is permission-free
       (image_picker's Photo Picker, file_picker's SAF, and MediaStore writes to
       app-owned collections on API 29+), and requesting them would trip Google

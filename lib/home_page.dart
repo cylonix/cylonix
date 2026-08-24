@@ -21,6 +21,7 @@ import 'models/ipn.dart';
 import 'peer_messaging_inbox_view.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
+import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
 import 'providers/share_file.dart';
 import 'providers/theme.dart';
@@ -37,6 +38,7 @@ import 'user_switcher_view.dart';
 import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
+import 'widgets/battery_optimization_dialog.dart';
 import 'widgets/main_navigation_rail.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -71,9 +73,26 @@ class _HomePageState extends ConsumerState<HomePage>
     };
     if (Platform.isAndroid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_maybeShowBatteryOptimizationPrompt());
         unawaited(_maybeShowTaildropHeadsUpTip());
       });
     }
+  }
+
+  Future<void> _maybeShowBatteryOptimizationPrompt() async {
+    // Same intro-flow gating as the taildrop tip below — but wait out app
+    // startup first: introViewedProvider reads as its default (false)
+    // until sharedPreferencesProvider resolves, so checking it at
+    // first-frame time silently skips the prompt on every cold start.
+    // The delay also keeps the dialog from landing mid launch animation.
+    // Silent no-op once the exemption is granted; "Not Now" re-asks on
+    // the next launch, and Settings > Background Running relaunches the
+    // flow anytime.
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted || !ref.read(introViewedProvider)) {
+      return;
+    }
+    await showBatteryOptimizationDialog(context, ref.read(ipnServiceProvider));
   }
 
   Future<void> _maybeShowTaildropHeadsUpTip() async {
