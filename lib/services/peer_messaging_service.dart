@@ -19,6 +19,32 @@ import '../utils/logger.dart';
 import 'desktop_notifications.dart';
 import 'ipn.dart';
 
+/// One migratable batch of chats stranded under a non-current profile ID.
+/// [loginName]/[controlURL] are null when the daemon no longer has the
+/// profile (the account was logged out); [peersInCurrentNetmap] then hints
+/// how many of its conversation peers exist in the current tailnet.
+class ChatRecoveryCandidate {
+  final String profileId;
+  final String? loginName;
+  final String? controlURL;
+  final bool sameAccount;
+  final int conversationCount;
+  final int messageCount;
+  final DateTime lastActivity;
+  final int peersInCurrentNetmap;
+
+  const ChatRecoveryCandidate({
+    required this.profileId,
+    required this.loginName,
+    required this.controlURL,
+    required this.sameAccount,
+    required this.conversationCount,
+    required this.messageCount,
+    required this.lastActivity,
+    required this.peersInCurrentNetmap,
+  });
+}
+
 class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   PeerMessagingService(this._ipnService, this._ref)
       : super(PeerMessagingState.initial());
@@ -42,6 +68,22 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   HttpServer? _server;
   File? _stateFile;
   bool _initialized = false;
+  // Set when the stored state could not be read this session. Guards the
+  // persist path so a transient read failure (corrupt file, iOS data
+  // protection while locked) is never followed by overwriting the stored
+  // history with the empty fallback state.
+  bool _stateLoadFailed = false;
+  // Set when the unreadable state file could not be backed up either (e.g.
+  // iOS data protection blocks reads while locked); retried before the next
+  // write so the old history is preserved once the device unlocks.
+  bool _pendingLoadFailureBackup = false;
+  // Serializes persists: handleBridgeEvent awaits _persistState while
+  // _upsertConversationMessage fires it unawaited, and two interleaved
+  // non-atomic writes can corrupt state.json.
+  Future<void> _persistQueue = Future.value();
+  bool _persistQueued = false;
+  String _lastLoggedStateSummary = '';
+  final Set<String> _loggedCanonicalRemaps = {};
   String _activeProfileId = '';
   List<AwaitingFile> _lastWaitingFiles = const [];
   final Map<String, String> _pendingAutoSavedPaths = {};
@@ -97,6 +139,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         url: _proxyUrl,
       ),
     );
+    _logStateSummary('initialize loadFailed=$_stateLoadFailed');
 
     _bridgeSubscription = _ipnService.peerMessagingEventStream
         .listen(_handleBridgeEventFromStream);
@@ -120,6 +163,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     if (nextProfileId == _activeProfileId) {
       return;
     }
+    _logger.i(
+      'profile changed: ${_activeProfileId.isEmpty ? '(none)' : _activeProfileId} -> ${nextProfileId.isEmpty ? '(none)' : nextProfileId}',
+    );
     _activeProfileId = nextProfileId;
     final migratedState = _mergeDuplicateConversations(
       _adoptLegacyConversations(state, profileId: nextProfileId),
@@ -128,6 +174,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       state = migratedState;
       await _persistState();
     }
+    _logStateSummary('profile-change');
     await _broadcast(_syncSnapshotEvent());
   }
 
@@ -137,6 +184,142 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
     await _ipnService.replayPendingPeerMessageEvents();
     _scheduleStuckMessageRecovery(const Duration(seconds: 3));
+  }
+
+  /// Whether any conversations are stored under a profile other than the
+  /// current one (e.g. after a fresh re-login minted a new profile ID).
+  /// Cheap synchronous check used to decide whether to offer recovery UI.
+  bool get hasStrandedConversations {
+    final current = _currentProfileIdOrEmpty();
+    if (current.isEmpty) {
+      return false;
+    }
+    return state.conversations.any(
+      (c) => c.profileId.isNotEmpty && c.profileId != current,
+    );
+  }
+
+  /// Lists stranded chat batches the user may migrate into the current
+  /// profile: profiles the daemon resolves to the SAME login name and
+  /// controller, plus profiles the daemon no longer knows (logged-out
+  /// accounts — annotated with how many of their chat peers are in the
+  /// current netmap). Profiles that resolve to a DIFFERENT account are
+  /// excluded: those chats are viewable by switching to that account.
+  Future<List<ChatRecoveryCandidate>> recoverableChatProfiles() async {
+    final currentId = await _resolveCurrentProfileId();
+    if (currentId.isEmpty) {
+      return const [];
+    }
+    final byProfile = <String, List<PeerMessagingConversation>>{};
+    for (final conversation in state.conversations) {
+      if (conversation.profileId.isEmpty ||
+          conversation.profileId == currentId) {
+        continue;
+      }
+      (byProfile[conversation.profileId] ??= []).add(conversation);
+    }
+    if (byProfile.isEmpty) {
+      return const [];
+    }
+    List<LoginProfile>? profiles;
+    try {
+      profiles = await _ipnService.getProfiles();
+    } catch (e) {
+      _logger.w('recovery: failed to list backend profiles: $e');
+    }
+    LoginProfile? current = _ref.read(currentLoginProfileProvider);
+    for (final profile in profiles ?? const <LoginProfile>[]) {
+      if (profile.id == currentId) {
+        current = profile;
+      }
+    }
+    final peerIds = <String>{
+      for (final peer in _ref.read(netmapProvider)?.peers ?? const <Node>[])
+        peer.stableID,
+    };
+    final candidates = <ChatRecoveryCandidate>[];
+    byProfile.forEach((profileId, conversations) {
+      LoginProfile? profile;
+      for (final p in profiles ?? const <LoginProfile>[]) {
+        if (p.id == profileId) {
+          profile = p;
+        }
+      }
+      final sameAccount = profile != null &&
+          current != null &&
+          profile.name == current.name &&
+          profile.controlURL == current.controlURL;
+      var messageCount = 0;
+      var lastActivity = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+      var overlap = 0;
+      for (final conversation in conversations) {
+        messageCount += conversation.messages.length;
+        if (conversation.updatedAt.isAfter(lastActivity)) {
+          lastActivity = conversation.updatedAt;
+        }
+        if (peerIds.contains(conversation.id)) {
+          overlap++;
+        }
+      }
+      candidates.add(ChatRecoveryCandidate(
+        profileId: profileId,
+        loginName: profile?.name,
+        controlURL: profile?.controlURL,
+        sameAccount: sameAccount,
+        conversationCount: conversations.length,
+        messageCount: messageCount,
+        lastActivity: lastActivity,
+        peersInCurrentNetmap: overlap,
+      ));
+    });
+    candidates.sort((a, b) {
+      if (a.sameAccount != b.sameAccount) {
+        return a.sameAccount ? -1 : 1;
+      }
+      return b.lastActivity.compareTo(a.lastActivity);
+    });
+    _logger.i(
+      'recovery: ${candidates.length} stranded profiles, '
+      '${candidates.where((c) => c.sameAccount).length} same-account, '
+      'current=$currentId',
+    );
+    return candidates
+        .where((c) => c.sameAccount || c.loginName == null)
+        .toList();
+  }
+
+  /// Re-tags every conversation stored under [fromProfileId] to the current
+  /// profile and merges them with any same-peer conversations already there
+  /// (messages unioned by ID — the same semantics as
+  /// [_mergeDuplicateConversations]). Returns the number of conversations
+  /// moved. Attachment paths are absolute, so they survive the move.
+  Future<int> migrateConversations(String fromProfileId) async {
+    final currentId = await _requireCurrentProfileId();
+    if (fromProfileId.isEmpty || fromProfileId == currentId) {
+      return 0;
+    }
+    var moved = 0;
+    final retagged = state.conversations.map((conversation) {
+      if (conversation.profileId != fromProfileId) {
+        return conversation;
+      }
+      moved++;
+      return conversation.copyWith(profileId: currentId);
+    }).toList();
+    if (moved == 0) {
+      return 0;
+    }
+    _logger.i(
+      'recovery: migrating $moved conversations from profile '
+      '$fromProfileId to $currentId',
+    );
+    state = _mergeDuplicateConversations(
+      state.copyWith(conversations: retagged),
+    );
+    await _persistState();
+    _logStateSummary('recovery-migrate');
+    await _broadcast(_syncSnapshotEvent());
+    return moved;
   }
 
   /// Age past which an outgoing `pending` message with no `queued` metadata
@@ -390,6 +573,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }) async {
     final profileId = await _requireCurrentProfileId();
     conversationId = _canonicalConversationId(conversationId);
+    _warnIfSelfConversation('sendTextMessage', conversationId);
     final now = DateTime.now().toUtc();
     final messageId = const Uuid().v4();
     final normalizedText = text.trim();
@@ -599,6 +783,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }) async {
     final profileId = await _requireCurrentProfileId();
     conversationId = _canonicalConversationId(conversationId);
+    _warnIfSelfConversation('ensureConversation', conversationId);
     _upsertConversation(
       profileId,
       conversationId,
@@ -892,6 +1077,14 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
                   event.type == PeerMessagingEventType.menuRequested;
           final rawFromPeerId = event.payload['from_peer_id'] as String?;
           final selfPeerId = _ref.read(selfNodeProvider)?.stableID ?? '';
+          if (isInboundEvent && selfPeerId.isEmpty) {
+            // Without the self node, an echo of our own message can only be
+            // caught by the message-id fallback below; if that also misses,
+            // the echo is misfiled as a real inbound message from ourselves.
+            _logger.w(
+              'handleBridgeEvent: self node unknown while classifying inbound message; echo detection degraded',
+            );
+          }
           final messageId = messageJson['id'] as String? ?? '';
           // The backend echoes our own peer messages back via messageReceived
           // (so the local app can re-broadcast them to proxy clients like
@@ -937,21 +1130,37 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             'conversation_id': localConversationId,
             if (mergedMetadata.isNotEmpty) 'metadata': mergedMetadata,
           });
-          final incomingPeerName =
-              isRealInbound ? event.payload['from_peer_name'] as String? : null;
-          final conversationTitle = incomingPeerName?.isNotEmpty == true
-              ? incomingPeerName!
-              : event.payload['conversation_title'] as String? ??
-                  'Peer Conversation';
+          // Never title our thread with the payload's conversation_title
+          // or subtitle: they are the SENDER's labels for the thread, and
+          // the sender names a thread after the device it is messaging —
+          // US. A redelivered duplicate (sender queue retry after a lost
+          // ack; classified as an echo via alreadyKnownLocally because the
+          // fresh emit timestamp defeats the event dedup key) used to
+          // overwrite a correct peer title with the user's own device name
+          // until the next real inbound message flipped it back.
+          final display = _inboundConversationDisplay(
+            event: event,
+            isRealInbound: isRealInbound,
+            conversationId: localConversationId,
+          );
+          var conversationTitle = display.title;
+          if (conversationTitle.isEmpty &&
+              _findConversationTitle(
+                    profileId: profileId,
+                    conversationId: localConversationId,
+                  ) ==
+                  null) {
+            conversationTitle = 'Peer Conversation';
+          }
           _logger.i(
-            'handleBridgeEvent: applying message id=${message.id} localConversation=$localConversationId inbound=$isRealInbound fromSelf=$isFromSelf attachments=${message.attachments.length} isDirectDistribution=${IpnService.isDirectDistribution}',
+            'handleBridgeEvent: applying message id=${message.id} localConversation=$localConversationId inbound=$isRealInbound fromSelf=$isFromSelf fromPeer=${rawFromPeerId ?? '(none)'} self=${selfPeerId.isEmpty ? '(unknown)' : selfPeerId} alreadyKnown=$alreadyKnownLocally titleSource=${display.source} attachments=${message.attachments.length} isDirectDistribution=${IpnService.isDirectDistribution}',
           );
           _upsertConversationMessage(
             profileId,
             localConversationId,
             message,
             title: conversationTitle,
-            subtitle: event.payload['subtitle'] as String? ?? '',
+            subtitle: display.subtitle,
             incrementUnread: isRealInbound,
           );
           if ((Platform.isMacOS || Platform.isIOS) &&
@@ -2677,10 +2886,66 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     ];
     for (final node in nodes) {
       if (_nodeMatchesPeerRef(node, normalizedRef)) {
+        _logCanonicalRemap(
+          value,
+          node.stableID,
+          toSelf: node.stableID == netmap?.selfNode.stableID,
+        );
         return node.stableID;
       }
     }
     return value.trim();
+  }
+
+  // Resolves what an inbound-type event may call the conversation it lands
+  // in. Only the remote peer's identity is trusted: from_peer_name (stamped
+  // by our own daemon from the connecting node) for real inbound messages,
+  // else the netmap node the conversation is keyed to. The sender-supplied
+  // conversation_title/subtitle are deliberately ignored — they describe
+  // the sender's copy of the thread, which is named after THIS device.
+  // source is a content-free tag for field logs. Empty title/subtitle mean
+  // "leave whatever the conversation already shows".
+  ({String title, String subtitle, String source}) _inboundConversationDisplay({
+    required PeerMessagingEvent event,
+    required bool isRealInbound,
+    required String conversationId,
+  }) {
+    final node = _ref.read(netmapProvider)?.getPeer(conversationId);
+    final subtitle =
+        node != null && node.addresses.isNotEmpty ? node.addresses.first : '';
+    if (isRealInbound) {
+      final fromPeerName = event.payload['from_peer_name'] as String? ?? '';
+      if (fromPeerName.isNotEmpty) {
+        return (
+          title: fromPeerName,
+          subtitle: subtitle,
+          source: 'from_peer_name',
+        );
+      }
+    }
+    if (node != null) {
+      return (title: node.displayName, subtitle: subtitle, source: 'netmap');
+    }
+    return (title: '', subtitle: '', source: 'existing');
+  }
+
+  // Conversation ids are expected to already be StableNodeIDs, so a remap
+  // here means an id matched a node by name instead (or by a
+  // differently-cased stable id). A remap onto the SELF node re-keys a peer
+  // thread as a conversation with this device and never comes from the
+  // app's own flows — that is the "own device shows as the peer" signature.
+  void _logCanonicalRemap(String from, String to, {required bool toSelf}) {
+    if (from.trim() == to) {
+      return;
+    }
+    if (!_loggedCanonicalRemaps.add('$from>$to')) {
+      return;
+    }
+    if (toSelf) {
+      _logger.w('canonicalized conversation id "$from" -> SELF node $to');
+    } else {
+      _logger.i('canonicalized conversation id "$from" -> $to');
+    }
   }
 
   bool _nodeMatchesPeerRef(Node node, String normalizedRef) {
@@ -2855,6 +3120,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       }
 
       changed = true;
+      _logger.w(
+        'merging duplicate conversation profile=${conversation.profileId} id=${conversation.id} -> $canonicalId (${existing.messages.length}+${normalized.messages.length} messages)',
+      );
       final messagesById = {
         for (final message in existing.messages) message.id: message,
       };
@@ -2922,8 +3190,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   }
 
   Future<PeerMessagingState> _loadState() async {
+    File? file;
     try {
-      final file = await _ensureStateFile();
+      file = await _ensureStateFile();
       final json = await file.readAsString();
       if (json.trim().isEmpty) {
         return PeerMessagingState.initial();
@@ -2932,17 +3201,106 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         jsonDecode(json) as Map<String, dynamic>,
       );
     } catch (e) {
-      _logger.w('Failed to load peer messaging state: $e');
+      _stateLoadFailed = true;
+      _logger.e('Failed to load peer messaging state: $e');
+      _pendingLoadFailureBackup = !await _backupUnreadableStateFile(file);
       return PeerMessagingState.initial();
     }
   }
 
-  Future<void> _persistState() async {
+  // A load failure used to be followed by persisting the empty fallback
+  // state over the only copy of the user's history. Keep the unreadable
+  // file next to state.json so it stays recoverable, and record its size:
+  // a transient read error (e.g. iOS data protection while the device is
+  // locked) arrives here with an intact, non-trivially-sized file. Returns
+  // whether the file no longer needs backing up.
+  Future<bool> _backupUnreadableStateFile(File? file) async {
+    if (file == null) {
+      return true;
+    }
     try {
+      final size = await file.length();
+      final backupPath =
+          '${file.path}.unreadable-${DateTime.now().toUtc().millisecondsSinceEpoch}';
+      await file.copy(backupPath);
+      _logger.w(
+        'Preserved unreadable peer messaging state ($size bytes) at $backupPath',
+      );
+      return true;
+    } catch (e) {
+      _logger.e('Failed to preserve unreadable peer messaging state: $e');
+      return false;
+    }
+  }
+
+  Future<void> _persistState() {
+    // Coalesce: a write queued behind the in-flight one reads `state` when
+    // it runs, so it already covers every request made while waiting.
+    if (_persistQueued) {
+      return _persistQueue;
+    }
+    _persistQueued = true;
+    return _persistQueue = _persistQueue.then((_) {
+      _persistQueued = false;
+      return _persistStateNow();
+    });
+  }
+
+  Future<void> _persistStateNow() async {
+    try {
+      if (_stateLoadFailed && state.conversations.isEmpty) {
+        // The stored state could not be read this session and nothing has
+        // been rebuilt since: writing now would replace a possibly
+        // recoverable file with an empty one.
+        _logger.w(
+          'Skipping peer messaging persist: load failed and state is empty',
+        );
+        return;
+      }
+      if (_pendingLoadFailureBackup) {
+        _pendingLoadFailureBackup =
+            !await _backupUnreadableStateFile(_stateFile);
+      }
       final file = await _ensureStateFile();
-      await file.writeAsString(jsonEncode(state.toJson()));
+      // Write-then-rename so a kill mid-write leaves the previous state
+      // intact instead of a truncated file that fails to parse on the next
+      // launch.
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsString(jsonEncode(state.toJson()), flush: true);
+      await tmp.rename(file.path);
+      _logStateSummary('persist');
     } catch (e) {
       _logger.e('Failed to persist peer messaging state: $e');
+    }
+  }
+
+  // Conversation/message counts per profile — enough to tell "history
+  // stranded under another profile" from "history actually gone" in field
+  // logs, without touching message content.
+  void _logStateSummary(String cause) {
+    final perProfile = <String, int>{};
+    var messageCount = 0;
+    for (final conversation in state.conversations) {
+      final key =
+          conversation.profileId.isEmpty ? '(none)' : conversation.profileId;
+      perProfile[key] = (perProfile[key] ?? 0) + 1;
+      messageCount += conversation.messages.length;
+    }
+    final summary =
+        'conversationsByProfile=$perProfile messages=$messageCount activeProfile=${_activeProfileId.isEmpty ? '(none)' : _activeProfileId}';
+    if (cause == 'persist' && summary == _lastLoggedStateSummary) {
+      return;
+    }
+    _lastLoggedStateSummary = summary;
+    _logger.i('state summary ($cause): $summary');
+  }
+
+  void _warnIfSelfConversation(String caller, String conversationId) {
+    if (conversationId.isEmpty) {
+      return;
+    }
+    if (conversationId == _ref.read(selfNodeProvider)?.stableID) {
+      _logger.w('$caller: conversation $conversationId targets the SELF node');
     }
   }
 

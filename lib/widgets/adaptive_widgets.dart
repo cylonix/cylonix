@@ -1324,6 +1324,7 @@ class AdaptiveScaffold extends StatelessWidget {
   final Widget body;
   final VoidCallback? onGoBack;
   final Object? heroTag;
+  final Widget? trailing;
 
   const AdaptiveScaffold({
     super.key,
@@ -1331,6 +1332,7 @@ class AdaptiveScaffold extends StatelessWidget {
     required this.body,
     this.onGoBack,
     this.heroTag,
+    this.trailing,
   });
 
   @override
@@ -1346,6 +1348,7 @@ class AdaptiveScaffold extends StatelessWidget {
                     onPressed: onGoBack,
                   )
                 : null,
+            trailing: trailing,
           ),
           child: body,
         );
@@ -1360,6 +1363,7 @@ class AdaptiveScaffold extends StatelessWidget {
                   onPressed: onGoBack,
                 )
               : null,
+          trailing: trailing,
         ),
         child: body,
       );
@@ -1374,6 +1378,7 @@ class AdaptiveScaffold extends StatelessWidget {
                 onPressed: onGoBack!,
               )
             : null,
+        actions: trailing != null ? [trailing!] : null,
       ),
       body: body,
     );

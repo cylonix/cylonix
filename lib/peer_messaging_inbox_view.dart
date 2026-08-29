@@ -13,6 +13,8 @@ import 'models/peer_messaging.dart';
 import 'peer_messaging_thread_view.dart';
 import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
+import 'services/peer_messaging_service.dart';
+import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/share_peer_device_list.dart';
@@ -73,6 +75,7 @@ class _PeerMessagingInboxViewState
       title: const Text('Peer Messages'),
       heroTag: 'peer-messaging-inbox',
       onGoBack: widget.onNavigateBack,
+      trailing: const _InboxMenuButton(),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final useSplit = constraints.maxWidth >= _splitViewMinWidth;
@@ -261,11 +264,51 @@ class _ComposeCard extends ConsumerWidget {
     );
   }
 
+  static final _logger = Logger(tag: 'PeerMessagingUI');
+
+  // Field diagnostics for "my own device shows up as a peer": summarize the
+  // candidate list by stable id and flags only (no device names or other
+  // content) so logs reveal stale duplicate registrations of the user's own
+  // device — same display name as self, usually key-expired and offline.
+  static String _peerDiagnostics(Node peer, Node? selfNode) {
+    final sameNameAsSelf = selfNode != null &&
+        _nameBase(peer.displayName) == _nameBase(selfNode.displayName);
+    return '${peer.stableID}(online=${peer.online ?? false},'
+        'expired=${_isKeyExpired(peer)},sameNameAsSelf=$sameNameAsSelf)';
+  }
+
+  static String _nameBase(String name) =>
+      name.split('.').first.trim().toLowerCase();
+
+  static bool _isKeyExpired(Node peer) {
+    if (peer.keyDoesNotExpire) {
+      return false;
+    }
+    try {
+      return DateTime.parse(peer.keyExpiry).isBefore(DateTime.now().toUtc());
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _showPeerPicker(
     BuildContext context,
     WidgetRef ref,
     List<PeerMessagingConversation> conversations,
   ) async {
+    final allPeers = ref.read(peersProvider);
+    final selfNode = ref.read(selfNodeProvider);
+    // Chunked so each forwarded entry stays under the backend's 1KB
+    // per-log-entry limit (localapi serveLog truncates at 1024 bytes).
+    _logger.i(
+      'peer picker: self=${selfNode?.stableID ?? '(unknown)'} '
+      'peers=${allPeers.length}',
+    );
+    for (var i = 0; i < allPeers.length; i += 8) {
+      _logger.i(
+        'peer picker[$i]: ${allPeers.skip(i).take(8).map((p) => _peerDiagnostics(p, selfNode)).join(' ')}',
+      );
+    }
     final selectedPeer = await showModalBottomSheet<Node>(
       context: context,
       isScrollControlled: true,
@@ -318,6 +361,9 @@ class _ComposeCard extends ConsumerWidget {
     if (selectedPeer == null || !context.mounted) {
       return;
     }
+    _logger.i(
+      'peer picker: selected ${_peerDiagnostics(selectedPeer, selfNode)}',
+    );
 
     final existingConversation =
         conversations.cast<PeerMessagingConversation?>().firstWhere(
@@ -345,6 +391,184 @@ class _ComposeCard extends ConsumerWidget {
         arguments: {'conversationId': selectedPeer.stableID},
       );
     }
+  }
+}
+
+/// The "..." overflow menu in the inbox app bar. Hosts recovery of chats
+/// stranded under a non-current profile ID (e.g. after a fresh re-login
+/// minted a new profile). Candidates resolve against the daemon's stored
+/// login profiles; only same-account and removed-sign-in batches are
+/// offered.
+class _InboxMenuButton extends ConsumerWidget {
+  const _InboxMenuButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return AdaptiveButton(
+      iconButton: true,
+      onPressed: () => _showMenu(context, ref),
+      child: Icon(
+        isApple() ? CupertinoIcons.ellipsis_circle : Icons.more_vert,
+      ),
+    );
+  }
+
+  Future<void> _showMenu(BuildContext context, WidgetRef ref) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.settings_backup_restore),
+              title: const Text('Recover Chats'),
+              subtitle: const Text(
+                'Move chats from a previous sign-in into this inbox',
+              ),
+              onTap: () => Navigator.pop(context, 'recover'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action != 'recover' || !context.mounted) {
+      return;
+    }
+    await _showRecoverySheet(context, ref);
+  }
+
+  Future<void> _showRecoverySheet(BuildContext context, WidgetRef ref) async {
+    final service = ref.read(peerMessagingServiceProvider.notifier);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: FutureBuilder<List<ChatRecoveryCandidate>>(
+            future: service.recoverableChatProfiles(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const SizedBox(
+                  height: 160,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final candidates = snapshot.data!;
+              if (candidates.isEmpty) {
+                return const SizedBox(
+                  height: 160,
+                  child: Center(
+                    child: Text(
+                      'No recoverable chats for this account.\n'
+                      'Chats that belong to another account appear when you '
+                      'switch to that account.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Recover Chats',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final candidate in candidates)
+                          ListTile(
+                            leading: Icon(
+                              candidate.sameAccount
+                                  ? Icons.account_circle_outlined
+                                  : Icons.help_outline,
+                            ),
+                            title: Text(
+                              candidate.sameAccount
+                                  ? '${candidate.loginName} (this account)'
+                                  : 'Removed sign-in',
+                            ),
+                            subtitle: Text(_candidateDetails(candidate)),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => _confirmAndMigrate(
+                              sheetContext,
+                              ref,
+                              candidate,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _candidateDetails(ChatRecoveryCandidate candidate) {
+    final last = candidate.lastActivity.toLocal();
+    final date = '${last.year}-'
+        '${last.month.toString().padLeft(2, '0')}-'
+        '${last.day.toString().padLeft(2, '0')}';
+    var text = '${candidate.conversationCount} chats · '
+        '${candidate.messageCount} messages · last $date';
+    if (candidate.loginName == null && candidate.peersInCurrentNetmap > 0) {
+      text += '\n${candidate.peersInCurrentNetmap} of '
+          '${candidate.conversationCount} chat peers are in your '
+          'current network';
+    }
+    return text;
+  }
+
+  Future<void> _confirmAndMigrate(
+    BuildContext sheetContext,
+    WidgetRef ref,
+    ChatRecoveryCandidate candidate,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: sheetContext,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Recover Chats'),
+        content: Text(
+          'Move ${candidate.conversationCount} chats '
+          '(${candidate.messageCount} messages) into your current inbox?'
+          '${candidate.loginName == null ? '\n\nThese chats are from a sign-in that was removed from this device.' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Recover'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !sheetContext.mounted) {
+      return;
+    }
+    final moved = await ref
+        .read(peerMessagingServiceProvider.notifier)
+        .migrateConversations(candidate.profileId);
+    if (!sheetContext.mounted) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.maybeOf(sheetContext);
+    Navigator.pop(sheetContext);
+    messenger?.showSnackBar(
+      SnackBar(content: Text('Recovered $moved chats')),
+    );
   }
 }
 
