@@ -173,10 +173,30 @@ class AppStoreVpnController: AppleVpnControlling {
                     return
                 }
                 self.tunnelsManager?.start(tunnel.name)
-                self.emit("tunnelStatus", [
-                    "status": "\(TunnelStatus.waiting)",
-                    "source": "setup-enable-on-demand",
-                ])
+                // The NE runs independently of the app UI, so the tunnel may
+                // ALREADY be connected here. In that case start() is a no-op
+                // and no onTunnelStatusChange fires, so emitting only "waiting"
+                // makes the app's startEngine time out (15s) waiting for an
+                // "active" event that never comes. Report the current status
+                // directly (like the setup-on-demand-current branch) when the
+                // tunnel is already up; otherwise keep emitting "waiting" and
+                // let the status-change observer deliver "active" as before.
+                let status = tunnel.status
+                let systemStatus = tunnel.systemStatus
+                if status == .active {
+                    wg_log(.info, message: "Enabled on demand for '\(tunnel.name)'; tunnel already active, reporting current status systemStatus='\(systemStatus)'.")
+                    self.emit("tunnelStatus", [
+                        "status": "\(status)",
+                        "source": "setup-enable-on-demand",
+                        "previousStatus": "\(status)",
+                        "systemStatus": "\(systemStatus)",
+                    ])
+                } else {
+                    self.emit("tunnelStatus", [
+                        "status": "\(TunnelStatus.waiting)",
+                        "source": "setup-enable-on-demand",
+                    ])
+                }
             }
             return
         }
