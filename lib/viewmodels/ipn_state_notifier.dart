@@ -298,8 +298,11 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         }
       }
       if (ns > BackendState.needsLogin.value) {
-        // Past needsLogin: the post-login progress bridge (if any) is over.
+        // Past needsLogin: the post-login progress bridge (if any) is over,
+        // and so is any add-account flow (its login completed, or the
+        // backend is back on a logged-in profile).
         _setLoginFinishing(false);
+        _clearAddAccount("backend past needsLogin");
         if (urlBrowsed != null) {
           if (isMobile()) {
             // Mobile platform with URL browsed and state changed to past
@@ -690,6 +693,7 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       "\n\n***Logging in with authKey: $authKey, controlURL: $controlURL, "
       "reauth: $reauth. Set ipn state to connecting***\n\n",
     );
+    if (!reauth) _abandonReauth("a new login supersedes it");
     final previousState = state.valueOrNull ?? const IpnState();
     state = AsyncValue.data(
       previousState.copyWith(
@@ -740,6 +744,41 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
     }
   }
 
+  /// Drop the app-side re-authentication bookkeeping: the in-progress flag,
+  /// the pending login URL and the "login sent" marker, so the login page
+  /// cannot re-launch the URL. Used when the user abandons the re-auth and
+  /// when another flow (new login, add account, profile switch, logout)
+  /// supersedes it.
+  void _abandonReauth(String reason) {
+    if (!_reauthRequested) return;
+    _logger.d("Reauth: abandoned ($reason)");
+    _setReauthInProgress(false);
+    loginSent = false;
+    clearBrowseToURL();
+  }
+
+  /// Abandon an in-progress explicit re-authentication and return to the
+  /// main view, leaving the node on its current key until that expires.
+  ///
+  /// Only meaningful while the key has not expired: the backend then stayed
+  /// running throughout the re-auth. The interactive login it started is
+  /// still pending in the daemon, though, and keeps the "You are logged out"
+  /// health warning raised until it completes. Re-issuing `start` with the
+  /// current prefs replaces the control client, which logs back in with the
+  /// existing (still valid) node key: the pending login and the warning go
+  /// away, and the key is unchanged because a rotated key is only persisted
+  /// once an interactive login completes. The expiry notice on the home
+  /// screen remains as the way to try again later.
+  Future<void> cancelReauthentication() async {
+    if (!_reauthRequested) return;
+    _abandonReauth("cancelled by the user; keeping the current node key");
+    try {
+      await _ipnService.start();
+    } catch (e) {
+      _logger.e("Reauth cancel: failed to restart the backend: $e");
+    }
+  }
+
   Timer? _loginFinishingTimer;
 
   // Marks the post-login progress bridge (LoginFinished seen, backend not yet
@@ -767,6 +806,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> logout() async {
+    _abandonReauth("logging out");
+    _clearAddAccount("logging out");
     await _ipnService.logout();
   }
 
@@ -818,13 +859,24 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> addProfile(String? controlURL) async {
+    _abandonReauth("adding an account");
+    // Remember the profile being left only when it was selected and logged
+    // in: that is the state "Cancel Add Account" can take the user back to.
+    final before = state.valueOrNull ?? const IpnState();
+    final from = before.currentProfile;
+    final fromLoggedIn = from != null &&
+        !from.isEmpty &&
+        before.backendState.value > BackendState.needsLogin.value;
     try {
       await _ipnService.addProfile();
     } catch (error, stack) {
       _logger.e("Failed to add profile: $error, stackTrace: $stack");
       rethrow;
     }
-    _logger.d("Added profile, entering needsLogin state");
+    _logger.d("Added profile, entering needsLogin state"
+        "${fromLoggedIn ? ' (cancel returns to ${from.name})' : ''}");
+    ref.read(addAccountFromProfileProvider.notifier).state =
+        fromLoggedIn ? from : null;
     final currentState = state.valueOrNull ?? const IpnState();
     state = AsyncValue.data(
       currentState.copyWith(
@@ -832,6 +884,27 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
         browseToURL: null,
       ),
     );
+  }
+
+  void _clearAddAccount(String reason) {
+    if (ref.read(addAccountFromProfileProvider) == null) return;
+    _logger.d("Add account: flow ended ($reason)");
+    ref.read(addAccountFromProfileProvider.notifier).state = null;
+  }
+
+  /// Abandon an "Add Account" that has not logged in yet and switch the
+  /// backend back to the profile that was selected and logged in before it
+  /// started. The new profile was never saved (the daemon only persists a
+  /// profile once its login completes), so switching away simply discards
+  /// it. No-op when Add Account was not started from a logged-in profile.
+  Future<void> cancelAddAccount() async {
+    final from = ref.read(addAccountFromProfileProvider);
+    if (from == null) return;
+    _logger.d("Add account: cancelled; switching back to ${from.name}");
+    _clearAddAccount("cancelled by the user");
+    loginSent = false;
+    clearBrowseToURL();
+    await switchProfile(from.id);
   }
 
   Future<void> deleteProfile(String profileID) async {
@@ -850,6 +923,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   }
 
   Future<void> switchProfile(String id) async {
+    _abandonReauth("switching profile");
+    _clearAddAccount("switching profile");
     try {
       _logger.d("Switching profile with id: $id. Set ipn state to connecting");
       state = AsyncValue.data(

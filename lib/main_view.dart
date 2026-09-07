@@ -1089,6 +1089,7 @@ class _MainViewState extends ConsumerState<MainView> {
 
   Widget _buildConnectingView(BuildContext context, bool turningOn) {
     final health = ref.watch(healthProvider);
+    final isReauth = ref.watch(reauthInProgressProvider);
     final loginURL = ref.read(ipnStateProvider)?.browseToURL;
     final loginStateWarning = health?.warnings?[_loginStateWarnableCode];
     if (loginStateWarning != null && !_isTransientLoginWarning(loginStateWarning)) {
@@ -1145,7 +1146,9 @@ class _MainViewState extends ConsumerState<MainView> {
           children: [
             const SizedBox(height: 32),
             Text(
-              turningOn ? "Starting..." : "Stopping...",
+              turningOn
+                  ? (isReauth ? "Re-authenticating..." : "Starting...")
+                  : "Stopping...",
               style: Theme.of(context).textTheme.titleLarge?.apply(
                     fontWeightDelta: 2,
                     color: isApple()
@@ -1154,6 +1157,8 @@ class _MainViewState extends ConsumerState<MainView> {
                   ),
             ),
             const AdaptiveLoadingWidget(),
+            ..._buildCancelReauthSection(ref),
+            ..._buildCancelAddAccountSection(ref),
             if (showRecoveryButtons) ...[
               AdaptiveButton(
                 key: const ValueKey('connecting_cancel_retry_button'),
@@ -1377,9 +1382,13 @@ class _MainViewState extends ConsumerState<MainView> {
     }
   }
 
-  Widget get _welcomeTitle {
+  Widget get _welcomeTitle => _pageTitle('Welcome to Cylonix');
+
+  Widget get _reauthTitle => _pageTitle('Re-authenticate Cylonix');
+
+  Widget _pageTitle(String text) {
     return Text(
-      'Welcome to Cylonix',
+      text,
       style: Theme.of(context).textTheme.titleLarge?.apply(
             fontWeightDelta: 2,
             color: isApple()
@@ -1558,6 +1567,97 @@ class _MainViewState extends ConsumerState<MainView> {
         "Failed to start re-authentication: $e",
       );
     }
+  }
+
+  /// Whether an in-progress re-authentication can still be abandoned: the
+  /// backend is running on its current, not-yet-expired node key. Once the
+  /// key has expired the backend sits in needsLogin and signing in is
+  /// mandatory, so no cancel is offered.
+  bool _canCancelReauth(WidgetRef ref) {
+    if (!ref.watch(reauthInProgressProvider)) return false;
+    final backendState = ref.watch(backendStateProvider);
+    return (backendState?.value ?? 0) > BackendState.needsLogin.value;
+  }
+
+  void _cancelReauthentication() {
+    // Stop the desktop auto-launch countdown first: left running, it would
+    // fire _launchUrl after loginSent is cleared and start a brand-new login.
+    _cancelAutoLaunchTimer();
+    _urlToLaunch = null;
+    _launchCountDown = 10;
+    unawaited(
+      ref.read(ipnStateNotifierProvider.notifier).cancelReauthentication(),
+    );
+  }
+
+  /// "Cancel Re-authentication" control for the re-auth login page and for
+  /// the spinner shown while the login URL is still pending. Empty when a
+  /// cancel is not applicable.
+  List<Widget> _buildCancelReauthSection(WidgetRef ref) {
+    if (!_canCancelReauth(ref)) return const [];
+    return [
+      const SizedBox(height: 8),
+      AdaptiveButton(
+        key: const ValueKey('cancel_reauth_button'),
+        accessibilityLabel: 'Cancel re-authentication',
+        textButton: true,
+        onPressed: _cancelReauthentication,
+        child: const Text('Cancel Re-authentication'),
+      ),
+      Text(
+        'You stay connected on the current device key until it expires. '
+        'Re-authenticate any time from the home screen.',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall?.apply(
+              color: isApple()
+                  ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                  : null,
+            ),
+      ),
+    ];
+  }
+
+  void _cancelAddAccount() {
+    // Same reasoning as _cancelReauthentication: a still-armed auto-launch
+    // countdown would start a login on the profile we are leaving.
+    _cancelAutoLaunchTimer();
+    _urlToLaunch = null;
+    _launchCountDown = 10;
+    unawaited(ref.read(ipnStateNotifierProvider.notifier).cancelAddAccount());
+  }
+
+  /// "Cancel Add Account" control for the login page reached via Add Account
+  /// from a logged-in profile, and for the spinner while that login is being
+  /// set up. Empty once the backend is back past needsLogin.
+  List<Widget> _buildCancelAddAccountSection(WidgetRef ref) {
+    final from = ref.watch(addAccountFromProfileProvider);
+    if (from == null) return const [];
+    final backendState = ref.watch(backendStateProvider);
+    if ((backendState?.value ?? 0) > BackendState.needsLogin.value) {
+      return const [];
+    }
+    final name = from.userProfile.displayName.isNotEmpty
+        ? from.userProfile.displayName
+        : from.name;
+    return [
+      const SizedBox(height: 8),
+      AdaptiveButton(
+        key: const ValueKey('cancel_add_account_button'),
+        accessibilityLabel: 'Cancel add account',
+        textButton: true,
+        onPressed: _cancelAddAccount,
+        child: const Text('Cancel Add Account'),
+      ),
+      Text(
+        'Go back to $name without adding an account.',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall?.apply(
+              color: isApple()
+                  ? CupertinoColors.secondaryLabel.resolveFrom(context)
+                  : null,
+            ),
+      ),
+    ];
   }
 
   void _switchToAuthKeySignin(WidgetRef ref) {
@@ -2064,6 +2164,7 @@ class _MainViewState extends ConsumerState<MainView> {
     final invalidAuthKeyError = _invalidAuthKeyError(loginStateWarning);
     final isInvalidAuthKey = invalidAuthKeyError != null;
     urlLaunched = ref.read(ipnStateNotifierProvider.notifier).urlBrowsed;
+    final isReauth = ref.watch(reauthInProgressProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -2071,7 +2172,7 @@ class _MainViewState extends ConsumerState<MainView> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 16),
-          _welcomeTitle,
+          isReauth ? _reauthTitle : _welcomeTitle,
           const SizedBox(height: 8),
           if (loginURL == null) ...[
             _buildOtherSigninMethods(
@@ -2255,6 +2356,8 @@ class _MainViewState extends ConsumerState<MainView> {
               child: const Text('Select Profile'),
             ),
           ],
+          ..._buildCancelReauthSection(ref),
+          ..._buildCancelAddAccountSection(ref),
         ],
       ),
     );

@@ -32,6 +32,14 @@ final reauthInProgressProvider = StateProvider<bool>((ref) => false);
 // instead. Not part of IpnState to avoid regenerating freezed code.
 final loginFinishingProvider = StateProvider<bool>((ref) => false);
 
+// The profile that was selected and logged in when "Add Account" was started,
+// or null. While set, the login page offers "Cancel Add Account", which
+// switches the backend back to that profile. Cleared once a login completes
+// or another profile flow (switch, logout) takes over. Not part of IpnState
+// to avoid regenerating freezed code.
+final addAccountFromProfileProvider =
+    StateProvider<LoginProfile?>((ref) => null);
+
 // Derived providers with error handling
 final ipnStateProvider = Provider<IpnState?>((ref) {
   final state = ref.watch(ipnStateNotifierProvider);
