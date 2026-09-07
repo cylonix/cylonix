@@ -56,8 +56,8 @@ class _PeerListState extends State<PeerList> {
             spacing: isAndroidTV ? 8 : 12,
             children: [
               Container(
-                constraints: _isLargeDisplay || isAndroidTV
-                    ? const BoxConstraints(maxWidth: 800)
+                constraints: _wideLayout || isAndroidTV
+                    ? const BoxConstraints(maxWidth: kHomeContentMaxWidth)
                     : null,
                 child: _buildSearchBar(context, ref),
               ),
@@ -66,9 +66,9 @@ class _PeerListState extends State<PeerList> {
                   : Expanded(
                       child: Padding(
                         padding: const EdgeInsetsGeometry.only(
-                          left: 20,
-                          right: 20,
-                          bottom: 20,
+                          left: kHomeContentInset,
+                          right: kHomeContentInset,
+                          bottom: kHomeContentInset,
                         ),
                         child: _buildPeersList(context, filteredSets, ref),
                       ),
@@ -80,8 +80,8 @@ class _PeerListState extends State<PeerList> {
     );
   }
 
-  bool get _isLargeDisplay {
-    return MediaQuery.of(context).size.width >= 1200.0;
+  bool get _wideLayout {
+    return useWideHomeLayout(context);
   }
 
   Widget _buildSearchField(BuildContext context) {
@@ -108,10 +108,10 @@ class _PeerListState extends State<PeerList> {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: 20.0 /* Match cupertino list section margin */,
+        horizontal: kHomeContentInset,
         vertical: isAndroidTV
             ? 0
-            : _isLargeDisplay
+            : _wideLayout
                 ? 8.0
                 : 16.0,
       ),
@@ -282,8 +282,10 @@ class _PeerListState extends State<PeerList> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Container(
+          // Inner width of the content column: the cap minus the inset the
+          // status cards above the list already carry on each side.
           constraints: const BoxConstraints(
-            maxWidth: 760.0,
+            maxWidth: kHomeContentMaxWidth - 2 * kHomeContentInset,
           ),
           child: child,
         ),
@@ -295,10 +297,10 @@ class _PeerListState extends State<PeerList> {
     final isAndroidTV = ref.watch(isAndroidTVProvider);
     final smallDisplay = MediaQuery.of(context).size.width < 500;
     final child = Row(
-      spacing: _isLargeDisplay || isAndroidTV ? 0 : 12,
+      spacing: _wideLayout || isAndroidTV ? 0 : 12,
       children: [
         if (!smallDisplay)
-          _isLargeDisplay || isAndroidTV
+          _wideLayout || isAndroidTV
               ? Container(
                   alignment: Alignment.centerLeft,
                   width: 64,
@@ -325,11 +327,11 @@ class _PeerListState extends State<PeerList> {
         ),
       ],
     );
-    return _isLargeDisplay || isAndroidTV ? _fitWithinMaxWidth(child) : child;
+    return _wideLayout || isAndroidTV ? _fitWithinMaxWidth(child) : child;
   }
 
   double _getLeadingSizeForPeerSet(PeerSet peerSet, WidgetRef ref) {
-    if (_isLargeDisplay || ref.watch(isAndroidTVProvider)) {
+    if (_wideLayout || ref.watch(isAndroidTVProvider)) {
       return 48.0;
     }
     if (peerSet.peers
@@ -374,18 +376,18 @@ class _PeerListState extends State<PeerList> {
                   ),
                   automaticallyImplyLeading: false,
                   collapsedHeight: 80.0,
-                  expandedHeight: _isLargeDisplay || isAndroidTV ? 80.0 : 120.0,
+                  expandedHeight: _wideLayout || isAndroidTV ? 80.0 : 120.0,
                   primary: false,
                   leadingWidth: 0,
                   centerTitle: false,
-                  forceMaterialTransparency: _isLargeDisplay || isAndroidTV,
+                  forceMaterialTransparency: _wideLayout || isAndroidTV,
                   backgroundColor: isAndroidTV
                       ? Colors.transparent
                       : isApple()
                           ? appleScaffoldBackgroundColor(context)
                           : Theme.of(context).colorScheme.surface,
                   titleSpacing: 0,
-                  title: _isLargeDisplay || isAndroidTV
+                  title: _wideLayout || isAndroidTV
                       ? Container(
                           padding: const EdgeInsets.symmetric(
                             vertical: 8.0,
@@ -402,7 +404,7 @@ class _PeerListState extends State<PeerList> {
                           ),
                         )
                       : null,
-                  flexibleSpace: _isLargeDisplay || isAndroidTV
+                  flexibleSpace: _wideLayout || isAndroidTV
                       ? null
                       : FlexibleSpaceBar(
                           centerTitle: false,
@@ -430,7 +432,7 @@ class _PeerListState extends State<PeerList> {
                         isOnline(peer),
                         leadingSize,
                       );
-                      if (!_isLargeDisplay && !isAndroidTV) {
+                      if (!_wideLayout && !isAndroidTV) {
                         return Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10.0),
                           child: child,

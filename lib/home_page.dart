@@ -422,6 +422,36 @@ class _HomePageState extends ConsumerState<HomePage>
     });
   }
 
+  /// Sidebar entry to highlight for the page being shown. Sub-pages map to
+  /// the entry they were reached from.
+  MainRailItem get _railSelection {
+    switch (_page) {
+      case Page.mainView:
+      case Page.perDetails:
+        return MainRailItem.home;
+      case Page.settings:
+      case Page.customLogin:
+      case Page.customControl:
+      case Page.permissions:
+      case Page.dnsSettingsView:
+      case Page.subnetRouting:
+      case Page.splitTunnel:
+      case Page.l2RelaySettingsView:
+        return MainRailItem.settings;
+      case Page.userSwitcher:
+        return MainRailItem.account;
+      case Page.exitNodes:
+      case Page.runExitNodeView:
+        return MainRailItem.exitNodes;
+      case Page.health:
+        return MainRailItem.health;
+      case Page.peerMessaging:
+        return MainRailItem.peerMessages;
+      case Page.about:
+        return MainRailItem.about;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final prefs = ref.watch(sharedPreferencesProvider);
@@ -502,6 +532,7 @@ class _HomePageState extends ConsumerState<HomePage>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         MainNavigationRail(
+          selected: _railSelection,
           onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
           onNavigateToHome: () => _selectPage(Page.mainView.value),
           onNavigateToExitNodes: () => _selectPage(Page.exitNodes.value),

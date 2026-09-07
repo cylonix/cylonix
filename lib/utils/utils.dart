@@ -40,6 +40,20 @@ bool usingNavigationRail(BuildContext context) {
   return useNavigationRail(context) && isCurrentRouteHomePage(context);
 }
 
+/// Width cap of the home page's content column (status cards, search bar and
+/// peer list) on the wide layout, and the horizontal inset of the cards and
+/// rows inside it. The inset matches the default margin of
+/// CupertinoListSection.insetGrouped so every edge in the column lines up.
+const double kHomeContentMaxWidth = 800.0;
+const double kHomeContentInset = 20.0;
+
+/// Whether the home page uses the wide layout: a centred, width-capped content
+/// column with fixed peer-group headers, instead of the phone layout that
+/// stretches edge-to-edge with collapsing headers. Tied to the navigation rail
+/// so the header, the cards and the peer list never disagree on the
+/// breakpoint (they used to: `> 1200` vs `>= 1200`).
+bool useWideHomeLayout(BuildContext context) => useNavigationRail(context);
+
 bool isCurrentRouteHomePage(BuildContext context) {
   return (ModalRoute.of(context)?.settings.name ?? '/') == '/';
 }

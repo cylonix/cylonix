@@ -454,7 +454,7 @@ class _MainViewState extends ConsumerState<MainView> {
       _buildPeerMessagingSummary(context, ref),
       ExitNodeStatusWidget(onNavigate: widget.onNavigateToExitNodes),
     ];
-    final isLargeDisplay = MediaQuery.of(context).size.width > 1200.0;
+    final wideLayout = useWideHomeLayout(context) || isAndroidTV;
     return Container(
       alignment: Alignment.topCenter,
       child: Column(
@@ -462,7 +462,7 @@ class _MainViewState extends ConsumerState<MainView> {
         children: [
           ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: isLargeDisplay || isAndroidTV ? 800 : double.infinity,
+              maxWidth: wideLayout ? kHomeContentMaxWidth : double.infinity,
             ),
             child: Column(children: [
               ...common,
@@ -513,19 +513,37 @@ class _MainViewState extends ConsumerState<MainView> {
     final user = ref.watch(userProfileProvider);
     if (useNavigationRail(context)) {
       if (!showLeading) return null;
+      // Line the header up with the content column below it. The nav bar
+      // already pads the large title by 16 on the start side; pad the rest
+      // out to kHomeContentInset on both sides, then centre and cap at the
+      // column's inner width so the switch and the Hide/Show Devices button
+      // sit flush with the card edges at every window size.
+      const navBarStartPadding = 16.0;
       return CupertinoLargeNavigationBar(
         backgroundColor: appleScaffoldBackgroundColor(context),
         automaticBackgroundVisibility: false,
         transitionBetweenRoutes: false,
         heroTag: "MainView",
-        largeTitle: Row(
-          spacing: 16,
-          children: [
-            _buildLeading(context, ref),
-            Expanded(child: _buildTitle(context, ref)),
-            _buildToggleDeviceViewButton(context, ref),
-            const SizedBox(width: 16),
-          ].nonNulls.toList(),
+        largeTitle: Padding(
+          padding: const EdgeInsets.only(
+            left: kHomeContentInset - navBarStartPadding,
+            right: kHomeContentInset,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: kHomeContentMaxWidth - 2 * kHomeContentInset,
+              ),
+              child: Row(
+                spacing: 16,
+                children: [
+                  _buildSwitch(context, ref),
+                  Expanded(child: _buildTitle(context, ref)),
+                  _buildToggleDeviceViewButton(context, ref),
+                ].nonNulls.toList(),
+              ),
+            ),
+          ),
         ),
       );
     }
@@ -605,7 +623,10 @@ class _MainViewState extends ConsumerState<MainView> {
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(
+        horizontal: kHomeContentInset,
+        vertical: 8,
+      ),
       child: AdaptiveListTile(
           backgroundColor: isApple()
               ? CupertinoColors.systemBrown
@@ -648,7 +669,10 @@ class _MainViewState extends ConsumerState<MainView> {
     return Card(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      margin: const EdgeInsets.symmetric(
+        horizontal: kHomeContentInset,
+        vertical: 8,
+      ),
       child: AdaptiveListTile(
         padding: const EdgeInsets.symmetric(
           horizontal: 16,

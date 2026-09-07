@@ -14,7 +14,21 @@ import '../providers/theme.dart';
 import '../utils/utils.dart';
 import '../viewmodels/state_notifier.dart';
 
+/// Sidebar entries that can be shown as the current selection. The home
+/// shell maps the page it is displaying onto one of these.
+enum MainRailItem {
+  account,
+  home,
+  settings,
+  exitNodes,
+  health,
+  peerMessages,
+  about,
+}
+
 class MainNavigationRail extends ConsumerStatefulWidget {
+  /// Entry highlighted as the current page (Apple sidebar only).
+  final MainRailItem? selected;
   final Function() onNavigateToUserSwitcher;
   final Function() onNavigateToSettings;
   final Function() onNavigateToExitNodes;
@@ -26,6 +40,7 @@ class MainNavigationRail extends ConsumerStatefulWidget {
 
   const MainNavigationRail({
     super.key,
+    this.selected,
     required this.onNavigateToUserSwitcher,
     required this.onNavigateToSettings,
     required this.onNavigateToExitNodes,
@@ -82,11 +97,57 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     return Platform.isIOS && (MediaQuery.of(context).size.shortestSide >= 600);
   }
 
+  // Sidebar metrics. macOS follows the AppKit source-list look: 28pt rows,
+  // 13pt labels, 18pt accent-coloured symbols and a rounded selection
+  // highlight inset from the sidebar edges. iPad keeps its roomier sizing.
+  double get _railWidth => Platform.isMacOS ? 240 : 300;
+  static const double _collapsedRailWidth = 80;
+  static const double _rowRadius = 6;
+  double get _rowHeight => _isIpad ? 44 : 28;
+  double get _iconSize => !_extended ? 20 : (_isIpad ? 24 : 18);
+  double get _labelFontSize => _isIpad ? 17 : 13;
+  double get _detailFontSize => _isIpad ? 13 : 11;
+
+  /// Gap between the sidebar edges and the rows. iPhone keeps the notch
+  /// clearance it always had.
+  EdgeInsets get _railInset {
+    if (!_extended) return EdgeInsets.zero;
+    if (Platform.isMacOS) return const EdgeInsets.symmetric(horizontal: 10);
+    if (Platform.isIOS && !_isIpad) {
+      return const EdgeInsets.only(left: 64, right: 16);
+    }
+    return const EdgeInsets.symmetric(horizontal: 16);
+  }
+
+  Color? _highlight(bool selected) =>
+      selected ? CupertinoColors.systemFill.resolveFrom(context) : null;
+
   Widget _appleIcon(IconData icon) {
-    return Icon(
-      icon,
-      color: CupertinoColors.activeBlue,
-      size: _isIpad ? 24 : 16,
+    return Icon(icon, color: CupertinoColors.activeBlue, size: _iconSize);
+  }
+
+  Widget _buildPeerMessagingIcon(int unread) {
+    final icon = _appleIcon(_peerMessagingIcon);
+    // Extended rows show the count next to the label; the collapsed rail
+    // only has room for a dot.
+    if (unread == 0 || _extended) return icon;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        icon,
+        Positioned(
+          right: -2,
+          top: -2,
+          child: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemRed.resolveFrom(context),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -100,139 +161,318 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
     widget.onNavigateToPeerMessaging();
   }
 
+  /// One sidebar row. Extended: icon cell, label and an optional trailing
+  /// detail (the unread count), on a rounded highlight when selected.
+  /// Collapsed: just the icon, with the label as a tooltip.
+  Widget _appleRow({
+    required String title,
+    required Widget icon,
+    required VoidCallback onTap,
+    bool selected = false,
+    String? detail,
+  }) {
+    final radius = BorderRadius.circular(_rowRadius);
+    if (!_extended) {
+      return Tooltip(
+        message: detail == null ? title : '$title ($detail)',
+        child: CupertinoButton(
+          onPressed: onTap,
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          minimumSize: Size.zero,
+          child: Container(
+            width: 40,
+            height: 32,
+            decoration: BoxDecoration(
+              color: _highlight(selected),
+              borderRadius: radius,
+            ),
+            child: Center(child: icon),
+          ),
+        ),
+      );
+    }
+    return CupertinoButton(
+      onPressed: onTap,
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      child: Container(
+        width: double.infinity,
+        height: _rowHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: _highlight(selected),
+          borderRadius: radius,
+        ),
+        child: Row(
+          children: [
+            // Fixed cell so labels line up regardless of glyph width.
+            SizedBox(
+              width: _iconSize + 4,
+              child: Center(child: icon),
+            ),
+            SizedBox(width: _isIpad ? 12 : 8),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: _labelFontSize,
+                  color: CupertinoColors.label.resolveFrom(context),
+                ),
+              ),
+            ),
+            if (detail != null)
+              Text(
+                detail,
+                style: TextStyle(
+                  fontSize: _detailFontSize + 1,
+                  fontWeight: FontWeight.w600,
+                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppleSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: _detailFontSize,
+          fontWeight: FontWeight.w700,
+          color: CupertinoColors.secondaryLabel.resolveFrom(context),
+        ),
+      ),
+    );
+  }
+
+  /// Account header: avatar plus name and login, styled like the account row
+  /// at the top of System Settings. Opens the profile switcher.
+  Widget _buildAppleAccount(BuildContext context, UserProfile? user) {
+    final profiles = ref.watch(loginProfilesProvider);
+    final isApplePrivateRelay =
+        user?.displayName.toLowerCase().endsWith('@privaterelay.appleid.com') ??
+            false;
+    void onTap() {
+      if (profiles.isNotEmpty) {
+        widget.onNavigateToUserSwitcher();
+      } else {
+        widget.onNavigateToHome();
+      }
+    }
+
+    if (!_extended) {
+      return Tooltip(
+        message: user?.displayName ?? 'Account',
+        child: CupertinoButton(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          minimumSize: Size.zero,
+          onPressed: onTap,
+          child: AdaptiveAvatar(radius: 20, user: user),
+        ),
+      );
+    }
+
+    final name = user == null
+        ? (profiles.isNotEmpty ? 'Select Profile' : 'Not signed in')
+        : isApplePrivateRelay
+            ? 'Apple Private Relay'
+            : user.displayName;
+    final detail = user == null
+        ? null
+        : isApplePrivateRelay
+            ? user.displayName.split('@').first
+            : user.loginName != user.displayName
+                ? user.loginName
+                : null;
+
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      onPressed: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(
+          horizontal: 8,
+          vertical: _isIpad ? 10 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: _highlight(widget.selected == MainRailItem.account),
+          borderRadius: BorderRadius.circular(_rowRadius),
+        ),
+        child: Row(
+          children: [
+            AdaptiveAvatar(radius: _isIpad ? 24 : 18, user: user),
+            SizedBox(width: _isIpad ? 12 : 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: _labelFontSize,
+                      fontWeight: FontWeight.w600,
+                      color: CupertinoColors.label.resolveFrom(context),
+                    ),
+                  ),
+                  if (detail != null)
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: _detailFontSize,
+                        color:
+                            CupertinoColors.secondaryLabel.resolveFrom(context),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// macOS sidebar toggle. Extended: sits at the trailing end of the
+  /// sidebar's title-bar row, next to the divider, where Finder, Mail and
+  /// Notes put it. Collapsed: the rail is only as wide as the traffic-light
+  /// cluster, so it drops below them.
+  Widget _buildAppleSidebarToggle() {
+    final button = Tooltip(
+      message: _extended ? 'Hide Sidebar' : 'Show Sidebar',
+      child: CupertinoButton(
+        padding: const EdgeInsets.all(4),
+        minimumSize: Size.zero,
+        onPressed: () {
+          setState(() {
+            _macAutoCollapseDone = true;
+            _isExtendedApple = !_isExtendedApple;
+          });
+        },
+        child: Icon(
+          CupertinoIcons.sidebar_left,
+          size: 20,
+          color: CupertinoColors.secondaryLabel.resolveFrom(context),
+        ),
+      ),
+    );
+    if (!_extended) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Center(child: button),
+      );
+    }
+    // Measured on macOS 26: the traffic lights are 14pt circles centred at
+    // y=15.5, so the title-bar row is 31pt. The sidebar symbol's glyph sits
+    // about 1pt high in its 28pt button box; the 2pt top padding shifts the
+    // box down so the glyph centres on the same line as the buttons.
+    return SizedBox(
+      height: 31,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: button,
+        ),
+      ),
+    );
+  }
+
   Widget _buildAppleRail(BuildContext context) {
     final user = ref.watch(userProfileProvider);
     final health = ref.watch(healthProvider);
     final unread = ref.watch(peerMessagingUnreadCountProvider);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final extended = _extended;
-
-    final labelStyle = TextStyle(
-      color: CupertinoColors.label.resolveFrom(context),
-      fontSize: _isIpad ? 16 : 14,
-      fontWeight: FontWeight.w500,
-    );
-
-    Widget row(String title, Widget leading, VoidCallback onTap) {
-      if (!extended) {
-        return Tooltip(
-          message: title,
-          child: CupertinoButton(
-            onPressed: onTap,
-            sizeStyle: CupertinoButtonSize.small,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Center(child: leading),
-          ),
-        );
-      }
-      return CupertinoButton(
-        onPressed: onTap,
-        sizeStyle: CupertinoButtonSize.small,
-        padding: EdgeInsets.symmetric(vertical: _isIpad ? 16 : 8),
-        child: Row(children: [
-          leading,
-          SizedBox(width: _isIpad ? 16 : 8),
-          Flexible(
-            child: Text(title, style: labelStyle),
-          ),
-        ]),
-      );
-    }
-
-    final showToggle = Platform.isMacOS;
-    final toggleButton = showToggle
-        ? Padding(
-            padding: EdgeInsets.fromLTRB(extended ? 0 : 4, 4, 4, 0),
-            child: Align(
-              alignment:
-                  extended ? Alignment.centerRight : Alignment.center,
-              child: Tooltip(
-                message: extended ? 'Collapse sidebar' : 'Expand sidebar',
-                child: CupertinoButton(
-                  sizeStyle: CupertinoButtonSize.small,
-                  padding: const EdgeInsets.all(6),
-                  onPressed: () {
-                    setState(() {
-                      _macAutoCollapseDone = true;
-                      _isExtendedApple = !_isExtendedApple;
-                    });
-                  },
-                  child: Icon(
-                    extended
-                        ? CupertinoIcons.sidebar_left
-                        : CupertinoIcons.sidebar_right,
-                    color: CupertinoColors.activeBlue,
-                    size: 20,
-                  ),
-                ),
-              ),
-            ),
-          )
-        : null;
+    final selected = widget.selected;
+    final inset = _railInset;
+    // The extended macOS sidebar starts at the very top so the toggle can
+    // share the title-bar row with the traffic lights. Everything else keeps
+    // a top clearance: the traffic lights when collapsed on macOS, the status
+    // bar on iPad.
+    final topPadding = Platform.isMacOS && extended
+        ? 0.0
+        : Platform.isMacOS || _isIpad
+            ? 32.0
+            : 0.0;
 
     return Container(
       // Collapsed width clears the macOS traffic-light cluster (the green
       // zoom button's right edge sits near x≈67); 64 used to slice it down
       // the middle since the window uses a transparent full-size-content
       // title bar and the rail renders beneath the controls.
-      width: extended ? 300 : 80,
+      width: extended ? _railWidth : _collapsedRailWidth,
       color:
           CupertinoColors.tertiarySystemGroupedBackground.resolveFrom(context),
       child: ListView(
         padding: EdgeInsets.only(
-          left: extended
-              ? (Platform.isIOS && !_isIpad ? 64 : 32)
-              : 0,
-          right: extended ? 0 : 0,
-          top: Platform.isMacOS || _isIpad ? 32 : 0,
+          left: inset.left,
+          right: inset.right,
+          top: topPadding,
         ),
         children: [
-          if (toggleButton != null) toggleButton,
-          if (MediaQuery.of(context).size.height > 500)
-            _buildLeading(context, user),
-          if (extended && (Platform.isMacOS || _isIpad)) ...[
-            const SizedBox(height: 32),
-            const Text(
-              "Navigation",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
+          if (Platform.isMacOS) _buildAppleSidebarToggle(),
+          if (MediaQuery.of(context).size.height > 500) ...[
+            SizedBox(height: extended && !Platform.isMacOS ? 16 : 12),
+            _buildAppleAccount(context, user),
           ],
-          if (!extended) const SizedBox(height: 16),
-          row(
-            'Home',
-            _appleIcon(_homeIcon),
-            widget.onNavigateToHome,
+          if (extended) ...[
+            SizedBox(height: _isIpad ? 24 : 16),
+            _buildAppleSectionHeader('Navigation'),
+          ] else
+            const SizedBox(height: 12),
+          _appleRow(
+            title: 'Home',
+            icon: _appleIcon(_homeIcon),
+            onTap: widget.onNavigateToHome,
+            selected: selected == MainRailItem.home,
           ),
-          row(
-            'Settings',
-            _appleIcon(_settingsIcon),
-            widget.onNavigateToSettings,
+          _appleRow(
+            title: 'Settings',
+            icon: _appleIcon(_settingsIcon),
+            onTap: widget.onNavigateToSettings,
+            selected: selected == MainRailItem.settings,
           ),
-          row(
-            'Exit Nodes',
-            _appleIcon(_exitNodeIcon),
-            widget.onNavigateToExitNodes,
+          _appleRow(
+            title: 'Exit Nodes',
+            icon: _appleIcon(_exitNodeIcon),
+            onTap: widget.onNavigateToExitNodes,
+            selected: selected == MainRailItem.exitNodes,
           ),
-          row(
-            'Health',
-            _buildHeathIcon(health),
-            widget.onNavigateToHealth,
+          _appleRow(
+            title: 'Health',
+            icon: _buildHeathIcon(health),
+            onTap: widget.onNavigateToHealth,
+            selected: selected == MainRailItem.health,
           ),
-          row(
-            unread > 0 ? 'Peer Messages ($unread)' : 'Peer Messages',
-            _appleIcon(_peerMessagingIcon),
-            _handleAppleNavigateToPeerMessaging,
+          _appleRow(
+            title: 'Peer Messages',
+            icon: _buildPeerMessagingIcon(unread),
+            detail: unread > 0 ? '$unread' : null,
+            onTap: _handleAppleNavigateToPeerMessaging,
+            selected: selected == MainRailItem.peerMessages,
           ),
-          row(
-            isDarkMode ? 'Light Mode' : 'Dark Mode',
-            _appleIcon(isDarkMode ? _lightModeIcon : _darkModeIcon),
-            () => ref.read(themeProvider.notifier).toggleTheme(),
+          _appleRow(
+            title: isDarkMode ? 'Light Mode' : 'Dark Mode',
+            icon: _appleIcon(isDarkMode ? _lightModeIcon : _darkModeIcon),
+            onTap: () => ref.read(themeProvider.notifier).toggleTheme(),
           ),
-          row(
-            'About Cylonix',
-            _appleIcon(_infoIcon),
-            widget.onNavigateToAbout,
+          _appleRow(
+            title: 'About Cylonix',
+            icon: _appleIcon(_infoIcon),
+            onTap: widget.onNavigateToAbout,
+            selected: selected == MainRailItem.about,
           ),
         ],
       ),
@@ -456,6 +696,8 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
           );
   }
 
+  /// Avatar header of the Material rail; the Apple sidebar uses
+  /// [_buildAppleAccount].
   Widget _buildLeading(BuildContext context, UserProfile? user) {
     final profiles = ref.watch(loginProfilesProvider);
     final isApplePrivateRelay =
@@ -463,11 +705,9 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             false;
 
     return Column(
-      crossAxisAlignment: (!_extended || !isApple())
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(height: Platform.isIOS && !_isIpad ? 16 : 32),
+        const SizedBox(height: 32),
         // Avatar and name
         GestureDetector(
           onTap: () {
@@ -487,27 +727,17 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
                   isApplePrivateRelay
                       ? "Apple Private Relay"
                       : user.displayName,
-                  style: isApple()
-                      ? const TextStyle(
-                          fontSize: 14,
-                        )
-                      : Theme.of(context).textTheme.bodyMedium,
+                  style: Theme.of(context).textTheme.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
                 if (isApplePrivateRelay) ...[
                   const SizedBox(height: 4),
                   Text(
                     user.displayName.split('@').first,
-                    style: isApple()
-                        ? TextStyle(
-                            fontSize: 12,
-                            color: CupertinoColors.secondaryLabel
-                                .resolveFrom(context),
-                          )
-                        : Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -516,7 +746,7 @@ class _MainNavigationRailState extends ConsumerState<MainNavigationRail> {
             ],
           ),
         ),
-        if (!isApple() && !isNativeAndroidTV) _toggleButton,
+        if (!isNativeAndroidTV) _toggleButton,
       ],
     );
   }
