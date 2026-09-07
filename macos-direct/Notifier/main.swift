@@ -15,7 +15,13 @@ import Foundation
 import UserNotifications
 
 private let socketPath = "/var/run/cylonix/cylonixd.sock"
-private let watchPath  = "/localapi/v0/watch-ipn-bus?mask=0"
+// mask=256 is ipn.NotifyRateLimit: the daemon coalesces "boring" notifies
+// (NetMap/Engine only) to one every few seconds instead of forwarding each
+// one. CylonixDirectFileReceived is a "notable" field (ipnlocal/bus.go
+// isNotableNotify) and is still delivered immediately. Without this the
+// control plane's netmap churn arrives here as a full ~140KB NetMap every
+// couple of seconds that we never use.
+private let watchPath  = "/localapi/v0/watch-ipn-bus?mask=256"
 private let httpHost   = "local-tailscaled.sock"
 
 final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -127,38 +133,55 @@ final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCent
         var headersConsumed = false
         var chunkBuf = [UInt8](repeating: 0, count: 32 * 1024)
         while true {
-            let n = read(fd, &chunkBuf, chunkBuf.count)
-            if n <= 0 { return }
-            carry.append(chunkBuf, count: n)
-            if !headersConsumed {
-                if let r = carry.range(of: Data([0x0d, 0x0a, 0x0d, 0x0a])) {
-                    carry.removeSubrange(carry.startIndex..<r.upperBound)
-                    headersConsumed = true
-                } else {
-                    continue
+            // Every iteration gets its own autorelease pool. This loop runs
+            // on a detached thread and never returns, so the thread-level
+            // pool is never drained: every autoreleased temporary created
+            // below (Data/NSData bridging, the JSON parser and the object
+            // tree it returns) would otherwise stay alive until the process
+            // exits. Observed as ~8 MB/min of retained NSDictionary/CFString
+            // growth, 1.3 GB after a few hours.
+            let keepReading: Bool = autoreleasepool {
+                let n = read(fd, &chunkBuf, chunkBuf.count)
+                if n <= 0 { return false }
+                carry.append(chunkBuf, count: n)
+                if !headersConsumed {
+                    if let r = carry.range(of: Data([0x0d, 0x0a, 0x0d, 0x0a])) {
+                        carry.removeSubrange(carry.startIndex..<r.upperBound)
+                        headersConsumed = true
+                    } else {
+                        return true
+                    }
                 }
-            }
-            // The daemon may use chunked transfer encoding. Strip chunk
-            // headers (hex line + CRLF) by scanning conservatively: any
-            // non-JSON line is ignored.
-            while let nlIdx = carry.firstIndex(of: 0x0a) {
-                let lineStart = carry.startIndex
-                var endIdx = nlIdx
-                // Trim a trailing CR if present.
-                if endIdx > lineStart, carry[carry.index(before: endIdx)] == 0x0d {
-                    endIdx = carry.index(before: endIdx)
+                // The daemon may use chunked transfer encoding. Strip chunk
+                // headers (hex line + CRLF) by scanning conservatively: any
+                // non-JSON line is ignored.
+                while let nlIdx = carry.firstIndex(of: 0x0a) {
+                    let lineStart = carry.startIndex
+                    var endIdx = nlIdx
+                    // Trim a trailing CR if present.
+                    if endIdx > lineStart, carry[carry.index(before: endIdx)] == 0x0d {
+                        endIdx = carry.index(before: endIdx)
+                    }
+                    let line = carry.subdata(in: lineStart..<endIdx)
+                    carry.removeSubrange(lineStart...nlIdx)
+                    if line.isEmpty { continue }
+                    handleLine(line)
                 }
-                let line = carry.subdata(in: lineStart..<endIdx)
-                carry.removeSubrange(lineStart...nlIdx)
-                if line.isEmpty { continue }
-                handleLine(line)
+                return true
             }
+            if !keepReading { return }
         }
     }
+
+    // The only top-level Notify key this agent acts on. Checked as a byte
+    // substring before parsing so NetMap/Prefs/Health messages are skipped
+    // without ever building a JSON object tree for them.
+    private static let fileReceivedKey = Data("\"CylonixDirectFileReceived\"".utf8)
 
     private func handleLine(_ data: Data) {
         // Only attempt JSON parse on lines that look like JSON objects.
         guard data.first == 0x7B /* '{' */ else { return }
+        guard data.range(of: Self.fileReceivedKey) != nil else { return }
         guard let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
             return
         }
