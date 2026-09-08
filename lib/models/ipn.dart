@@ -340,6 +340,14 @@ class PersistConfig with _$PersistConfig {
       _$PersistConfigFromJson(json);
 }
 
+/// Normalizes a peer reference (StableNodeID, device FQDN, or computed
+/// name) the way the daemon does in resolvePeerByRef
+/// (tailscale/ipn/ipnlocal/peermessage.go): trim, lower-case, drop a
+/// trailing dot. Compare only normalized values to each other.
+String normalizePeerRef(String value) {
+  return value.trim().toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+}
+
 @freezed
 class NetworkMap with _$NetworkMap {
   const factory NetworkMap({
@@ -364,6 +372,16 @@ class NetworkMap with _$NetworkMap {
   Node? getPeer(StableNodeID id) => id == selfNode.stableID
       ? selfNode
       : peers?.firstWhereOrNull((node) => node.stableID == id);
+
+  /// Resolves a peer-messaging conversation reference to a node. Accepts the
+  /// same forms the daemon does (StableNodeID, device FQDN, computed name),
+  /// checks the self node first, and returns the first exact match.
+  Node? resolvePeerRef(String peerRef) {
+    final ref = normalizePeerRef(peerRef);
+    if (ref.isEmpty) return null;
+    if (selfNode.matchesPeerRef(ref)) return selfNode;
+    return peers?.firstWhereOrNull((node) => node.matchesPeerRef(ref));
+  }
 
   factory NetworkMap.fromJson(Map<String, dynamic> json) =>
       _$NetworkMapFromJson(json);
@@ -453,6 +471,16 @@ class Node with _$Node {
   }
 
   bool isSelfNode(NetworkMap netmap) => stableID == netmap.selfNode.stableID;
+
+  /// True when [normalizedRef] (see [normalizePeerRef]) names this node by
+  /// any of the identifiers peer messaging accepts as a conversation id.
+  bool matchesPeerRef(String normalizedRef) {
+    return normalizePeerRef(stableID) == normalizedRef ||
+        normalizePeerRef(name) == normalizedRef ||
+        normalizePeerRef(computedName ?? '') == normalizedRef ||
+        normalizePeerRef(computedNameWithHost ?? '') == normalizedRef ||
+        normalizePeerRef(displayName) == normalizedRef;
+  }
 
   bool connectedOrSelfNode(NetworkMap? nm) =>
       online == true || stableID == nm?.selfNode.stableID;

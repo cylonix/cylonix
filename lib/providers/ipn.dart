@@ -174,7 +174,10 @@ final backendStateProvider = Provider<BackendState?>(
 
 final filesWaitingProvider = Provider<List<AwaitingFile>>((ref) {
   final ipnState = ref.watch(ipnStateProvider);
-  return ipnState?.filesWaiting ?? [];
+  // Most notifications carry no filesWaiting, so this is usually null. A
+  // non-const `[]` here is a fresh instance per IpnState emission, which made
+  // every watcher (thread view, main view) rebuild on each netmap tick.
+  return ipnState?.filesWaiting ?? const [];
 });
 
 class FilesSaved extends StateNotifier<List<String>> {

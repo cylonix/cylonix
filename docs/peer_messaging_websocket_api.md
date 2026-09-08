@@ -53,6 +53,11 @@ Supported client actions:
 - `drop`: fail immediately if the peer cannot be reached
 - `queue`: accept the send locally and let the Cylonix API retry it later
 
+Messages sent through this API are stamped with `metadata.origin = "api"`.
+The stamp travels with the message to the peer, and both sides use it
+(together with the structured `approval_request` / `menu_request` /
+`task_summary` kinds) to show an agent badge on the thread's device avatar.
+
 `send_message` can also create a menu-style prompt by including `menu_options`:
 
 ```json
@@ -112,12 +117,31 @@ Server event types:
 - `message_received`
 - `message_sent`
 - `message_delivery_update`
+- `messages_read`
 - `approval_requested`
 - `approval_submitted`
 - `menu_requested`
 - `menu_submitted`
 - `sync_snapshot`
 - `error`
+
+Read receipts:
+
+- When the app marks a conversation read (including the `mark_read` command
+  above), the daemon sends the peer a small signal outside the message queue:
+  "read up to message X". It is never persisted or retried behind messages;
+  if the peer is unreachable the newest receipt is parked and sent once the
+  peer is reachable again.
+- The peer's daemon turns it into a `messages_read` event. `conversation_id`
+  is the reader's peer reference and `payload` carries `from_peer_id`,
+  `from_peer_name`, `up_to_message_id`, and `read_at` (RFC 3339).
+- On receiving it, the app flips its own messages in that conversation that
+  were written no later than `up_to_message_id` from `delivered` (or `sent`)
+  to the `read` delivery status and records `read_at` in the message
+  metadata. `read` is the highest rung of `delivery_status`; a later
+  `message_delivery_update` never downgrades it.
+- Peers running a daemon without signal support answer 404; the sender then
+  stops sending receipts to that peer for the rest of the session.
 
 Routing notes:
 

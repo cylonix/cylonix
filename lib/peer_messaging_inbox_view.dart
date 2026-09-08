@@ -17,7 +17,9 @@ import 'services/peer_messaging_service.dart';
 import 'utils/logger.dart';
 import 'utils/utils.dart';
 import 'widgets/adaptive_widgets.dart';
+import 'widgets/peer_device_avatar.dart';
 import 'widgets/share_peer_device_list.dart';
+import 'widgets/rename_conversation_dialog.dart';
 
 const double _splitViewMinWidth = 760;
 const double _splitViewListWidth = 460;
@@ -690,9 +692,11 @@ class _ConversationTile extends ConsumerWidget {
           : null,
       child: AdaptiveListTile.notched(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        leading: const CircleAvatar(
-          child: Icon(Icons.smart_toy_outlined),
+        leading: PeerDeviceAvatar(
+          peerRef: conversation.id,
+          showAgentBadge: conversation.hasAgentActivity,
         ),
+        leadingSize: 40,
         title: Text(conversation.title),
         subtitle: Text(
           conversation.preview.isEmpty
@@ -773,6 +777,24 @@ class _ConversationTile extends ConsumerWidget {
       return;
     }
 
+    if (selected == 'rename') {
+      final title = await showRenameConversationDialog(
+        context,
+        currentTitle: conversation.title,
+      );
+      if (title == null || !context.mounted) {
+        return;
+      }
+      final trimmed = title.trim();
+      if (trimmed.isEmpty || trimmed == conversation.title) {
+        return;
+      }
+      await ref
+          .read(peerMessagingServiceProvider.notifier)
+          .renameConversation(conversation.id, trimmed);
+      return;
+    }
+
     if (selected == 'hide') {
       await ref
           .read(peerMessagingServiceProvider.notifier)
@@ -837,6 +859,10 @@ class _ConversationTile extends ConsumerWidget {
       ),
       items: [
         const PopupMenuItem<String>(
+          value: 'rename',
+          child: Text('Rename Thread'),
+        ),
+        const PopupMenuItem<String>(
           value: 'hide',
           child: Text('Hide Thread'),
         ),
@@ -858,6 +884,11 @@ class _ConversationTile extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Rename Thread'),
+              onTap: () => Navigator.pop(context, 'rename'),
+            ),
             ListTile(
               leading: const Icon(Icons.visibility_off_outlined),
               title: const Text('Hide Thread'),

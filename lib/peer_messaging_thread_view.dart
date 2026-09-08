@@ -1,6 +1,7 @@
 // Copyright (c) EZBLOCK Inc & AUTHORS
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:async';
 import 'dart:io';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -27,6 +28,7 @@ import 'models/ipn.dart';
 import 'models/peer_messaging.dart';
 import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
+import 'providers/peer_status.dart';
 import 'services/ipn.dart';
 import 'services/peer_messaging_service.dart';
 import 'utils/utils.dart';
@@ -34,6 +36,9 @@ import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
 import 'widgets/alert_dialog_widget.dart';
 import 'widgets/link_preview.dart';
+import 'widgets/peer_device_avatar.dart';
+import 'widgets/peer_status_dot.dart';
+import 'widgets/rename_conversation_dialog.dart';
 import 'utils/logger.dart';
 
 class PeerMessagingThreadView extends ConsumerStatefulWidget {
@@ -65,6 +70,10 @@ class _PeerMessagingThreadViewState
   final Map<String, String> _resolvedAttachmentPaths = {};
   final Set<String> _persistingResolvedAttachmentPaths = {};
   PeerMessagingMessage? _replyToMessage;
+  String? _highlightedMessageId;
+  int _highlightRequest = 0;
+  int _jumpToMessageRequest = 0;
+  _ThreadMessageIndex? _messageIndex;
   bool _sending = false;
   bool _compressingMedia = false;
   int _lastRenderedMessageCount = 0;
@@ -786,6 +795,107 @@ class _PeerMessagingThreadViewState
       messageId,
       () => GlobalObjectKey('peer-message-$messageId'),
     );
+  }
+
+  /// Scrolls the thread back to [messageId] and briefly highlights it. Used
+  /// when the user taps a quoted reply to go back to the original message.
+  Future<void> _jumpToMessage(String messageId) async {
+    final request = ++_jumpToMessageRequest;
+    final revealed = await _revealMessage(messageId, request);
+    if (!mounted || request != _jumpToMessageRequest || !revealed) {
+      return;
+    }
+    _flashMessage(messageId);
+  }
+
+  /// Brings [messageId] into view, centred in the viewport. The list builds
+  /// items lazily, so a target outside the cache extent has no render object
+  /// yet: page toward it a viewport at a time until its key attaches, then let
+  /// ensureVisible settle the final position with an animation.
+  Future<bool> _revealMessage(String messageId, int request) async {
+    if (!_messagesScrollController.hasClients) {
+      return false;
+    }
+    final conversation = _lastSeenConversation ??
+        ref.read(peerMessagingConversationProvider(widget.conversationId));
+    final messages = conversation?.messages ?? const <PeerMessagingMessage>[];
+    final targetIndex = messages.indexWhere((m) => m.id == messageId);
+    if (targetIndex < 0) {
+      return false;
+    }
+
+    final key = _messageKeyFor(messageId);
+    if (key.currentContext == null) {
+      // Messages are chronological and the reversed list puts older messages
+      // at larger scroll offsets. Pick the direction by comparing the target
+      // against any message that is currently built.
+      var towardOlder = true;
+      for (final entry in _messageKeys.entries) {
+        if (entry.value.currentContext == null) continue;
+        final builtIndex = messages.indexWhere((m) => m.id == entry.key);
+        if (builtIndex >= 0) {
+          towardOlder = targetIndex < builtIndex;
+          break;
+        }
+      }
+      var guard = 0;
+      while (key.currentContext == null && guard++ < 400) {
+        if (!mounted ||
+            request != _jumpToMessageRequest ||
+            !_messagesScrollController.hasClients) {
+          return false;
+        }
+        final position = _messagesScrollController.position;
+        final step = position.viewportDimension * 0.9;
+        final next =
+            (towardOlder ? position.pixels + step : position.pixels - step)
+                .clamp(position.minScrollExtent, position.maxScrollExtent);
+        if ((next - position.pixels).abs() < 0.5) {
+          // Reached the end of the list without the target being built.
+          break;
+        }
+        _messagesScrollController.jumpTo(next);
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    }
+
+    final targetContext = key.currentContext;
+    if (targetContext == null ||
+        !mounted ||
+        request != _jumpToMessageRequest) {
+      return false;
+    }
+    await Scrollable.ensureVisible(
+      targetContext,
+      alignment: 0.5,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOut,
+    );
+    return true;
+  }
+
+  void _flashMessage(String messageId) {
+    final request = ++_highlightRequest;
+    setState(() => _highlightedMessageId = messageId);
+    Future<void>.delayed(const Duration(milliseconds: 1500), () {
+      if (!mounted || request != _highlightRequest) return;
+      setState(() => _highlightedMessageId = null);
+    });
+  }
+
+  Future<void> _renameConversation(
+    PeerMessagingConversation conversation,
+  ) async {
+    final title = await showRenameConversationDialog(
+      context,
+      currentTitle: conversation.title,
+    );
+    if (!mounted || title == null) return;
+    final trimmed = title.trim();
+    if (trimmed.isEmpty || trimmed == conversation.title) return;
+    await ref
+        .read(peerMessagingServiceProvider.notifier)
+        .renameConversation(conversation.id, trimmed);
   }
 
   Future<void> _deleteMessage(PeerMessagingMessage message) async {
@@ -1513,6 +1623,15 @@ class _PeerMessagingThreadViewState
         value.metadata['from_peer_id'] != null);
   }
 
+  _ThreadMessageIndex _messageIndexFor(List<PeerMessagingMessage> messages) {
+    final cached = _messageIndex;
+    if (cached != null && identical(cached.source, messages)) {
+      return cached;
+    }
+    return _messageIndex =
+        _ThreadMessageIndex(messages, isLocal: _isLocalMessage);
+  }
+
   static bool _messagesBelongToSameRun(
     PeerMessagingMessage first,
     PeerMessagingMessage second,
@@ -1637,14 +1756,23 @@ class _PeerMessagingThreadViewState
 
     _scheduleInitialOrNewMessageScroll(conversation.messages.length);
     _prefetchLinkPreviews(conversation);
-    final renderedMessages = conversation.messages.reversed.toList(
-      growable: false,
+    final messageIndex = _messageIndexFor(conversation.messages);
+    final renderedMessages = messageIndex.newestFirst;
+    final messagesById = messageIndex.byId;
+    // Presence only flips online/offline, so this rebuild is rare; it lets
+    // the pending summary say why nothing is moving.
+    final peerOffline =
+        ref.watch(peerPresenceStatusProvider(widget.conversationId)).kind ==
+            PeerStatusKind.offline;
+    // Select just the slice we render. Watching the whole IpnState rebuilt
+    // this entire thread on every netmap/health tick, which on a long chat
+    // meant re-laying-out every visible bubble a few times a minute while
+    // the user was scrolling.
+    final outgoingFiles = ref.watch(
+      ipnStateProvider.select(
+        (state) => state?.outgoingFiles ?? const <OutgoingFile>[],
+      ),
     );
-    final messagesById = {
-      for (final message in conversation.messages) message.id: message,
-    };
-    final outgoingFiles =
-        ref.watch(ipnStateProvider)?.outgoingFiles ?? const [];
 
     final bodyColumn = Column(
       children: [
@@ -1670,87 +1798,88 @@ class _PeerMessagingThreadViewState
                         ? renderedMessages[index + 1]
                         : null;
                     final next = index > 0 ? renderedMessages[index - 1] : null;
-                    final laterMessages = renderedMessages.take(index);
+                    final highlighted = message.id == _highlightedMessageId;
                     return KeyedSubtree(
                       key: _messageKeyFor(message.id),
-                      child: _MessageBubble(
-                        message: message,
-                        outgoingFiles: outgoingFiles,
-                        previousMessage: previous,
-                        nextMessage: next,
-                        replyTarget: message.replyToMessageId == null
-                            ? null
-                            : messagesById[message.replyToMessageId!],
-                        waitingFiles: waitingFiles,
-                        filesSaved: filesSaved,
-                        hasLaterDeliveredMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.delivered,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOut,
+                        decoration: BoxDecoration(
+                          color: highlighted
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.14)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        hasLaterSentMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.sent,
+                        child: _MessageBubble(
+                          message: message,
+                          outgoingFiles: outgoingFiles,
+                          previousMessage: previous,
+                          nextMessage: next,
+                          replyTarget: message.replyToMessageId == null
+                              ? null
+                              : messagesById[message.replyToMessageId!],
+                          waitingFiles: waitingFiles,
+                          filesSaved: filesSaved,
+                          hasLaterDeliveredMessage:
+                              messageIndex.laterDelivered(index),
+                          hasLaterReadMessage: messageIndex.laterRead(index),
+                          hasLaterPendingMessage:
+                              messageIndex.laterPending(index),
+                          hasLaterFailedMessage:
+                              messageIndex.laterFailed(index),
+                          pendingCount: messageIndex.pendingLocalCount,
+                          peerOffline: peerOffline,
+                          onDelete: () => _deleteMessage(message),
+                          onReply: () => _beginReply(message),
+                          onJumpToReplyTarget: message.replyToMessageId == null
+                              ? null
+                              : () => _jumpToMessage(message.replyToMessageId!),
+                          onSendAgain: _isLocalMessage(message)
+                              ? (message.deliveryStatus ==
+                                      PeerMessagingDeliveryStatus.failed
+                                  ? () => _retryMessage(message)
+                                  : () => _sendAgain(message))
+                              : null,
+                          onShowFailureDetails: _isLocalMessage(message) &&
+                                  message.deliveryStatus ==
+                                      PeerMessagingDeliveryStatus.failed
+                              ? () => _showFailedMessageDialog(message)
+                              : null,
+                          onSaveAttachment: (attachment) =>
+                              _saveAttachment(message.id, attachment),
+                          onShareAttachment: (attachment, sharePositionOrigin) =>
+                              _shareAttachment(message.id, attachment,
+                                  sharePositionOrigin: sharePositionOrigin),
+                          onOpenAttachment: (attachment) =>
+                              _openAttachment(message.id, attachment),
+                          resolveAttachmentPath: (attachment) =>
+                              _resolveAttachmentPreviewPath(
+                            message.id,
+                            attachment,
+                          ),
+                          onApproval: (approved) async {
+                            await ref
+                                .read(peerMessagingServiceProvider.notifier)
+                                .submitApproval(
+                                  conversationId: conversation.id,
+                                  approvalId: message.approvalId ?? '',
+                                  approved: approved,
+                                );
+                          },
+                          onMenuSelection: (action, title) async {
+                            await ref
+                                .read(peerMessagingServiceProvider.notifier)
+                                .submitMenuSelection(
+                                  conversationId: conversation.id,
+                                  messageId: message.id,
+                                  action: action,
+                                  title: title,
+                                );
+                          },
                         ),
-                        hasLaterPendingMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.pending,
-                        ),
-                        hasLaterFailedMessage: laterMessages.any(
-                          (item) =>
-                              _isLocalMessage(item) &&
-                              item.deliveryStatus ==
-                                  PeerMessagingDeliveryStatus.failed,
-                        ),
-                        onDelete: () => _deleteMessage(message),
-                        onReply: () => _beginReply(message),
-                        onSendAgain: _isLocalMessage(message)
-                            ? (message.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.failed
-                                ? () => _retryMessage(message)
-                                : () => _sendAgain(message))
-                            : null,
-                        onShowFailureDetails: _isLocalMessage(message) &&
-                                message.deliveryStatus ==
-                                    PeerMessagingDeliveryStatus.failed
-                            ? () => _showFailedMessageDialog(message)
-                            : null,
-                        onSaveAttachment: (attachment) =>
-                            _saveAttachment(message.id, attachment),
-                        onShareAttachment: (attachment, sharePositionOrigin) =>
-                            _shareAttachment(message.id, attachment,
-                                sharePositionOrigin: sharePositionOrigin),
-                        onOpenAttachment: (attachment) =>
-                            _openAttachment(message.id, attachment),
-                        resolveAttachmentPath: (attachment) =>
-                            _resolveAttachmentPreviewPath(
-                          message.id,
-                          attachment,
-                        ),
-                        onApproval: (approved) async {
-                          await ref
-                              .read(peerMessagingServiceProvider.notifier)
-                              .submitApproval(
-                                conversationId: conversation.id,
-                                approvalId: message.approvalId ?? '',
-                                approved: approved,
-                              );
-                        },
-                        onMenuSelection: (action, title) async {
-                          await ref
-                              .read(peerMessagingServiceProvider.notifier)
-                              .submitMenuSelection(
-                                conversationId: conversation.id,
-                                messageId: message.id,
-                                action: action,
-                                title: title,
-                              );
-                        },
                       ),
                     );
                   },
@@ -1833,6 +1962,9 @@ class _PeerMessagingThreadViewState
                                             _resolveAttachmentPreviewPath(
                                           _replyToMessage!.id,
                                           attachment,
+                                        ),
+                                        onTap: () => _jumpToMessage(
+                                          _replyToMessage!.id,
                                         ),
                                         onCancel: _clearReply,
                                       ),
@@ -2021,11 +2153,84 @@ class _PeerMessagingThreadViewState
         title: conversation.title,
         vpnState: vpnState,
         peerRef: widget.conversationId,
+        showAgentBadge: conversation.hasAgentActivity,
+        onTap: () => _renameConversation(conversation),
       ),
       onGoBack: widget.onNavigateBack,
       body: bodyColumn,
     );
   }
+}
+
+/// Derived views of a conversation's message list, memoised on the identity
+/// of the source list so rebuilds unrelated to the messages (highlight, VPN
+/// state, transfer progress) do not re-derive them. The "later" flags answer
+/// "does a newer local message have delivery status X?" for every index of
+/// the newest-first list in a single pass; the item builder used to rescan
+/// every newer message four times per item, which is quadratic in thread
+/// length once the user scrolls back into a long history.
+class _ThreadMessageIndex {
+  final List<PeerMessagingMessage> source;
+  final List<PeerMessagingMessage> newestFirst;
+  final Map<String, PeerMessagingMessage> byId;
+
+  /// Local messages still queued (pending). Drives the "Sending N messages"
+  /// summary under the newest one.
+  final int pendingLocalCount;
+  final List<int> _laterBits;
+
+  static const _delivered = 1;
+  static const _pending = 2;
+  static const _failed = 4;
+  static const _read = 8;
+
+  factory _ThreadMessageIndex(
+    List<PeerMessagingMessage> source, {
+    required bool Function(PeerMessagingMessage message) isLocal,
+  }) {
+    final newestFirst = source.reversed.toList(growable: false);
+    final byId = {for (final message in source) message.id: message};
+    final laterBits = List<int>.filled(newestFirst.length, 0);
+    var seen = 0;
+    var pendingLocal = 0;
+    for (var i = 0; i < newestFirst.length; i++) {
+      laterBits[i] = seen;
+      final message = newestFirst[i];
+      if (!isLocal(message)) continue;
+      if (message.deliveryStatus == PeerMessagingDeliveryStatus.pending) {
+        pendingLocal++;
+      }
+      seen |= switch (message.deliveryStatus) {
+        PeerMessagingDeliveryStatus.delivered => _delivered,
+        PeerMessagingDeliveryStatus.read => _read,
+        PeerMessagingDeliveryStatus.pending => _pending,
+        PeerMessagingDeliveryStatus.failed => _failed,
+        // Sent carries only its corner glyph; nothing depends on "a newer
+        // message was sent".
+        PeerMessagingDeliveryStatus.sent => 0,
+      };
+    }
+    return _ThreadMessageIndex._(
+      source,
+      newestFirst,
+      byId,
+      pendingLocal,
+      laterBits,
+    );
+  }
+
+  const _ThreadMessageIndex._(
+    this.source,
+    this.newestFirst,
+    this.byId,
+    this.pendingLocalCount,
+    this._laterBits,
+  );
+
+  bool laterDelivered(int index) => (_laterBits[index] & _delivered) != 0;
+  bool laterRead(int index) => (_laterBits[index] & _read) != 0;
+  bool laterPending(int index) => (_laterBits[index] & _pending) != 0;
+  bool laterFailed(int index) => (_laterBits[index] & _failed) != 0;
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -2037,11 +2242,14 @@ class _MessageBubble extends StatelessWidget {
   final List<AwaitingFile> waitingFiles;
   final List<String> filesSaved;
   final bool hasLaterDeliveredMessage;
-  final bool hasLaterSentMessage;
+  final bool hasLaterReadMessage;
   final bool hasLaterPendingMessage;
   final bool hasLaterFailedMessage;
+  final int pendingCount;
+  final bool peerOffline;
   final VoidCallback onDelete;
   final VoidCallback onReply;
+  final VoidCallback? onJumpToReplyTarget;
   final VoidCallback? onSendAgain;
   final VoidCallback? onShowFailureDetails;
   final Future<void> Function(PeerMessagingAttachment attachment)
@@ -2066,11 +2274,14 @@ class _MessageBubble extends StatelessWidget {
     required this.waitingFiles,
     required this.filesSaved,
     required this.hasLaterDeliveredMessage,
-    required this.hasLaterSentMessage,
+    required this.hasLaterReadMessage,
     required this.hasLaterPendingMessage,
     required this.hasLaterFailedMessage,
+    required this.pendingCount,
+    required this.peerOffline,
     required this.onDelete,
     required this.onReply,
+    required this.onJumpToReplyTarget,
     required this.onSendAgain,
     required this.onShowFailureDetails,
     required this.onSaveAttachment,
@@ -2104,6 +2315,12 @@ class _MessageBubble extends StatelessWidget {
         message.attachments.every(_attachmentHasStandalonePreview) &&
         message.kind != PeerMessagingMessageKind.approvalRequest &&
         message.kind != PeerMessagingMessageKind.menuRequest;
+    // A short emoji-only message renders large and bare, as iMessage does:
+    // a 16-point emoji alone in a bubble reads as an afterthought.
+    final isLargeEmojiMessage = message.attachments.isEmpty &&
+        message.kind != PeerMessagingMessageKind.approvalRequest &&
+        message.kind != PeerMessagingMessageKind.menuRequest &&
+        _isShortEmojiOnly(message.text);
     final align = isLocal ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final alignment = isLocal ? Alignment.centerRight : Alignment.centerLeft;
     final actionStyle = OutlinedButton.styleFrom(
@@ -2174,12 +2391,14 @@ class _MessageBubble extends StatelessWidget {
                       replyTargetIsLocal: replyTargetIsLocal,
                       resolveAttachmentPath: resolveAttachmentPath,
                       maxBubbleWidth: bubbleMaxWidth,
+                      onTap: onJumpToReplyTarget,
                     ),
                   ],
                   _buildBubble(
                     context,
                     isLocal: isLocal,
                     isMediaOnlyMessage: isMediaOnlyMessage,
+                    isLargeEmojiMessage: isLargeEmojiMessage,
                     bubbleColor: bubbleColor,
                     borderRadius: borderRadius,
                     foregroundColor: foregroundColor,
@@ -2193,21 +2412,92 @@ class _MessageBubble extends StatelessWidget {
             },
           ),
         ),
-        if (_buildStatusIndicator(theme) case final statusIndicator?) ...[
+        if (_buildStatusRow(theme) case final statusRow?) ...[
           const SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: statusIndicator,
+            child: statusRow,
           ),
         ],
       ],
     );
   }
 
+  /// The line under a local bubble: the status text or upload progress (when
+  /// this message carries one) followed by the delivery glyph. It lives below
+  /// the bubble rather than beside it so it never competes with the
+  /// reply-link trail for the space next to the bubble.
+  Widget? _buildStatusRow(ThemeData theme) {
+    final indicator = _buildStatusIndicator(theme);
+    final glyph = _deliveryGlyph(theme);
+    if (indicator == null && glyph == null) {
+      return null;
+    }
+    if (glyph == null) {
+      return indicator;
+    }
+    if (indicator == null) {
+      return glyph;
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [indicator, const SizedBox(width: 5), glyph],
+    );
+  }
+
+  /// Small "not yet delivered" glyph for the status line: a clock while
+  /// queued, a single check once the peer's daemon has accepted the message.
+  /// Delivered messages carry none; the "Delivered" line under the newest
+  /// delivered message covers them, as in iMessage.
+  Widget? _deliveryGlyph(ThemeData theme) {
+    if (!_isLocal) {
+      return null;
+    }
+    final color = theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.75);
+    switch (message.deliveryStatus) {
+      case PeerMessagingDeliveryStatus.pending:
+        return Tooltip(
+          message: 'Sending',
+          child: Icon(
+            isApple() ? CupertinoIcons.clock : Icons.schedule,
+            size: 13,
+            color: color,
+          ),
+        );
+      case PeerMessagingDeliveryStatus.sent:
+        return Tooltip(
+          message: 'Sent, awaiting confirmation',
+          child: Icon(
+            isApple() ? CupertinoIcons.checkmark : Icons.check,
+            size: 13,
+            color: color,
+          ),
+        );
+      case PeerMessagingDeliveryStatus.delivered:
+      case PeerMessagingDeliveryStatus.read:
+      case PeerMessagingDeliveryStatus.failed:
+        return null;
+    }
+  }
+
+  /// Summary under the newest queued message. Several queued messages share
+  /// one line with a count instead of a "Sending" row each, and when the peer
+  /// is offline the line says so, because a bare "Sending…" that sits for an
+  /// hour reads as broken while waiting for an offline device is expected.
+  String get _pendingSummary {
+    final count = pendingCount > 1 ? ' · $pendingCount messages' : '';
+    if (peerOffline) {
+      return 'Waiting for peer to come online$count';
+    }
+    return pendingCount > 1 ? 'Sending $pendingCount messages…' : 'Sending…';
+  }
+
   Widget _buildBubble(
     BuildContext context, {
     required bool isLocal,
     required bool isMediaOnlyMessage,
+    required bool isLargeEmojiMessage,
     required Color bubbleColor,
     required BorderRadius borderRadius,
     required Color foregroundColor,
@@ -2224,6 +2514,7 @@ class _MessageBubble extends StatelessWidget {
     // gesture; on text bubbles with a preview, SelectableText still wins on
     // the text region, and the bubble handler covers the rest.
     final showsBubbleActionMenu = message.text.isEmpty || hasLinkPreview;
+    final isBare = isMediaOnlyMessage || isLargeEmojiMessage;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onLongPress: _supportsLongPressAction(context) && showsBubbleActionMenu
@@ -2244,26 +2535,40 @@ class _MessageBubble extends StatelessWidget {
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: isMediaOnlyMessage ? Colors.transparent : bubbleColor,
-                  borderRadius: isMediaOnlyMessage ? null : borderRadius,
+                  color: isBare ? Colors.transparent : bubbleColor,
+                  borderRadius: isBare ? null : borderRadius,
                 ),
                 child: DefaultTextStyle.merge(
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                        color: foregroundColor,
-                        height: 1.24,
-                        fontSize: 16,
-                        letterSpacing: -0.15,
-                      ) ??
-                      TextStyle(
-                        color: foregroundColor,
-                        height: 1.24,
-                        fontSize: 16,
-                      ),
+                  style: isLargeEmojiMessage
+                      // No bubble behind it, so the fallback colour for any
+                      // glyph the emoji font lacks must be the page's ink,
+                      // not the bubble's white.
+                      ? TextStyle(
+                          color: theme.colorScheme.onSurface,
+                          fontSize: 44,
+                          height: 1.15,
+                        )
+                      : theme.textTheme.bodyMedium?.copyWith(
+                            color: foregroundColor,
+                            height: 1.24,
+                            fontSize: 16,
+                            letterSpacing: -0.15,
+                          ) ??
+                          TextStyle(
+                            color: foregroundColor,
+                            height: 1.24,
+                            fontSize: 16,
+                          ),
                   child: IconTheme.merge(
                     data: IconThemeData(color: foregroundColor),
                     child: Padding(
                       padding: isMediaOnlyMessage
                           ? EdgeInsets.zero
+                          : isLargeEmojiMessage
+                              ? const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                )
                           : message.attachments.isNotEmpty
                               ? const EdgeInsetsGeometry.only(
                                   top: 8,
@@ -2287,7 +2592,7 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 ),
               ),
-              if (_showsTail && !isMediaOnlyMessage)
+              if (_showsTail && !isBare)
                 Positioned(
                   bottom: -2,
                   right: isLocal ? -1 : null,
@@ -2592,33 +2897,45 @@ class _MessageBubble extends StatelessWidget {
     final attachmentTransfer = _attachmentTransferProgress;
     switch (message.deliveryStatus) {
       case PeerMessagingDeliveryStatus.pending:
-        if (hasLaterPendingMessage) {
-          return null;
-        }
         if (attachmentTransfer != null) {
+          // Upload progress is per message, so it shows on every message
+          // that is transferring, not just the newest.
           return _DeliveryProgressIndicator(
             progress: attachmentTransfer.progress,
             color: defaultColor,
           );
         }
+        if (hasLaterPendingMessage) {
+          return null; // the newest queued message carries the summary
+        }
         return _DeliveryStatusText(
-          label: 'Sending',
+          label: _pendingSummary,
           color: defaultColor,
         );
       case PeerMessagingDeliveryStatus.sent:
-        if (hasLaterSentMessage || hasLaterDeliveredMessage) {
-          return null;
-        }
-        return _DeliveryStatusText(
-          label: 'Processing',
-          color: defaultColor,
-        );
+        // The corner check glyph carries this state; no row, so a burst of
+        // sent messages does not stack "Processing" lines.
+        return null;
       case PeerMessagingDeliveryStatus.delivered:
-        if (hasLaterDeliveredMessage) {
+        if (hasLaterDeliveredMessage || hasLaterReadMessage) {
           return null;
         }
         return _DeliveryStatusText(
           label: 'Delivered',
+          color: defaultColor,
+        );
+      case PeerMessagingDeliveryStatus.read:
+        // One "Read" watermark under the newest read message; anything newer
+        // that is merely delivered keeps its own "Delivered" line.
+        if (hasLaterReadMessage) {
+          return null;
+        }
+        final readAt =
+            DateTime.tryParse(message.metadata['read_at'] as String? ?? '');
+        return _DeliveryStatusText(
+          label: readAt == null
+              ? 'Read'
+              : 'Read ${formatMessageTimestamp(readAt)}',
           color: defaultColor,
         );
       case PeerMessagingDeliveryStatus.failed:
@@ -3224,6 +3541,83 @@ class _AttachmentTransferProgress {
   });
 }
 
+/// Resolves an attachment's on-disk path once per widget lifetime and hands
+/// it to [builder]. A `FutureBuilder` given a fresh future on every build
+/// paints the placeholder for a frame each time the thread rebuilds, so every
+/// image in view flashed and re-laid-out on each incoming message. This keeps
+/// the resolved path across rebuilds and only re-resolves while it is still
+/// unknown (for example a transfer that has not finished yet).
+class _AttachmentPathResolver extends StatefulWidget {
+  final Future<String?> Function() resolvePath;
+  final Widget Function(BuildContext context, String? path) builder;
+
+  const _AttachmentPathResolver({
+    required this.resolvePath,
+    required this.builder,
+  });
+
+  @override
+  State<_AttachmentPathResolver> createState() =>
+      _AttachmentPathResolverState();
+}
+
+class _AttachmentPathResolverState extends State<_AttachmentPathResolver> {
+  String? _path;
+  bool _resolving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AttachmentPathResolver oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_path == null && !_resolving) {
+      _resolve();
+    }
+  }
+
+  Future<void> _resolve() async {
+    _resolving = true;
+    try {
+      final path = await widget.resolvePath();
+      if (!mounted) return;
+      if ((path ?? '').isNotEmpty && path != _path) {
+        setState(() => _path = path);
+      }
+    } catch (_) {
+      // Leave unresolved; the builder shows its placeholder.
+    } finally {
+      _resolving = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _path);
+}
+
+/// A [FileImage] decoded to fit within [maxWidth]×[maxHeight] logical pixels
+/// at the display's pixel ratio, preserving aspect ratio and never upscaling.
+/// Chat photos are commonly 12MP; decoding one at full size for a 220-pt
+/// thumbnail costs ~50MB and tens of milliseconds, and a media-heavy thread
+/// pays that for every image scrolled into view.
+ImageProvider _boundedFileImage(
+  BuildContext context,
+  String path,
+  double maxWidth,
+  double maxHeight,
+) {
+  final dpr = MediaQuery.devicePixelRatioOf(context);
+  return ResizeImage(
+    FileImage(File(path)),
+    width: (maxWidth * dpr).round(),
+    height: (maxHeight * dpr).round(),
+    policy: ResizeImagePolicy.fit,
+  );
+}
+
 class _AttachmentThumbnail extends StatelessWidget {
   final PeerMessagingAttachment attachment;
   final Future<String?> Function() resolvePath;
@@ -3271,10 +3665,9 @@ class _AttachmentThumbnail extends StatelessWidget {
         }.contains(extension);
 
     if (isImage) {
-      return FutureBuilder<String?>(
-        future: resolvePath(),
-        builder: (context, snapshot) {
-          final path = snapshot.data;
+      return _AttachmentPathResolver(
+        resolvePath: resolvePath,
+        builder: (context, path) {
           if ((path ?? '').isNotEmpty) {
             return ClipRRect(
               borderRadius: BorderRadius.circular(14),
@@ -3285,8 +3678,8 @@ class _AttachmentThumbnail extends StatelessWidget {
                   minWidth: 120,
                   minHeight: 84,
                 ),
-                child: Image.file(
-                  File(path!),
+                child: Image(
+                  image: _boundedFileImage(context, path!, 220, 180),
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
                     return _MediaPlaceholder(
@@ -3343,10 +3736,165 @@ class _VideoAttachmentThumbnail extends StatefulWidget {
       _VideoAttachmentThumbnailState();
 }
 
+/// Poster frames keyed by source video path, shared between the full-size
+/// bubble thumbnail and the small quoted-reply preview. Backed by an on-disk
+/// cache under the temp directory so later sessions reuse frames instead of
+/// decoding every video again the first time it scrolls into view.
+final Map<String, String> _videoThumbnailCache = {};
+final Map<String, Future<String?>> _videoThumbnailInFlight = {};
+
+/// Generation is serialised. Several videos entering the viewport during one
+/// scroll used to start that many concurrent frame decodes and JPEG encodes,
+/// which competed with the UI and raster threads and made those sections of
+/// the thread feel sluggish.
+Future<void> _videoThumbnailQueue = Future<void>.value();
+const _macosMediaChannel = MethodChannel('io.cylonix.sase/media');
+
+bool get _videoThumbnailsSupported => isMobile() || Platform.isMacOS;
+
+/// One cache directory per video, keyed on path, size and mtime so a
+/// re-received file with the same name gets a fresh frame. A directory rather
+/// than a file because the thumbnailers pick the output file name themselves
+/// (the video's basename on mobile, a UUID on macOS).
+Future<Directory> _videoThumbnailDirFor(String source) async {
+  final stat = await File(source).stat();
+  final key = _fnv1a32(
+    '$source|${stat.size}|${stat.modified.millisecondsSinceEpoch}',
+  );
+  final tempDir = await getTemporaryDirectory();
+  return Directory(p.join(tempDir.path, 'video_thumbs', key));
+}
+
+String _fnv1a32(String input) {
+  var hash = 0x811c9dc5;
+  for (final unit in input.codeUnits) {
+    hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+  }
+  return hash.toRadixString(16).padLeft(8, '0');
+}
+
+Future<String?> _firstImageIn(Directory dir) async {
+  if (!await dir.exists()) {
+    return null;
+  }
+  const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp'};
+  await for (final entity in dir.list(followLinks: false)) {
+    if (entity is File &&
+        imageExtensions.contains(p.extension(entity.path).toLowerCase())) {
+      return entity.path;
+    }
+  }
+  return null;
+}
+
+/// Returns an already-generated poster frame for [source] from the memory or
+/// disk cache, or null. Never decodes video, so it is cheap enough to run
+/// while the list is scrolling.
+Future<String?> _lookupVideoThumbnail(String source) async {
+  final cached = _videoThumbnailCache[source];
+  if (cached != null && await File(cached).exists()) {
+    return cached;
+  }
+  if (!_videoThumbnailsSupported) {
+    return null;
+  }
+  final onDisk = await _firstImageIn(await _videoThumbnailDirFor(source));
+  if (onDisk != null) {
+    _videoThumbnailCache[source] = onDisk;
+  }
+  return onDisk;
+}
+
+/// Returns the path of a JPEG poster frame for [source], generating one if no
+/// cached frame exists. Null when the platform has no thumbnailer or the
+/// thumbnailer produced nothing. Throws on generation errors; callers fall
+/// back to a placeholder.
+Future<String?> _generateVideoThumbnail(String source) async {
+  final existing = await _lookupVideoThumbnail(source);
+  if (existing != null) {
+    return existing;
+  }
+  final inFlight = _videoThumbnailInFlight[source];
+  if (inFlight != null) {
+    return inFlight;
+  }
+  // Bounded so a video the thumbnailer chokes on cannot wedge the queue and
+  // starve every later thumbnail.
+  final job = _videoThumbnailQueue.then(
+    (_) => _generateVideoThumbnailUncached(source)
+        .timeout(const Duration(seconds: 15)),
+  );
+  _videoThumbnailQueue = job.then((_) {}, onError: (_) {});
+  _videoThumbnailInFlight[source] = job;
+  try {
+    final outPath = await job;
+    if (outPath != null) {
+      _videoThumbnailCache[source] = outPath;
+    }
+    return outPath;
+  } finally {
+    _videoThumbnailInFlight.remove(source);
+  }
+}
+
+Future<String?> _generateVideoThumbnailUncached(String source) async {
+  if (!_videoThumbnailsSupported) {
+    return null;
+  }
+  final outDir = await _videoThumbnailDirFor(source);
+  if (!await outDir.exists()) {
+    await outDir.create(recursive: true);
+  }
+  if (Platform.isMacOS) {
+    return _macosMediaChannel.invokeMethod<String>(
+      'generateVideoThumbnail',
+      {
+        'path': source,
+        'outputDir': outDir.path,
+        'maxWidth': 480,
+        'quality': 70,
+      },
+    );
+  }
+  return vt.VideoThumbnail.thumbnailFile(
+    video: source,
+    thumbnailPath: outDir.path,
+    imageFormat: vt.ImageFormat.JPEG,
+    maxWidth: 480,
+    quality: 70,
+  );
+}
+
+/// Completes once the enclosing scrollable is idle, or after [maxWait]. Frame
+/// decoding waits behind this so it does not compete with an in-progress
+/// scroll, and items flung out of view are disposed before they start work.
+Future<void> _waitForScrollIdle(
+  BuildContext context, {
+  Duration maxWait = const Duration(milliseconds: 700),
+}) async {
+  final position = Scrollable.maybeOf(context)?.position;
+  if (position == null || !position.isScrollingNotifier.value) {
+    return;
+  }
+  final idle = Completer<void>();
+  void onChange() {
+    if (!position.isScrollingNotifier.value && !idle.isCompleted) {
+      idle.complete();
+    }
+  }
+
+  position.isScrollingNotifier.addListener(onChange);
+  try {
+    await idle.future.timeout(maxWait, onTimeout: () {});
+  } finally {
+    position.isScrollingNotifier.removeListener(onChange);
+  }
+}
+
 class _VideoAttachmentThumbnailState extends State<_VideoAttachmentThumbnail> {
-  static final Map<String, String> _cache = {};
   String? _thumbnailPath;
   bool _failed = false;
+  bool _resolving = false;
 
   @override
   void initState() {
@@ -3354,67 +3902,56 @@ class _VideoAttachmentThumbnailState extends State<_VideoAttachmentThumbnail> {
     _resolveThumbnail();
   }
 
-  static const _macosMediaChannel = MethodChannel('io.cylonix.sase/media');
+  @override
+  void didUpdateWidget(covariant _VideoAttachmentThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The source file may not have existed yet (transfer still in flight);
+    // try again on rebuild until we either have a frame or a hard failure.
+    if (_thumbnailPath == null && !_failed && !_resolving) {
+      _resolveThumbnail();
+    }
+  }
 
   Future<void> _resolveThumbnail() async {
+    _resolving = true;
     try {
       final source = await widget.resolvePath();
       if (!mounted || (source ?? '').isEmpty) {
         return;
       }
-      final cached = _cache[source!];
-      if (cached != null && await File(cached).exists()) {
-        if (mounted) setState(() => _thumbnailPath = cached);
+      final cached = await _lookupVideoThumbnail(source!);
+      if (!mounted) return;
+      if (cached != null) {
+        setState(() => _thumbnailPath = cached);
         return;
       }
-      if (!isMobile() && !Platform.isMacOS) {
-        return;
-      }
-      final tempDir = await getTemporaryDirectory();
-      final outDir = Directory(p.join(tempDir.path, 'video_thumbs'));
-      if (!await outDir.exists()) {
-        await outDir.create(recursive: true);
-      }
-
-      String? outPath;
-      if (Platform.isMacOS) {
-        outPath = await _macosMediaChannel.invokeMethod<String>(
-          'generateVideoThumbnail',
-          {
-            'path': source,
-            'outputDir': outDir.path,
-            'maxWidth': 480,
-            'quality': 70,
-          },
-        );
-      } else {
-        outPath = await vt.VideoThumbnail.thumbnailFile(
-          video: source,
-          thumbnailPath: outDir.path,
-          imageFormat: vt.ImageFormat.JPEG,
-          maxWidth: 480,
-          quality: 70,
-        );
-      }
-
+      await _waitForScrollIdle(context);
+      if (!mounted) return;
+      final outPath = await _generateVideoThumbnail(source);
       if (!mounted) return;
       if (outPath == null) {
         setState(() => _failed = true);
         return;
       }
-      _cache[source] = outPath;
       setState(() => _thumbnailPath = outPath);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
+    } finally {
+      _resolving = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Sized to match a 16:9 poster in the 220-wide box, so for the common
+    // case the frame arriving does not change the item height and shift the
+    // list under the user's finger.
     final placeholder = _MediaPlaceholder(
       icon: isApple() ? CupertinoIcons.video_camera : Icons.videocam_outlined,
       label: 'Video',
       color: widget.secondaryColor,
+      width: 220,
+      height: 124,
     );
     final path = _thumbnailPath;
     if (path == null || _failed) {
@@ -3463,18 +4000,22 @@ class _MediaPlaceholder extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
+  final double width;
+  final double height;
 
   const _MediaPlaceholder({
     required this.icon,
     required this.label,
     required this.color,
+    this.width = 180,
+    this.height = 120,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 180,
-      height: 120,
+      width: width,
+      height: height,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -3683,6 +4224,7 @@ class _ReplyLinkTrail extends StatelessWidget {
   final Future<String?> Function(PeerMessagingAttachment attachment)
       resolveAttachmentPath;
   final double maxBubbleWidth;
+  final VoidCallback? onTap;
 
   const _ReplyLinkTrail({
     required this.message,
@@ -3691,6 +4233,7 @@ class _ReplyLinkTrail extends StatelessWidget {
     required this.replyTargetIsLocal,
     required this.resolveAttachmentPath,
     required this.maxBubbleWidth,
+    this.onTap,
   });
 
   @override
@@ -3740,6 +4283,7 @@ class _ReplyLinkTrail extends StatelessWidget {
               child: _ReplyTrailPreviewCard(
                 message: message,
                 resolveAttachmentPath: resolveAttachmentPath,
+                onTap: onTap,
               ),
             ),
           ),
@@ -3753,17 +4297,19 @@ class _ReplyTrailPreviewCard extends StatelessWidget {
   final PeerMessagingMessage message;
   final Future<String?> Function(PeerMessagingAttachment attachment)
       resolveAttachmentPath;
+  final VoidCallback? onTap;
 
   const _ReplyTrailPreviewCard({
     required this.message,
     required this.resolveAttachmentPath,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final mediaOnly = message.attachments.isNotEmpty && message.text.isEmpty;
-    return DecoratedBox(
+    final card = DecoratedBox(
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 1.0),
         borderRadius: BorderRadius.circular(mediaOnly ? 18 : 14),
@@ -3817,6 +4363,18 @@ class _ReplyTrailPreviewCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+    if (onTap == null) {
+      return card;
+    }
+    // Tapping the quote jumps back to the original message.
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: card,
       ),
     );
   }
@@ -3980,11 +4538,13 @@ class _ReplyComposerPreview extends StatelessWidget {
   final PeerMessagingMessage message;
   final Future<String?> Function(PeerMessagingAttachment attachment)
       resolveAttachmentPath;
+  final VoidCallback? onTap;
   final VoidCallback onCancel;
 
   const _ReplyComposerPreview({
     required this.message,
     required this.resolveAttachmentPath,
+    this.onTap,
     required this.onCancel,
   });
 
@@ -4010,23 +4570,32 @@ class _ReplyComposerPreview extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
+            child: MouseRegion(
+              cursor: onTap == null
+                  ? MouseCursor.defer
+                  : SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTap,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    _ReplyPreviewBody(
+                      message: message,
+                      resolveAttachmentPath: resolveAttachmentPath,
+                      maxLines: 1,
+                    ),
+                  ],
                 ),
-                _ReplyPreviewBody(
-                  message: message,
-                  resolveAttachmentPath: resolveAttachmentPath,
-                  maxLines: 1,
-                ),
-              ],
+              ),
             ),
           ),
           IconButton(
@@ -4156,15 +4725,15 @@ class _ReplyAttachmentThumbnail extends StatelessWidget {
         }.contains(extension);
 
     if (isImage && resolvePath != null) {
-      return FutureBuilder<String?>(
-        future: resolvePath!(),
-        builder: (context, snapshot) {
-          final path = snapshot.data;
+      return _AttachmentPathResolver(
+        resolvePath: resolvePath!,
+        builder: (context, path) {
           if ((path ?? '').isNotEmpty) {
             return ClipRRect(
               borderRadius: BorderRadius.circular(borderRadius),
-              child: Image.file(
-                File(path!),
+              child: Image(
+                // Decode at twice the box so cover-cropping stays sharp.
+                image: _boundedFileImage(context, path!, size * 2, size * 2),
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
@@ -4187,6 +4756,18 @@ class _ReplyAttachmentThumbnail extends StatelessWidget {
       );
     }
 
+    if (isVideo && resolvePath != null) {
+      // Keyed on the attachment so switching the reply target to a different
+      // video re-resolves instead of reusing the previous poster frame.
+      return _ReplyVideoThumbnail(
+        key: ValueKey('reply-video-${attachment.id}-${attachment.name}'),
+        resolvePath: resolvePath!,
+        size: size,
+        borderRadius: borderRadius,
+        iconSize: iconSize,
+      );
+    }
+
     return _ReplyAttachmentPlaceholder(
       icon: isImage
           ? (isApple() ? CupertinoIcons.photo : Icons.photo_outlined)
@@ -4204,6 +4785,115 @@ class _ReplyAttachmentThumbnail extends StatelessWidget {
       size: size,
       borderRadius: borderRadius,
       iconSize: iconSize,
+    );
+  }
+}
+
+class _ReplyVideoThumbnail extends StatefulWidget {
+  final Future<String?> Function() resolvePath;
+  final double size;
+  final double borderRadius;
+  final double iconSize;
+
+  const _ReplyVideoThumbnail({
+    super.key,
+    required this.resolvePath,
+    required this.size,
+    required this.borderRadius,
+    required this.iconSize,
+  });
+
+  @override
+  State<_ReplyVideoThumbnail> createState() => _ReplyVideoThumbnailState();
+}
+
+class _ReplyVideoThumbnailState extends State<_ReplyVideoThumbnail> {
+  String? _thumbnailPath;
+  bool _resolving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveThumbnail();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReplyVideoThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_thumbnailPath == null && !_resolving) {
+      _resolveThumbnail();
+    }
+  }
+
+  Future<void> _resolveThumbnail() async {
+    _resolving = true;
+    try {
+      final source = await widget.resolvePath();
+      if (!mounted || (source ?? '').isEmpty) {
+        return;
+      }
+      final cached = await _lookupVideoThumbnail(source!);
+      if (!mounted) return;
+      if (cached != null) {
+        setState(() => _thumbnailPath = cached);
+        return;
+      }
+      await _waitForScrollIdle(context);
+      if (!mounted) return;
+      final outPath = await _generateVideoThumbnail(source);
+      if (!mounted || outPath == null) {
+        return;
+      }
+      setState(() => _thumbnailPath = outPath);
+    } catch (_) {
+      // Keep the placeholder icon.
+    } finally {
+      _resolving = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = _ReplyAttachmentPlaceholder(
+      icon: isApple() ? CupertinoIcons.video_camera : Icons.videocam_outlined,
+      size: widget.size,
+      borderRadius: widget.borderRadius,
+      iconSize: widget.iconSize,
+    );
+    final path = _thumbnailPath;
+    if (path == null) {
+      return placeholder;
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.borderRadius),
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => placeholder,
+            ),
+            Center(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                padding: EdgeInsets.all(widget.size >= 56 ? 6 : 3),
+                child: Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: widget.iconSize,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -4251,6 +4941,9 @@ double _estimatedReplyBubbleWidth(PeerMessagingMessage message) {
   if (message.attachments.isNotEmpty) {
     return 220.0;
   }
+  if (_isShortEmojiOnly(message.text)) {
+    return _emojiOnlyClusterCount(message.text) * 50.0 + 8.0;
+  }
   final estimated = (message.text.trim().length * 7.2) + 28.0;
   return estimated.clamp(64.0, 420.0);
 }
@@ -4264,9 +4957,106 @@ double _estimatedReplyBubbleHeight(PeerMessagingMessage message) {
   if (message.attachments.isNotEmpty) {
     return 72.0;
   }
+  if (_isShortEmojiOnly(message.text)) {
+    return 56.0;
+  }
   final lines = (message.text.trim().length / 28.0).ceil().clamp(1, 6);
   return (lines * 22.0) + 18.0;
 }
+
+/// Up to this many emoji, a message that is nothing but emoji renders large
+/// and without a bubble.
+const _largeEmojiMaxClusters = 3;
+
+bool _isShortEmojiOnly(String text) {
+  final count = _emojiOnlyClusterCount(text);
+  return count > 0 && count <= _largeEmojiMaxClusters;
+}
+
+/// Number of emoji in [text] when it consists solely of emoji (and
+/// whitespace), else 0. Counts what a reader sees: a ZWJ sequence such as a
+/// family, a flag pair, or a skin-toned hand is one. Keycap digits fall back
+/// to the normal bubble because their base character is ordinary text.
+int _emojiOnlyClusterCount(String text) {
+  var count = 0;
+  var joinNext = false; // previous rune was a zero-width joiner
+  var pendingRegional = false; // first half of a flag pair seen
+  for (final rune in text.runes) {
+    if (_isWhitespaceRune(rune)) {
+      joinNext = false;
+      pendingRegional = false;
+      continue;
+    }
+    if (rune == 0x200D) {
+      joinNext = true;
+      continue;
+    }
+    if (_isEmojiModifierRune(rune)) {
+      continue;
+    }
+    if (rune >= 0x1F1E6 && rune <= 0x1F1FF) {
+      // Regional indicators pair up into one flag.
+      if (pendingRegional) {
+        pendingRegional = false;
+      } else {
+        pendingRegional = true;
+        count++;
+      }
+      continue;
+    }
+    if (!_isEmojiBaseRune(rune)) {
+      return 0;
+    }
+    if (joinNext) {
+      joinNext = false;
+    } else {
+      count++;
+    }
+    pendingRegional = false;
+  }
+  return count;
+}
+
+bool _isWhitespaceRune(int r) =>
+    r == 0x20 || r == 0x09 || r == 0x0A || r == 0x0D || r == 0xA0 || r == 0x3000;
+
+bool _isEmojiModifierRune(int r) =>
+    r == 0xFE0E || // text presentation selector
+    r == 0xFE0F || // emoji presentation selector
+    r == 0x20E3 || // keycap
+    (r >= 0x1F3FB && r <= 0x1F3FF) || // skin tones
+    (r >= 0xE0020 && r <= 0xE007F); // tag sequences (subdivision flags)
+
+bool _isEmojiBaseRune(int r) =>
+    (r >= 0x1F000 && r <= 0x1FAFF) || // pictographs, faces, objects, symbols
+    (r >= 0x2600 && r <= 0x27BF) || // misc symbols and dingbats
+    (r >= 0x2194 && r <= 0x21AA) || // arrows with emoji presentation
+    (r >= 0x231A && r <= 0x231B) ||
+    r == 0x2328 ||
+    r == 0x23CF ||
+    (r >= 0x23E9 && r <= 0x23F3) ||
+    (r >= 0x23F8 && r <= 0x23FA) ||
+    (r >= 0x25AA && r <= 0x25AB) ||
+    r == 0x25B6 ||
+    r == 0x25C0 ||
+    (r >= 0x25FB && r <= 0x25FE) ||
+    (r >= 0x2B05 && r <= 0x2B07) ||
+    (r >= 0x2B1B && r <= 0x2B1C) ||
+    r == 0x2B50 ||
+    r == 0x2B55 ||
+    r == 0x00A9 ||
+    r == 0x00AE ||
+    r == 0x203C ||
+    r == 0x2049 ||
+    r == 0x2122 ||
+    r == 0x2139 ||
+    r == 0x24C2 ||
+    r == 0x2934 ||
+    r == 0x2935 ||
+    r == 0x3030 ||
+    r == 0x303D ||
+    r == 0x3297 ||
+    r == 0x3299;
 
 String _replyTitle(PeerMessagingMessage message) {
   final isInbound = message.metadata['is_inbound'] == true ||
@@ -4337,18 +5127,24 @@ class _ThreadTitle extends ConsumerWidget {
   final String title;
   final VpnState vpnState;
   final String peerRef;
+  final bool showAgentBadge;
+
+  /// Tapping the title renames the thread.
+  final VoidCallback? onTap;
 
   const _ThreadTitle({
     required this.title,
     required this.vpnState,
     required this.peerRef,
+    this.showAgentBadge = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final warm = peerRef.isEmpty
-        ? PeerMessagingWarmStatus.cold
-        : ref.watch(peerMessagingWarmStatusForProvider(peerRef));
+    final status = peerRef.isEmpty
+        ? const PeerStatusInfo(PeerStatusKind.unavailable, 'Not in your network')
+        : ref.watch(peerThreadStatusProvider(peerRef));
     final subtitle = _statusSubtitle(vpnState);
     final titleStyle = isApple()
         ? CupertinoTheme.of(context).textTheme.navTitleTextStyle
@@ -4359,7 +5155,16 @@ class _ThreadTitle extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (peerRef.isNotEmpty) ...[
-          _WarmStatusDot(status: warm),
+          // The status dot beside the title carries presence and
+          // reachability, so the avatar skips its own badge here.
+          PeerDeviceAvatar(
+            peerRef: peerRef,
+            radius: 13,
+            showPresence: false,
+            showAgentBadge: showAgentBadge,
+          ),
+          const SizedBox(width: 8),
+          PeerStatusDot(status: status, size: 8),
           const SizedBox(width: 6),
         ],
         Flexible(
@@ -4372,29 +5177,39 @@ class _ThreadTitle extends ConsumerWidget {
         ),
       ],
     );
-    if (subtitle == null) {
-      return titleRow;
-    }
     final subtitleColor = vpnState == VpnState.error
         ? Theme.of(context).colorScheme.error
         : (isApple()
             ? CupertinoColors.secondaryLabel.resolveFrom(context)
             : Theme.of(context).colorScheme.onSurfaceVariant);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        titleRow,
-        const SizedBox(height: 1),
-        Text(
-          subtitle,
-          style: TextStyle(
-            color: subtitleColor,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
+    final content = subtitle == null
+        ? titleRow
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              titleRow,
+              const SizedBox(height: 1),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: subtitleColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          );
+    if (onTap == null) {
+      return content;
+    }
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Tooltip(message: 'Rename thread', child: content),
+      ),
     );
   }
 
@@ -4411,50 +5226,6 @@ class _ThreadTitle extends ConsumerWidget {
       case VpnState.error:
         return 'Connection error';
     }
-  }
-}
-
-// _WarmStatusDot renders a small colored circle showing the daemon's
-// connection-warmth status to the open peer. Tooltip on hover/long-press
-// for explanation.
-class _WarmStatusDot extends StatelessWidget {
-  final PeerMessagingWarmStatus status;
-  const _WarmStatusDot({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final (color, label) = switch (status) {
-      PeerMessagingWarmStatus.warm => (
-          isApple()
-              ? CupertinoColors.systemGreen.resolveFrom(context)
-              : Colors.green.shade600,
-          'Connection ready',
-        ),
-      PeerMessagingWarmStatus.warming => (
-          isApple()
-              ? CupertinoColors.systemOrange.resolveFrom(context)
-              : Colors.orange.shade600,
-          'Connecting…',
-        ),
-      PeerMessagingWarmStatus.error => (
-          isApple()
-              ? CupertinoColors.systemRed.resolveFrom(context)
-              : Colors.red.shade600,
-          'Connection error',
-        ),
-      PeerMessagingWarmStatus.cold => (
-          isApple()
-              ? CupertinoColors.systemGrey.resolveFrom(context)
-              : Colors.grey.shade500,
-          'Connection cold',
-        ),
-    };
-    final dot = Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-    return Tooltip(message: label, child: dot);
   }
 }
 

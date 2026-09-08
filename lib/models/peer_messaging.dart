@@ -9,6 +9,7 @@ enum PeerMessagingEventType {
   messageReceived('message_received'),
   messageSent('message_sent'),
   messageDeliveryUpdate('message_delivery_update'),
+  messagesRead('messages_read'),
   messageDeleted('message_deleted'),
   approvalRequested('approval_requested'),
   approvalSubmitted('approval_submitted'),
@@ -38,7 +39,10 @@ enum PeerMessagingWarmStatus {
   cold('cold'),
   warming('warming'),
   warm('warm'),
-  error('error');
+  error('error'),
+
+  /// Control reports the peer offline, so the daemon skipped probing it.
+  offline('offline');
 
   const PeerMessagingWarmStatus(this.value);
   final String value;
@@ -91,7 +95,10 @@ enum PeerMessagingDeliveryStatus {
   pending('pending'),
   sent('sent'),
   delivered('delivered'),
-  failed('failed');
+  failed('failed'),
+
+  /// The peer's app has shown the message to the user (read receipt).
+  read('read');
 
   const PeerMessagingDeliveryStatus(this.value);
   final String value;
@@ -279,6 +286,18 @@ class PeerMessagingMessage {
     this.metadata = const {},
   });
 
+  /// True when this message was produced by an automated agent rather than
+  /// a person typing in the app: a structured approval/menu/task-summary
+  /// message, an explicit agent role, or a message stamped by the local
+  /// WebSocket API (`metadata.origin == "api"`). Role alone is not enough —
+  /// both the app UI and the API send plain text as `user`.
+  bool get isAgentOriginated =>
+      kind == PeerMessagingMessageKind.approvalRequest ||
+      kind == PeerMessagingMessageKind.menuRequest ||
+      kind == PeerMessagingMessageKind.taskSummary ||
+      role == PeerMessagingMessageRole.agent ||
+      metadata['origin'] == 'api';
+
   factory PeerMessagingMessage.fromJson(Map<String, dynamic> json) {
     final metadata = Map<String, dynamic>.from(
       (json['metadata'] as Map<dynamic, dynamic>?) ?? const {},
@@ -382,6 +401,9 @@ class PeerMessagingConversation {
   final DateTime updatedAt;
   final int unreadCount;
   final bool hidden;
+  /// True when the user chose the title; inbound updates then leave it alone
+  /// instead of refreshing it from the peer's device name.
+  final bool customTitle;
   final List<PeerMessagingMessage> messages;
 
   const PeerMessagingConversation({
@@ -392,6 +414,7 @@ class PeerMessagingConversation {
     required this.updatedAt,
     required this.unreadCount,
     this.hidden = false,
+    this.customTitle = false,
     required this.messages,
   });
 
@@ -410,6 +433,7 @@ class PeerMessagingConversation {
           (messages.isNotEmpty ? messages.last.createdAt : DateTime.now()),
       unreadCount: json['unread_count'] as int? ?? 0,
       hidden: json['hidden'] as bool? ?? false,
+      customTitle: json['custom_title'] as bool? ?? false,
       messages: messages,
     );
   }
@@ -423,9 +447,14 @@ class PeerMessagingConversation {
       'updated_at': updatedAt.toIso8601String(),
       'unread_count': unreadCount,
       'hidden': hidden,
+      if (customTitle) 'custom_title': true,
       'messages': messages.map((e) => e.toJson()).toList(),
     };
   }
+
+  /// True when an agent has spoken in this thread on either side. Drives
+  /// the agent badge on the thread's device avatar.
+  bool get hasAgentActivity => messages.any((m) => m.isAgentOriginated);
 
   String get preview {
     if (messages.isEmpty) return subtitle;
@@ -447,6 +476,7 @@ class PeerMessagingConversation {
     DateTime? updatedAt,
     int? unreadCount,
     bool? hidden,
+    bool? customTitle,
     List<PeerMessagingMessage>? messages,
   }) {
     return PeerMessagingConversation(
@@ -457,6 +487,7 @@ class PeerMessagingConversation {
       updatedAt: updatedAt ?? this.updatedAt,
       unreadCount: unreadCount ?? this.unreadCount,
       hidden: hidden ?? this.hidden,
+      customTitle: customTitle ?? this.customTitle,
       messages: messages ?? this.messages,
     );
   }

@@ -105,6 +105,11 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
   // widgets read this via warmStatusProvider; the service is the source of
   // truth and emits a stream when entries change.
   final Map<String, PeerMessagingWarmStatus> _warmStatus = {};
+
+  // Newest inbound message id we have sent a read receipt for, per
+  // conversation. In-memory only: a duplicate receipt after restart is
+  // harmless because the receiver applies receipts idempotently.
+  final Map<String, String> _readReceiptSentUpTo = {};
   final _warmStatusController =
       StreamController<Map<String, PeerMessagingWarmStatus>>.broadcast();
   Map<String, PeerMessagingWarmStatus> get warmStatusSnapshot =>
@@ -548,6 +553,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
   Future<void> markConversationRead(String conversationId) async {
     final profileId = await _requireCurrentProfileId();
+    PeerMessagingConversation? target;
     final updated = state.conversations.map((conversation) {
       if (!_matchesConversation(
         conversation,
@@ -556,8 +562,124 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       )) {
         return conversation;
       }
+      target = conversation;
       return conversation.copyWith(unreadCount: 0);
     }).toList();
+    state = state.copyWith(conversations: _sortConversations(updated));
+    await _persistState();
+    if (target != null) {
+      unawaited(_sendReadReceipt(target!));
+    }
+  }
+
+  /// Tells the peer which of its messages we have seen: one watermark, the
+  /// newest inbound message, sent only when it moved since the last receipt.
+  /// Fire-and-forget; the daemon parks it while the peer is unreachable.
+  Future<void> _sendReadReceipt(PeerMessagingConversation conversation) async {
+    PeerMessagingMessage? newest;
+    for (final message in conversation.messages) {
+      if (!_isInboundMessage(message)) continue;
+      if (newest == null || message.createdAt.isAfter(newest.createdAt)) {
+        newest = message;
+      }
+    }
+    if (newest == null) return;
+    if (_readReceiptSentUpTo[conversation.id] == newest.id) return;
+    _readReceiptSentUpTo[conversation.id] = newest.id;
+    try {
+      await _ipnService.markPeerMessageRead(
+        peerRef: conversation.id,
+        conversationId: conversation.id,
+        upToMessageId: newest.id,
+      );
+    } catch (e) {
+      _readReceiptSentUpTo.remove(conversation.id);
+      _logger.w('Read receipt for ${conversation.id} not sent: $e');
+    }
+  }
+
+  static bool _isInboundMessage(PeerMessagingMessage message) {
+    return message.metadata['is_inbound'] == true ||
+        message.metadata['from_peer_id'] != null;
+  }
+
+  /// Applies a peer's read receipt: every outbound message in the
+  /// conversation with that peer written no later than the watermark message
+  /// becomes "read". The watermark is matched by id (our ids travel with the
+  /// message); when the id is unknown locally the read time is the cutoff.
+  Future<void> _applyReadReceipt({
+    required String peerRef,
+    required String upToMessageId,
+    required DateTime readAt,
+    required String profileId,
+  }) async {
+    final conversationId = _canonicalConversationId(peerRef);
+    if (conversationId.isEmpty) return;
+    var changed = false;
+    final conversations = state.conversations.map((conversation) {
+      if (!_matchesConversation(
+        conversation,
+        conversationId: conversationId,
+        profileId: profileId,
+      )) {
+        return conversation;
+      }
+      DateTime cutoff = readAt;
+      for (final message in conversation.messages) {
+        if (message.id == upToMessageId) {
+          cutoff = message.createdAt;
+          break;
+        }
+      }
+      final messages = conversation.messages.map((message) {
+        if (_isInboundMessage(message)) return message;
+        final status = message.deliveryStatus;
+        if (status != PeerMessagingDeliveryStatus.delivered &&
+            status != PeerMessagingDeliveryStatus.sent) {
+          return message;
+        }
+        if (message.createdAt.isAfter(cutoff)) return message;
+        changed = true;
+        return message.copyWith(
+          deliveryStatus: PeerMessagingDeliveryStatus.read,
+          metadata: {
+            ...message.metadata,
+            'read_at': readAt.toUtc().toIso8601String(),
+          },
+        );
+      }).toList();
+      return conversation.copyWith(messages: messages);
+    }).toList();
+    if (!changed) {
+      _logger.d(
+        'Read receipt matched no unread outbound message: peer=$peerRef upTo=$upToMessageId',
+      );
+      return;
+    }
+    state = state.copyWith(conversations: _sortConversations(conversations));
+    await _persistState();
+  }
+
+  /// Sets a user-chosen thread title. A custom title survives inbound
+  /// updates, which otherwise refresh the title from the peer's device name.
+  Future<void> renameConversation(String conversationId, String title) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return;
+    final profileId = await _requireCurrentProfileId();
+    conversationId = _canonicalConversationId(conversationId);
+    var changed = false;
+    final updated = state.conversations.map((conversation) {
+      if (!_matchesConversation(
+        conversation,
+        conversationId: conversationId,
+        profileId: profileId,
+      )) {
+        return conversation;
+      }
+      changed = true;
+      return conversation.copyWith(title: trimmed, customTitle: true);
+    }).toList();
+    if (!changed) return;
     state = state.copyWith(conversations: _sortConversations(updated));
     await _persistState();
   }
@@ -570,6 +692,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     List<PeerMessagingMenuOption> menuOptions = const [],
     List<PeerMessagingAttachment> attachments = const [],
     String? replyToMessageId,
+    Map<String, dynamic> metadata = const {},
   }) async {
     final profileId = await _requireCurrentProfileId();
     conversationId = _canonicalConversationId(conversationId);
@@ -606,6 +729,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       menuOptions: menuOptions,
       attachments: messageAttachments,
       metadata: {
+        ...metadata,
         if (replyToMessageId != null) 'reply_to_message_id': replyToMessageId,
         if (attachmentMetadata.isNotEmpty) 'attachments': attachmentMetadata,
       },
@@ -1220,6 +1344,18 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
             failureMessage: failureMessage,
           );
         }
+        break;
+      case PeerMessagingEventType.messagesRead:
+        await _applyReadReceipt(
+          peerRef: event.payload['from_peer_id'] as String? ??
+              event.conversationId,
+          upToMessageId: event.payload['up_to_message_id'] as String? ??
+              event.messageId ??
+              '',
+          readAt: DateTime.tryParse(event.payload['read_at'] as String? ?? '') ??
+              event.timestamp,
+          profileId: profileId,
+        );
         break;
       case PeerMessagingEventType.syncSnapshot:
         final snapshot = PeerMessagingState.fromJson(
@@ -2306,6 +2442,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
               replyToMessageId: payload['reply_to_message_id'] as String? ??
                   (payload['message'] as Map?)?['reply_to_message_id']
                       as String?,
+              // Stamp API-originated text so the receiving side can show
+              // the agent badge even for plain messages (no approval/menu).
+              metadata: const {'origin': 'api'},
             );
             break;
           case 'submit_approval':
@@ -2426,7 +2565,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final nextConversation = existingIndex >= 0
         ? state.conversations[existingIndex].copyWith(
             profileId: profileId,
-            title: title.isEmpty
+            title: title.isEmpty || state.conversations[existingIndex].customTitle
                 ? state.conversations[existingIndex].title
                 : title,
             subtitle: subtitle.isEmpty
@@ -2505,7 +2644,9 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
     final nextConversation = conversation.copyWith(
       profileId: profileId,
-      title: title.isEmpty ? conversation.title : title,
+      title: title.isEmpty || conversation.customTitle
+          ? conversation.title
+          : title,
       subtitle: subtitle.isEmpty ? conversation.subtitle : subtitle,
       updatedAt: message.createdAt,
       hidden: false,
@@ -2590,6 +2731,11 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           // A daemon delivery update already resolved this message (its
           // event can race ahead of the send call returning); never
           // downgrade a terminal status back to pending.
+          return message;
+        }
+        if (message.deliveryStatus == PeerMessagingDeliveryStatus.read &&
+            deliveryStatus != PeerMessagingDeliveryStatus.failed) {
+          // A read receipt outranks a late delivery update.
           return message;
         }
         changed = true;
@@ -2948,17 +3094,10 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
   }
 
-  bool _nodeMatchesPeerRef(Node node, String normalizedRef) {
-    return _normalizePeerRef(node.stableID) == normalizedRef ||
-        _normalizePeerRef(node.name) == normalizedRef ||
-        _normalizePeerRef(node.computedName ?? '') == normalizedRef ||
-        _normalizePeerRef(node.computedNameWithHost ?? '') == normalizedRef ||
-        _normalizePeerRef(node.displayName) == normalizedRef;
-  }
+  bool _nodeMatchesPeerRef(Node node, String normalizedRef) =>
+      node.matchesPeerRef(normalizedRef);
 
-  String _normalizePeerRef(String value) {
-    return value.trim().toLowerCase().replaceFirst(RegExp(r'\.$'), '');
-  }
+  String _normalizePeerRef(String value) => normalizePeerRef(value);
 
   String _attachmentScopeFolderName(String profileId) {
     if (profileId.isEmpty) {
@@ -3111,6 +3250,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
         updatedAt: conversation.updatedAt,
         unreadCount: conversation.unreadCount,
         hidden: conversation.hidden,
+        customTitle: conversation.customTitle,
         messages: normalizedMessages,
       );
       final existing = merged[key];
@@ -3139,14 +3279,21 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       final newer = normalized.updatedAt.isAfter(existing.updatedAt)
           ? normalized
           : existing;
+      // A title the user chose on either duplicate wins over an automatic one.
+      final titled = existing.customTitle
+          ? existing
+          : normalized.customTitle
+              ? normalized
+              : newer;
       merged[key] = PeerMessagingConversation(
         id: canonicalId,
         profileId: existing.profileId,
-        title: newer.title,
+        title: titled.title,
         subtitle: newer.subtitle,
         updatedAt: newer.updatedAt,
         unreadCount: existing.unreadCount + normalized.unreadCount,
         hidden: existing.hidden && normalized.hidden,
+        customTitle: titled.customTitle,
         messages: messages,
       );
     }

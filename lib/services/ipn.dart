@@ -1342,6 +1342,39 @@ class IpnService {
     );
   }
 
+  /// Asks the daemon to send [peerRef] a read receipt for its messages up to
+  /// [upToMessageId]. Returns once the daemon has accepted it; the send itself
+  /// is asynchronous, outside the message queue, and parked while the peer is
+  /// unreachable.
+  Future<void> markPeerMessageRead({
+    required String peerRef,
+    required String conversationId,
+    required String upToMessageId,
+  }) async {
+    final payload = {
+      'peer_ref': peerRef,
+      'conversation_id': conversationId,
+      'up_to_message_id': upToMessageId,
+    };
+    if (_useHttpLocalApi) {
+      await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/peer-message/mark-read'),
+        'POST',
+        body: payload,
+        timeoutMilliseconds: 5000,
+      );
+      return;
+    }
+    final result = await _sendCommand(
+      'mark_peer_message_read',
+      jsonEncode(payload),
+      timeoutMilliseconds: 5000,
+    );
+    if (!result.startsWith('Success')) {
+      throw Exception('mark_peer_message_read failed: $result');
+    }
+  }
+
   // Active-peer warm/keepalive: while a peer-message thread is open in the UI
   // the daemon pings the peer's PeerAPI every ~25s so the XRay+DERP+WG+TCP+HTTP
   // path stays hot. On HTTP-LocalAPI platforms we hold a long-lived chunked
