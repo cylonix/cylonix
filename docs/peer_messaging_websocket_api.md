@@ -130,8 +130,9 @@ Read receipts:
 - When the app marks a conversation read (including the `mark_read` command
   above), the daemon sends the peer a small signal outside the message queue:
   "read up to message X". It is never persisted or retried behind messages;
-  if the peer is unreachable the newest receipt is parked and sent once the
-  peer is reachable again.
+  if the peer is unreachable the newest receipt is parked and retried on a
+  backoff timer (15s doubling to 5m, dropped after 24h) and immediately when
+  the peer becomes reachable again.
 - The peer's daemon turns it into a `messages_read` event. `conversation_id`
   is the reader's peer reference and `payload` carries `from_peer_id`,
   `from_peer_name`, `up_to_message_id`, and `read_at` (RFC 3339).
@@ -141,7 +142,8 @@ Read receipts:
   metadata. `read` is the highest rung of `delivery_status`; a later
   `message_delivery_update` never downgrades it.
 - Peers running a daemon without signal support answer 404; the sender then
-  stops sending receipts to that peer for the rest of the session.
+  skips receipts to that peer for two hours before trying again, so a peer
+  that upgrades is picked up without restarting the sender's daemon.
 
 Routing notes:
 
