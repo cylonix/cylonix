@@ -197,8 +197,16 @@ final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCent
             let name = (dfr["name"] as? String) ?? ""
             let path = (dfr["path"] as? String) ?? ""
             let transferID = (dfr["transfer_id"] as? String) ?? ""
-            DispatchQueue.main.async { [weak self] in
-                self?.postNotification(name: name, path: path, transferID: transferID)
+            if !transferID.isEmpty {
+                // A transfer id marks a peer-message attachment. The message
+                // banner (muted while its thread is open) already covers it,
+                // so a second "File Received" banner would be noise; iOS and
+                // the Dart side skip the file notification the same way.
+                NSLog("cylonix-notifier: attachment \(transferID) arrived, no file banner")
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.postNotification(name: name, path: path, transferID: transferID)
+                }
             }
         }
         if hasMessage, let event = obj["PeerMessageEvent"] as? [String: Any] {
