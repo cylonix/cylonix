@@ -452,6 +452,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     final wasEmpty = _activeThreadRefs.isEmpty;
     _activeThreadRefs.update(peerRef, (n) => n + 1, ifAbsent: () => 1);
     unawaited(_publishOpenConversation());
+    unawaited(_recoverDirectModeAttachmentsFromFileRoot(peerRef));
     try {
       await _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
     } catch (e) {
@@ -1292,9 +1293,22 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
           if ((Platform.isMacOS || Platform.isIOS) &&
               message.attachments.isNotEmpty) {
             if (IpnService.isDirectDistribution && isRealInbound) {
-              // Direct/PKG distribution: download attachments from daemon
-              // via HTTP and save to Downloads, then update attachment paths.
+              // Direct/PKG distribution. The Taildrop file usually lands
+              // before the message that references it, and its bus event
+              // has then already put the path in the pending cache: apply
+              // that first so the bubble resolves at once. Otherwise fall
+              // back to waiting-file / Downloads-folder matching, retrying
+              // for a file still in flight, and stop as soon as the message
+              // is resolved (a file event landing meanwhile resolves it
+              // through _handleDirectModeFileReceived).
+              await _consumeAutoSavedAttachmentPaths();
               for (var attempt = 0; attempt < 5; attempt++) {
+                if (await _messageAttachmentsResolved(
+                  localConversationId,
+                  message.id,
+                )) {
+                  break;
+                }
                 if (attempt > 0) {
                   await Future<void>.delayed(
                     const Duration(seconds: 2),
@@ -1941,6 +1955,113 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     await _persistState();
   }
 
+  /// Direct-build recovery for attachments whose arrival the app missed.
+  ///
+  /// In direct mode the daemon writes a Taildrop file straight to
+  /// ~/Downloads/Cylonix and announces it once on the bus
+  /// (CylonixDirectFileReceived). That announcement is the only thing that
+  /// ties the file to its message, and WaitingFiles is always empty. When the
+  /// app is closed at that moment (the usual case on desktop) the message
+  /// syncs on the next start without its file. Recover by matching the
+  /// unresolved attachments of [conversationId] against that folder by name,
+  /// allowing Taildrop's " (N)" conflict suffix, and exact size, then apply
+  /// them through the same pending-path flow the live event uses.
+  Future<void> _recoverDirectModeAttachmentsFromFileRoot(
+    String conversationId,
+  ) async {
+    if (!IpnService.isDirectDistribution) return;
+    PeerMessagingConversation? conversation;
+    for (final c in state.conversations) {
+      if (c.id == conversationId) {
+        conversation = c;
+        break;
+      }
+    }
+    if (conversation == null) return;
+
+    // Paths already claimed by some attachment; a recovered file must not be
+    // shared between two messages that happen to carry the same file name.
+    final usedPaths = <String>{};
+    for (final c in state.conversations) {
+      for (final m in c.messages) {
+        for (final a in m.attachments) {
+          if ((a.path ?? '').isNotEmpty) usedPaths.add(a.path!);
+        }
+      }
+    }
+    final unresolved = <String, PeerMessagingAttachment>{};
+    for (final message in conversation.messages) {
+      for (final attachment in message.attachments) {
+        final transferId = attachment.transferId ?? attachment.id;
+        if (transferId.isEmpty ||
+            _pendingAutoSavedPaths.containsKey(transferId)) {
+          continue;
+        }
+        final path = attachment.path ?? '';
+        if (path.isNotEmpty && await File(path).exists()) continue;
+        unresolved[transferId] = attachment;
+      }
+    }
+    if (unresolved.isEmpty) return;
+
+    final downloadsDir = await getDownloadsDirectory();
+    if (downloadsDir == null) return;
+    final root = Directory(p.join(downloadsDir.path, 'Cylonix'));
+    if (!await root.exists()) return;
+    final files = <File>[];
+    await for (final entity in root.list(followLinks: false)) {
+      if (entity is File) files.add(entity);
+    }
+
+    var recovered = 0;
+    for (final entry in unresolved.entries) {
+      final attachment = entry.value;
+      final wantedName = _normalizeWaitingFileName(attachment.name);
+      File? best;
+      DateTime? bestModified;
+      for (final file in files) {
+        if (usedPaths.contains(file.path)) continue;
+        if (_normalizeWaitingFileName(p.basename(file.path)) != wantedName) {
+          continue;
+        }
+        final stat = await file.stat();
+        if (attachment.size > 0 && stat.size != attachment.size) continue;
+        if (bestModified == null || stat.modified.isAfter(bestModified)) {
+          best = file;
+          bestModified = stat.modified;
+        }
+      }
+      if (best == null) continue;
+      usedPaths.add(best.path);
+      _pendingAutoSavedPaths[entry.key] = best.path;
+      recovered++;
+      _logger.d(
+        'Direct mode: recovered attachment ${attachment.name} from ${best.path}',
+      );
+    }
+    if (recovered == 0) return;
+    await _consumeAutoSavedAttachmentPaths();
+  }
+
+  /// True when every attachment of the message has a path on disk.
+  Future<bool> _messageAttachmentsResolved(
+    String conversationId,
+    String messageId,
+  ) async {
+    for (final c in state.conversations) {
+      if (c.id != conversationId) continue;
+      for (final m in c.messages) {
+        if (m.id != messageId) continue;
+        for (final a in m.attachments) {
+          final path = a.path ?? '';
+          if (path.isEmpty || !await File(path).exists()) return false;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Downloads attachments from the daemon via HTTP for direct (non-App Store)
   /// macOS distribution. Mirrors what [_consumeAutoSavedAttachmentPaths] does
   /// for the App Store version, but uses the HTTP local API to fetch the file
@@ -1962,7 +2083,12 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     }
     if (waitingFiles.isEmpty) {
       _logger.d('Direct mode: no waiting files available for attachment match');
-      return false;
+      // The file may already sit in ~/Downloads/Cylonix: its bus
+      // announcement can precede this call (path already in the pending
+      // cache), or the app may have missed it (match the folder directly).
+      await _consumeAutoSavedAttachmentPaths();
+      await _recoverDirectModeAttachmentsFromFileRoot(conversationId);
+      return _messageAttachmentsResolved(conversationId, messageId);
     }
     _logger.d(
       'Direct mode: fetched ${waitingFiles.length} waiting files for attachment matching',

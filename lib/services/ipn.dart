@@ -1554,6 +1554,10 @@ class IpnService {
   }
 
   Future<void> replayPendingPeerMessageEvents() async {
+    if (_useHttpLocalApi) {
+      await _replayPeerMessageInboxOverHttp();
+      return;
+    }
     if (!isApple()) {
       return;
     }
@@ -1562,6 +1566,68 @@ class IpnService {
     );
     if (result != null && result != 'Success') {
       throw Exception('Failed to replay pending peer message events: $result');
+    }
+  }
+
+  /// Daemon-mode counterpart of the Network Extension's event queue: the
+  /// daemon keeps every peer-message event it broadcast in a per-profile
+  /// inbox (LocalAPI peer-message/inbox), so events that fired while no app
+  /// was watching the bus (app closed) are not lost. Drains it through the
+  /// same stream live events use; the peer messaging service de-duplicates
+  /// by message id, so events the app already saw live are harmless.
+  /// Acknowledged, and thereby dropped by the daemon, after delivery.
+  Future<void> _replayPeerMessageInboxOverHttp() async {
+    List<dynamic> entries;
+    try {
+      final result = await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/peer-message/inbox'),
+        'GET',
+      );
+      final decoded = jsonDecode(result);
+      entries = decoded is Map<String, dynamic>
+          ? (decoded['entries'] as List<dynamic>? ?? const [])
+          : const [];
+    } catch (e) {
+      _logger.w('peer message inbox fetch failed: $e');
+      return;
+    }
+    if (entries.isEmpty) {
+      return;
+    }
+    var lastSeq = 0;
+    var delivered = 0;
+    for (final entry in entries.whereType<Map<String, dynamic>>()) {
+      final seq = entry['seq'];
+      if (seq is int && seq > lastSeq) {
+        lastSeq = seq;
+      }
+      final eventJson = entry['event'];
+      if (eventJson is! Map<String, dynamic>) {
+        continue;
+      }
+      try {
+        final event = PeerMessagingEvent.fromJson(eventJson);
+        _pendingPeerMessagingEvents.add(event);
+        _peerMessagingController.add(event);
+        eventBus.fire(PeerMessagingBridgeEvent(event));
+        delivered++;
+      } catch (e) {
+        _logger.e('peer message inbox: failed to parse event seq=$seq: $e');
+      }
+    }
+    _logger.i(
+      'peer message inbox: replayed $delivered of ${entries.length} events (upto seq $lastSeq)',
+    );
+    if (lastSeq <= 0) {
+      return;
+    }
+    try {
+      await _sendCommandOverHttp(
+        Uri.parse('$_localBaseURL/peer-message/inbox?upto=$lastSeq'),
+        'POST',
+      );
+    } catch (e) {
+      _logger.w('peer message inbox ack failed: $e');
     }
   }
 
