@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // CylonixNotifier: a background LaunchAgent that surfaces direct-mode
-// Taildrop "file received" events as macOS user notifications.
+// Taildrop "file received" and peer-message events as macOS user
+// notifications.
 //
 // Why this exists: the cylonixd LaunchDaemon runs as root with no
 // Aqua/WindowServer session, so UNUserNotificationCenter inside it
@@ -61,8 +62,12 @@ final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         defer { completionHandler() }
-        guard let path = response.notification.request.content.userInfo["path"] as? String,
-              !path.isEmpty else { return }
+        let userInfo = response.notification.request.content.userInfo
+        if let conversationID = userInfo["conversation_id"] as? String, !conversationID.isEmpty {
+            activateApp()
+            return
+        }
+        guard let path = userInfo["path"] as? String, !path.isEmpty else { return }
         let url = URL(fileURLWithPath: path)
         if FileManager.default.fileExists(atPath: path) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -173,32 +178,182 @@ final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    // The only top-level Notify key this agent acts on. Checked as a byte
-    // substring before parsing so NetMap/Prefs/Health messages are skipped
+    // The top-level Notify keys this agent acts on. Checked as byte
+    // substrings before parsing so NetMap/Prefs/Health messages are skipped
     // without ever building a JSON object tree for them.
     private static let fileReceivedKey = Data("\"CylonixDirectFileReceived\"".utf8)
+    private static let peerMessageKey = Data("\"PeerMessageEvent\"".utf8)
 
     private func handleLine(_ data: Data) {
         // Only attempt JSON parse on lines that look like JSON objects.
         guard data.first == 0x7B /* '{' */ else { return }
-        guard data.range(of: Self.fileReceivedKey) != nil else { return }
+        let hasFile = data.range(of: Self.fileReceivedKey) != nil
+        let hasMessage = data.range(of: Self.peerMessageKey) != nil
+        guard hasFile || hasMessage else { return }
         guard let obj = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
             return
         }
-        guard let dfr = obj["CylonixDirectFileReceived"] as? [String: Any] else { return }
-        let name = (dfr["name"] as? String) ?? ""
-        let path = (dfr["path"] as? String) ?? ""
-        let transferID = (dfr["transfer_id"] as? String) ?? ""
-        DispatchQueue.main.async { [weak self] in
-            self?.postNotification(name: name, path: path, transferID: transferID)
+        if hasFile, let dfr = obj["CylonixDirectFileReceived"] as? [String: Any] {
+            let name = (dfr["name"] as? String) ?? ""
+            let path = (dfr["path"] as? String) ?? ""
+            let transferID = (dfr["transfer_id"] as? String) ?? ""
+            DispatchQueue.main.async { [weak self] in
+                self?.postNotification(name: name, path: path, transferID: transferID)
+            }
         }
+        if hasMessage, let event = obj["PeerMessageEvent"] as? [String: Any] {
+            DispatchQueue.main.async { [weak self] in
+                self?.handlePeerMessageEvent(event)
+            }
+        }
+    }
+
+    // MARK: - Peer messages
+
+    /// Posts a banner for an incoming peer message, approval request or menu
+    /// request, mirroring what the Network Extension does on the App Store
+    /// build. Skipped when the user is already looking at that thread.
+    private func handlePeerMessageEvent(_ event: [String: Any]) {
+        guard let type = event["type"] as? String else { return }
+        enum Kind { case message, approval, menu }
+        let kind: Kind
+        switch type {
+        case "message_received": kind = .message
+        case "approval_requested": kind = .approval
+        case "menu_requested": kind = .menu
+        default: return // sent/delivery/read/sync/warm events are not user-facing
+        }
+        let payload = event["payload"] as? [String: Any]
+        // The app files an inbound message under the SENDING peer's stable id
+        // (peer_messaging_service.dart, _canonicalConversationId), and that is
+        // what it publishes as the open thread. The event's conversation_id
+        // is the sender's own id for the thread, so it only serves as a
+        // fallback when from_peer_id is missing.
+        let fromPeerID = (payload?["from_peer_id"] as? String) ?? ""
+        let conversationID = fromPeerID.isEmpty
+            ? ((event["conversation_id"] as? String) ?? "")
+            : fromPeerID
+        if isConversationOpenInForeground(conversationID) {
+            NSLog("cylonix-notifier: \(type) for open foreground thread \(conversationID), no banner")
+            return
+        }
+        NSLog("cylonix-notifier: posting \(type) banner for thread \(conversationID)")
+        let message = payload?["message"] as? [String: Any]
+        let text = (message?["text"] as? String) ?? ""
+        let messageID = (event["message_id"] as? String) ?? ""
+
+        let content = UNMutableNotificationContent()
+        if notificationPreviewEnabled {
+            let title = (payload?["conversation_title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? (payload?["from_peer_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? "Peer"
+            switch kind {
+            case .message:
+                content.title = title
+                content.body = text.isEmpty ? "Sent an attachment" : text
+            case .approval:
+                content.title = "\(title): approval needed"
+                content.body = text.isEmpty ? "Open Cylonix to review this approval request." : text
+            case .menu:
+                content.title = "\(title): choice needed"
+                content.body = text.isEmpty ? "Open Cylonix to respond." : text
+            }
+        } else {
+            switch kind {
+            case .message:
+                content.title = "New peer message"
+                content.body = "Open Cylonix to view this message."
+            case .approval:
+                content.title = "New approval request"
+                content.body = "Open Cylonix to review this approval request."
+            case .menu:
+                content.title = "New menu request"
+                content.body = "Open Cylonix to respond."
+            }
+        }
+        content.sound = .default
+        if !conversationID.isEmpty {
+            content.threadIdentifier = conversationID
+            content.userInfo = ["conversation_id": conversationID]
+        }
+        let id = messageID.isEmpty
+            ? "cylonix-direct-pm-\(UUID().uuidString)"
+            : "cylonix-direct-pm-\(messageID)"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { err in
+            if let err = err {
+                NSLog("cylonix-notifier: add peer message notification failed: \(err)")
+            }
+        }
+    }
+
+    /// True when Cylonix.app is frontmost with this conversation's thread
+    /// open: the user is already looking at the message, so a banner would
+    /// only nag. The frontmost check also guards against a stale marker left
+    /// by an app that quit or crashed with a thread open.
+    private func isConversationOpenInForeground(_ conversationID: String) -> Bool {
+        guard !conversationID.isEmpty,
+              let open = appDefaults?.string(forKey: Self.openConversationKey),
+              open == conversationID
+        else { return false }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: appBundleID)
+            .contains { $0.isActive && !$0.isHidden }
+    }
+
+    /// Brings Cylonix.app to the front, launching it if needed. openApplication
+    /// (rather than NSRunningApplication.activate) also sends the reopen event
+    /// that restores the window when the app was hidden to the tray.
+    private func activateApp() {
+        // The agent lives inside the app bundle
+        // (Cylonix.app/Contents/Resources/CylonixNotifier.app).
+        let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: appBundleID)
+            ?? Bundle.main.bundleURL
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+        NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration()) { _, err in
+            if let err = err {
+                NSLog("cylonix-notifier: failed to open app: \(err)")
+            }
+        }
+    }
+
+    // MARK: - Preferences shared with Cylonix.app
+
+    // The app has no app group, so it keeps these in its standard defaults
+    // domain (io.cylonix.sase.direct); this agent's bundle id is that domain
+    // plus ".notifier".
+    private static let notifierSuffix = ".notifier"
+    // Settings > Notifications > "Show Notification Previews". Mirrors
+    // PacketTunnelUserDefaultsKey.notificationPreviewEnabled; unset = on.
+    private static let notificationPreviewKey = "NotificationPreviewEnabled"
+    // Conversation currently shown by the app; written by MainFlutterWindow's
+    // "setOpenConversation" handler, cleared when the thread closes.
+    private static let openConversationKey = "OpenPeerConversationID"
+
+    private let appBundleID: String = {
+        let suffix = NotifierApp.notifierSuffix
+        let own = Bundle.main.bundleIdentifier ?? "io.cylonix.sase.direct\(suffix)"
+        return own.hasSuffix(suffix) ? String(own.dropLast(suffix.count)) : "io.cylonix.sase.direct"
+    }()
+
+    private var appDefaults: UserDefaults? { UserDefaults(suiteName: appBundleID) }
+
+    private var notificationPreviewEnabled: Bool {
+        guard let defaults = appDefaults else { return true }
+        if defaults.object(forKey: Self.notificationPreviewKey) == nil { return true }
+        return defaults.bool(forKey: Self.notificationPreviewKey)
     }
 
     private func postNotification(name: String, path: String, transferID: String) {
         let content = UNMutableNotificationContent()
         content.title = "File Received"
-        let displayName = name.isEmpty ? "a file" : name
-        content.body = "Saved \(displayName) to Downloads/Cylonix"
+        if notificationPreviewEnabled {
+            let displayName = name.isEmpty ? "a file" : name
+            content.body = "Saved \(displayName) to Downloads/Cylonix"
+        } else {
+            content.body = "Saved to Downloads/Cylonix"
+        }
         content.sound = .default
         if !path.isEmpty {
             content.userInfo = ["path": path]

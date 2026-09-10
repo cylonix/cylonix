@@ -24,6 +24,10 @@ class MainFlutterWindow: NSWindow {
     registerNotificationsChannel(controller: flutterViewController)
     registerDirectChannel(controller: flutterViewController)
     requestNotificationAuthorization()
+    // No thread is open at launch. Drop a marker left behind by a quit or
+    // crash with a thread open; otherwise CylonixNotifier keeps muting that
+    // peer's banners whenever the app is frontmost, on any page.
+    UserDefaults.standard.removeObject(forKey: MainFlutterWindow.openConversationKey)
 
     super.awakeFromNib()
 
@@ -139,12 +143,29 @@ class MainFlutterWindow: NSWindow {
         let path = args["path"] as? String ?? ""
         self.showFileReceivedNotification(name: name, path: path)
         result(nil)
+      case "setOpenConversation":
+        // Conversation the app currently shows (nil/empty clears it).
+        // CylonixNotifier reads this from the app's defaults domain to skip
+        // banners for the thread the user is looking at.
+        let args = call.arguments as? [String: Any] ?? [:]
+        let id = args["id"] as? String ?? ""
+        let defaults = UserDefaults.standard
+        if id.isEmpty {
+          defaults.removeObject(forKey: MainFlutterWindow.openConversationKey)
+        } else {
+          defaults.set(id, forKey: MainFlutterWindow.openConversationKey)
+        }
+        defaults.synchronize()
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
     }
     notificationsChannel = channel
   }
+
+  /// Mirrored by CylonixNotifier (macos-direct/Notifier/main.swift).
+  static let openConversationKey = "OpenPeerConversationID"
 
   private func registerDirectChannel(controller: FlutterViewController) {
     let channel = FlutterMethodChannel(
@@ -347,8 +368,12 @@ class MainFlutterWindow: NSWindow {
       }
       let content = UNMutableNotificationContent()
       content.title = "File Received"
-      let displayName = name.isEmpty ? "a file" : name
-      content.body = "Saved \(displayName) to Downloads/Cylonix"
+      if UserDefaults.notificationPreviewEnabled {
+        let displayName = name.isEmpty ? "a file" : name
+        content.body = "Saved \(displayName) to Downloads/Cylonix"
+      } else {
+        content.body = "Saved to Downloads/Cylonix"
+      }
       content.sound = .default
       if !path.isEmpty {
         content.userInfo = ["path": path]

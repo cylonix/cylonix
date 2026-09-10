@@ -410,14 +410,12 @@ import UserNotifications
                         result("Error: invalid notification preview value")
                         return
                     }
-                    guard let appGroupId = FileManager.appGroupId,
-                          let groupDefaults = UserDefaults(suiteName: appGroupId)
-                    else {
-                        result("Error: app group defaults unavailable")
-                        return
-                    }
-                    groupDefaults.set(enabled, forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled)
-                    groupDefaults.synchronize()
+                    // App-group defaults when the build has one (the Network
+                    // Extension reads them there); the direct macOS build has
+                    // no app group and uses the app's standard domain instead.
+                    let defaults = UserDefaults.notificationPreferences
+                    defaults.set(enabled, forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled)
+                    defaults.synchronize()
                     result("Success")
                 case "sendCommand":
                     // "sendCommand" is used to send command to the tunnel

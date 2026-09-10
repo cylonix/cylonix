@@ -353,15 +353,7 @@ extension BackgroundTaskManager {
     }
 
     private func currentNotificationPreviewEnabled() -> Bool {
-        guard let appGroupId = FileManager.appGroupId,
-              let defaults = UserDefaults(suiteName: appGroupId)
-        else {
-            return true
-        }
-        if defaults.object(forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled) == nil {
-            return true
-        }
-        return defaults.bool(forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled)
+        UserDefaults.notificationPreviewEnabled
     }
 
     private func markPeerMessagingTransfersNotified(
@@ -468,5 +460,31 @@ extension BackgroundTaskManager {
         }
 
         return nil // Give up after 100 attempts
+    }
+}
+
+extension UserDefaults {
+    /// Store for the user-facing notification preferences, shared with
+    /// whichever process posts the notifications. App Store / Network
+    /// Extension builds use the app group so the extension can read it. The
+    /// direct macOS build has no app group, so it uses the app's standard
+    /// domain (io.cylonix.sase.direct), which the CylonixNotifier LaunchAgent
+    /// reads by suite name (macos-direct/Notifier/main.swift).
+    static var notificationPreferences: UserDefaults {
+        if let appGroupId = FileManager.appGroupId,
+           let groupDefaults = UserDefaults(suiteName: appGroupId) {
+            return groupDefaults
+        }
+        return .standard
+    }
+
+    /// Whether notifications may include message and file details. Defaults
+    /// to true until the user sets the preference.
+    static var notificationPreviewEnabled: Bool {
+        let defaults = notificationPreferences
+        if defaults.object(forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled) == nil {
+            return true
+        }
+        return defaults.bool(forKey: PacketTunnelUserDefaultsKey.notificationPreviewEnabled)
     }
 }

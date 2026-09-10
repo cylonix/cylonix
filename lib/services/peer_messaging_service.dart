@@ -451,6 +451,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
     if (peerRef.isEmpty) return;
     final wasEmpty = _activeThreadRefs.isEmpty;
     _activeThreadRefs.update(peerRef, (n) => n + 1, ifAbsent: () => 1);
+    unawaited(_publishOpenConversation());
     try {
       await _ipnService.setActivePeers(_activeThreadRefs.keys.toList());
     } catch (e) {
@@ -481,6 +482,7 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
       return;
     }
     _activeThreadRefs.remove(peerRef);
+    unawaited(_publishOpenConversation());
     // Drop stale warm-status entry; the daemon stops emitting events for
     // peers we no longer claim, so it would otherwise stay forever.
     if (_warmStatus.remove(peerRef) != null) {
@@ -1530,6 +1532,25 @@ class PeerMessagingService extends StateNotifier<PeerMessagingState> {
 
   static const _notificationsChannel =
       MethodChannel('io.cylonix.sase/notifications');
+
+  /// Tell the macOS direct build's CylonixNotifier which conversation the
+  /// app has open, so it can skip the banner for a message that lands in
+  /// the thread the user is looking at. The agent pairs this with its own
+  /// check that the app is frontmost, so a stale value cannot mute banners.
+  /// Only the direct build registers the channel handler; elsewhere this is
+  /// a no-op.
+  Future<void> _publishOpenConversation() async {
+    if (!IpnService.isDirectDistribution || !Platform.isMacOS) return;
+    final open =
+        _activeThreadRefs.isEmpty ? null : _activeThreadRefs.keys.last;
+    try {
+      await _notificationsChannel.invokeMethod('setOpenConversation', {
+        'id': open,
+      });
+    } catch (e) {
+      _logger.w('setOpenConversation method channel failed: $e');
+    }
+  }
 
   Future<void> _showFileReceivedNotification({
     required String name,
