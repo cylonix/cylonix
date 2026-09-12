@@ -555,6 +555,9 @@ class IpnService {
     return await _sendCommand('debug_state_traces', '');
   }
 
+  /// Asks the Go engine to write one pprof profile into the app group's
+  /// debug_profiles directory and returns the command's JSON result. See
+  /// [_moveDebugProfilesToDocuments] for how the files reach the app.
   Future<String> dumpDebugPprof({
     String profile = 'heap',
     bool gc = true,
@@ -562,18 +565,6 @@ class IpnService {
   }) async {
     if (_useHttpLocalApi) {
       throw UnsupportedError('debug_pprof is only wired through sendCommand');
-    }
-    final dir = await getSharedFolderPath() ?? "";
-    if (dir.isNotEmpty) {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final debugFilesDir = '$dir/debug_profiles';
-      final files = await Directory(debugFilesDir).list().toList();
-      for (var f in files) {
-        _logger.d("moving ${f.path}");
-        final s = f.path.replaceAll(debugFilesDir, docsDir.path);
-        await f.rename(s);
-        _logger.d("moved to $s");
-      }
     }
     return await _sendCommand(
       'debug_pprof',
@@ -586,21 +577,69 @@ class IpnService {
     );
   }
 
+  /// Moves profiles the engine wrote into the app group's debug_profiles
+  /// directory to Documents/debug_profiles, where they can be pulled with
+  /// `devicectl device copy from --domain-type appDataContainer`. Returns
+  /// the destination paths.
+  Future<List<String>> _moveDebugProfilesToDocuments() async {
+    final dir = await getSharedFolderPath() ?? "";
+    if (dir.isEmpty) return const [];
+    final source = Directory('$dir/debug_profiles');
+    if (!await source.exists()) return const [];
+    final docsDir = await getApplicationDocumentsDirectory();
+    final dest = Directory('${docsDir.path}/debug_profiles');
+    await dest.create(recursive: true);
+    final moved = <String>[];
+    await for (final f in source.list()) {
+      if (f is! File) continue;
+      final target = '${dest.path}/${f.uri.pathSegments.last}';
+      try {
+        await f.rename(target);
+        moved.add(target);
+      } catch (e) {
+        _logger.w('failed to move profile ${f.path}: $e');
+      }
+    }
+    return moved;
+  }
+
+  /// Dumps the profiles that explain the extension's memory: heap (what is
+  /// live), allocs (what churns), goroutine (who is holding stacks). Each is
+  /// a binary pprof file that `go tool pprof` reads without the binary.
   Future<List<String>> _getDebugPprofLines() async {
     if (!isApple() || isDirectDistribution) return const [];
-    try {
-      _logger.d("getting pprof logs");
-      final raw = await dumpDebugPprof();
-      final obj = jsonDecode(raw) as Map<String, dynamic>;
-      return [
-        '===== Go pprof heap dump =====',
-        'profile=${obj['profile']} path=${obj['path']} relativePath=${obj['relativePath']} bytes=${obj['bytes']}',
-        'heapAlloc=${obj['heapAlloc']} heapSys=${obj['heapSys']} heapInuse=${obj['heapInuse']} stackInuse=${obj['stackInuse']} otherSys=${obj['otherSys']} nextGC=${obj['nextGC']} numGC=${obj['numGC']} goroutines=${obj['numGoroutine']}',
-      ];
-    } catch (e) {
-      _logger.w('failed to dump Go pprof heap profile: $e');
-      return ['===== Go pprof heap dump failed: $e ====='];
+    final lines = <String>['===== Go pprof dumps ====='];
+    for (final profile in const ['heap', 'allocs', 'goroutine']) {
+      try {
+        final raw = await dumpDebugPprof(profile: profile);
+        final obj = jsonDecode(raw) as Map<String, dynamic>;
+        lines.add(
+          'profile=${obj['profile']} relativePath=${obj['relativePath']} bytes=${obj['bytes']}',
+        );
+        if (profile == 'heap') {
+          lines.add(
+            'heapAlloc=${obj['heapAlloc']} heapSys=${obj['heapSys']} heapInuse=${obj['heapInuse']} stackInuse=${obj['stackInuse']} otherSys=${obj['otherSys']} nextGC=${obj['nextGC']} numGC=${obj['numGC']} goroutines=${obj['numGoroutine']}',
+          );
+          if (obj['memClasses'] != null) {
+            lines.add('memClasses: ${obj['memClasses']}');
+          }
+        }
+      } catch (e) {
+        _logger.w('failed to dump Go pprof $profile profile: $e');
+        lines.add('profile=$profile failed: $e');
+      }
     }
+    try {
+      final moved = await _moveDebugProfilesToDocuments();
+      if (moved.isNotEmpty) {
+        lines.add(
+          'profiles in Documents/debug_profiles: ${moved.map((p) => p.split('/').last).join(', ')}',
+        );
+      }
+    } catch (e) {
+      _logger.w('failed to move Go pprof profiles: $e');
+    }
+    return lines;
   }
 
   Future<List<String>> _getDebugStateTraceLines() async {
