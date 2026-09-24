@@ -16,9 +16,11 @@ import '../models/exception.dart';
 import '../models/ipn.dart';
 import '../models/log_file.dart';
 import '../models/peer_messaging.dart';
+import '../models/shared_file.dart';
 import '../utils/logger.dart';
 import '../utils/utils.dart';
 import 'named_pipe_socket.dart';
+import 'share_request_inbox.dart';
 
 class IpnService {
   static const _capRelayL2Discovery = 'can-relay-l2-discovery';
@@ -238,6 +240,21 @@ class IpnService {
             closeInAppWebView();
           } catch (e) {
             _logger.e("Failed to handle app link: $e");
+          }
+          break;
+        case 'shareRequest':
+          // A share handed over by the platform share entry point (Apple
+          // share extension). Queued for the home page to present.
+          try {
+            final request = _parseShareRequest(call.arguments);
+            if (request == null) {
+              _logger.w("shareRequest without files: ${call.arguments}");
+              break;
+            }
+            _logger.i("Received share request: $request");
+            ShareRequestInbox.push(request);
+          } catch (e) {
+            _logger.e("Failed to handle share request: $e");
           }
           break;
         case "notification":
@@ -1526,6 +1543,49 @@ class IpnService {
     return result;
   }
 
+  static ShareRequest? _parseShareRequest(dynamic arguments) {
+    Map<String, dynamic> json;
+    if (arguments is String) {
+      json = Map<String, dynamic>.from(jsonDecode(arguments) as Map);
+    } else if (arguments is Map) {
+      json = Map<String, dynamic>.from(arguments);
+    } else {
+      return null;
+    }
+    final request = ShareRequest.fromJson(json);
+    return request.files.isEmpty ? null : request;
+  }
+
+  /// Drains share requests the native side collected before the Flutter side
+  /// was ready to present them (cold launch from the share sheet, or a share
+  /// that landed while the app was in the background). Apple platforms and
+  /// Android (ShareActivity hand-off); elsewhere shares arrive over the
+  /// dedicated share channel.
+  Future<List<ShareRequest>> getPendingShareRequests() async {
+    if (!(Platform.isIOS || Platform.isMacOS || Platform.isAndroid)) {
+      return const [];
+    }
+    try {
+      final result =
+          await _channel.invokeMethod<List<dynamic>>('getPendingShareRequests');
+      final requests = <ShareRequest>[];
+      for (final item in result ?? const []) {
+        try {
+          final request = _parseShareRequest(item);
+          if (request != null) {
+            requests.add(request);
+          }
+        } catch (e) {
+          _logger.e("Failed to parse pending share request: $e");
+        }
+      }
+      return requests;
+    } catch (e) {
+      _logger.e("Failed to get pending share requests: $e");
+      return const [];
+    }
+  }
+
   Future<String?> getSharedFolderPath() async {
     if (!isApple()) {
       return null;
@@ -1672,6 +1732,19 @@ class IpnService {
 
   Future<void> previewLocalFile(String path) async {
     await _channel.invokeMethod('previewLocalFile', path);
+  }
+
+  /// iOS: presents the Files export picker for [path], proposing [fileName],
+  /// so the user chooses a location that outlives the app container.
+  /// Returns the destination path, or null when the user cancels.
+  Future<String?> exportLocalFile(
+    String path, {
+    required String fileName,
+  }) async {
+    return await _channel.invokeMethod<String>(
+      'exportLocalFile',
+      {'path': path, 'name': fileName},
+    );
   }
 
   Future<String> _saveFileOverHttp(String file, String path) async {

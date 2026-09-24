@@ -17,6 +17,7 @@ import 'health_view.dart';
 import 'intro_page.dart';
 import 'main_view.dart';
 import 'models/ipn.dart';
+import 'models/shared_file.dart';
 import 'peer_messaging_inbox_view.dart';
 import 'peer_details_view.dart';
 import 'permissions_view.dart';
@@ -25,6 +26,8 @@ import 'providers/peer_messaging.dart';
 import 'providers/share_file.dart';
 import 'providers/theme.dart';
 import 'services/android_taildrop_notifications.dart';
+import 'services/share_request_inbox.dart';
+import 'services/system_tray_service.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
 import 'share_view.dart';
@@ -54,12 +57,19 @@ class _HomePageState extends ConsumerState<HomePage>
   int _previousPage = Page.mainView.value;
   int? _nodeID;
   Widget? _rightSide;
+  StreamSubscription<void>? _shareRequestSub;
+  bool _showingShareSheet = false;
 
   @override
   void initState() {
     super.initState();
     _initLogger();
     WidgetsBinding.instance.addObserver(this);
+    _shareRequestSub =
+        ShareRequestInbox.updates.listen((_) => _drainShareRequests());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_pullPendingShareRequests());
+    });
     if (Platform.isWindows || Platform.isMacOS) {
       windowManager.addListener(this);
     }
@@ -131,11 +141,56 @@ class _HomePageState extends ConsumerState<HomePage>
 
   @override
   void dispose() {
+    _shareRequestSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows || Platform.isMacOS) {
       windowManager.removeListener(this);
     }
     super.dispose();
+  }
+
+  /// Shares that reached the native side before this page was listening
+  /// (cold launch from the share sheet) are pulled once on first frame; the
+  /// native side pushes later ones through the method channel.
+  Future<void> _pullPendingShareRequests() async {
+    final requests =
+        await ref.read(ipnServiceProvider).getPendingShareRequests();
+    for (final request in requests) {
+      ShareRequestInbox.push(request);
+    }
+    if (ShareRequestInbox.hasPending) {
+      await _drainShareRequests();
+    }
+  }
+
+  /// Presents the oldest queued share request. One sheet at a time: the
+  /// sheet's close path drains again, so anything that arrives while a
+  /// sheet is up waits its turn.
+  Future<void> _drainShareRequests() async {
+    if (_showingShareSheet || !mounted) {
+      return;
+    }
+    final request = ShareRequestInbox.takeFirst();
+    if (request == null) {
+      return;
+    }
+    _logger.i("Presenting share request: $request");
+    if (Platform.isMacOS || Platform.isWindows) {
+      // The window may be hidden in the tray when the share extension
+      // hands a share over.
+      await SystemTrayService.show();
+      await windowManager.show();
+      await windowManager.focus();
+    }
+    // The manifest's names travel with the files: the extension stores its
+    // temp copies under UUIDs without an extension, so the basename would
+    // strip the name (and the receiver's thumbnails) from the attachment.
+    await _showShareView(
+      files: request.files,
+      text: request.text,
+      mode: request.mode,
+      ephemeral: request.ephemeral,
+    );
   }
 
   @override
@@ -567,20 +622,47 @@ class _HomePageState extends ConsumerState<HomePage>
       _logger.w("HomePage is not mounted, cannot send files.");
       return;
     }
-    ref.read(transfersProvider.notifier).reset();
     _logger.d("Files selected for sending: ${result.files.length}");
+    await _showShareView(
+      paths: result.files.map((file) => file.path).nonNulls.toList(),
+    );
+  }
+
+  Future<void> _showShareView({
+    List<String> paths = const [],
+    List<SharedFile>? files,
+    String text = '',
+    ShareMode mode = ShareMode.fileDrop,
+    bool ephemeral = false,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+    ref.read(transfersProvider.notifier).reset();
     final height = MediaQuery.of(context).size.height * 0.9;
-    await AdaptiveModalPopup(
-      height: height,
-      maxWidth: 800,
-      child: ShareView(
-        paths: result.files.map((file) => file.path).nonNulls.toList(),
-        onCancel: () {
-          _logger.d("ShareView cancelled");
-          Navigator.of(context).pop();
-        },
-      ),
-    ).show(context);
+    _showingShareSheet = true;
+    try {
+      await AdaptiveModalPopup(
+        height: height,
+        maxWidth: 800,
+        child: ShareView(
+          paths: paths,
+          files: files,
+          initialText: text,
+          initialMode: mode,
+          ephemeral: ephemeral,
+          onCancel: () {
+            _logger.d("ShareView cancelled");
+            Navigator.of(context).pop();
+          },
+        ),
+      ).show(context);
+    } finally {
+      _showingShareSheet = false;
+    }
+    if (ShareRequestInbox.hasPending) {
+      unawaited(_drainShareRequests());
+    }
   }
 
   Widget _makePage(Widget body) {

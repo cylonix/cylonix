@@ -71,11 +71,69 @@ func sharedTempFolder() -> URL? {
     return tmpDir
 }
 
+/// Folder the extension drops share-request manifests into when it hands a
+/// share over to the main app (e.g. "send as peer message"). App-group
+/// builds share it with the app; the direct build's sandboxed extension
+/// writes into its own container tmp, which the unsandboxed app can read.
+func shareRequestsFolder() -> URL? {
+    let dir: URL
+    if isDirectMode {
+        dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("io.cylonix.share", isDirectory: true)
+            .appendingPathComponent("requests", isDirectory: true)
+    } else {
+        guard let base = containerURL() else { return nil }
+        dir = base.appendingPathComponent("share", isDirectory: true)
+            .appendingPathComponent("requests", isDirectory: true)
+    }
+    try? FileManager.default.createDirectory(
+        at: dir,
+        withIntermediateDirectories: true,
+        attributes: nil
+    )
+    return dir
+}
+
+/// Writes the manifest the app reads to present the shared files. The temp
+/// copies are marked ephemeral: the app owns and deletes them from here.
+func writeShareRequest(files: [SharedFile], mode: String) -> URL? {
+    guard let dir = shareRequestsFolder() else {
+        debugLog("Failed to locate share requests folder")
+        return nil
+    }
+    var manifest: [String: Any] = [
+        "version": 1,
+        "mode": mode,
+        "source": "share-extension",
+        "ephemeral": true,
+        "created_at": ISO8601DateFormatter().string(from: Date()),
+        "files": files.map {
+            ["path": $0.path, "name": $0.name, "size": $0.size, "kind": $0.kind.rawValue]
+        },
+    ]
+    // Shared text and links travel as text too, so a peer message can carry
+    // them as its body rather than as a .txt/.webloc attachment.
+    let texts = files.compactMap { $0.kind == .file ? nil : $0.text }
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    if !texts.isEmpty {
+        manifest["text"] = texts.joined(separator: "\n\n")
+    }
+    do {
+        let data = try JSONSerialization.data(withJSONObject: manifest, options: [])
+        let url = dir.appendingPathComponent("\(UUID().uuidString).json")
+        try data.write(to: url, options: .atomic)
+        debugLog("Wrote share request \(url.path)")
+        return url
+    } catch {
+        debugLog("Failed to write share request: \(error)")
+        return nil
+    }
+}
+
 // MARK: – Direct daemon HTTP client
 
 #if os(macOS)
-import Network
-
 private class DirectDaemonClient {
     static let socketPath = "/var/run/cylonix/cylonixd.sock"
 
@@ -120,11 +178,16 @@ private class DirectDaemonClient {
         return String(data: data, encoding: .utf8) ?? "Success"
     }
 
+    /// One HTTP/1.1 exchange over the daemon's unix socket with plain POSIX
+    /// sockets. NWConnection was used before, but it runs every connection,
+    /// even to a local unix socket, through network path evaluation, which
+    /// inside the extension intermittently answered "Network is down"
+    /// (ENETDOWN) on the first attempt and left the device list empty until a
+    /// manual refresh. A raw socket needs no path.
     private func httpRequest(method: String, path: String,
                              headers: [String: String] = [:],
                              body: Data? = nil,
                              timeout: TimeInterval = 30) async throws -> Data {
-        // Build raw HTTP request
         var request = "\(method) \(path) HTTP/1.1\r\nHost: local-tailscaled.sock\r\nConnection: close\r\n"
         for (key, value) in headers {
             request += "\(key): \(value)\r\n"
@@ -133,90 +196,113 @@ private class DirectDaemonClient {
             request += "Content-Length: \(body.count)\r\n"
         }
         request += "\r\n"
-
-        var requestData = request.data(using: .utf8)!
+        var requestData = Data(request.utf8)
         if let body = body {
             requestData.append(body)
         }
 
         return try await withCheckedThrowingContinuation { continuation in
-            let endpoint = NWEndpoint.unix(path: Self.socketPath)
-            let connection = NWConnection(to: endpoint, using: .tcp)
-            let responseBuffer = DataWrapper()
-            var completed = false
-
-            let timer = DispatchSource.makeTimerSource(queue: .global())
-            timer.schedule(deadline: .now() + timeout)
-            timer.setEventHandler {
-                guard !completed else { return }
-                completed = true
-                connection.cancel()
-                continuation.resume(throwing: NSError(
-                    domain: "DirectDaemonClient", code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "request timed out"]))
-            }
-            timer.resume()
-
-            connection.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    connection.send(content: requestData, completion: .contentProcessed { error in
-                        if let error = error {
-                            guard !completed else { return }
-                            completed = true
-                            timer.cancel()
-                            connection.cancel()
-                            continuation.resume(throwing: error)
-                            return
-                        }
-                        self.receiveLoop(connection: connection, buffer: responseBuffer) {
-                            guard !completed else { return }
-                            completed = true
-                            timer.cancel()
-                            let responseData = responseBuffer.data
-                            // Extract HTTP body (after \r\n\r\n)
-                            if let range = responseData.range(of: Data("\r\n\r\n".utf8)) {
-                                let bodyData = responseData.subdata(in: range.upperBound..<responseData.endIndex)
-                                // Handle chunked transfer encoding
-                                let headerStr = String(data: responseData.subdata(in: responseData.startIndex..<range.lowerBound), encoding: .utf8) ?? ""
-                                if headerStr.lowercased().contains("transfer-encoding: chunked") {
-                                    let decoded = self.decodeChunked(bodyData)
-                                    continuation.resume(returning: decoded)
-                                } else {
-                                    continuation.resume(returning: bodyData)
-                                }
-                            } else {
-                                continuation.resume(returning: responseData)
-                            }
-                        }
-                    })
-                case .failed(let error):
-                    guard !completed else { return }
-                    completed = true
-                    timer.cancel()
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let response = try Self.exchange(requestData, socketPath: Self.socketPath, timeout: timeout)
+                    continuation.resume(returning: self.body(of: response))
+                } catch {
                     continuation.resume(throwing: error)
-                case .cancelled:
-                    break
-                default:
-                    break
                 }
             }
-            connection.start(queue: .global())
         }
     }
 
-    private func receiveLoop(connection: NWConnection, buffer: DataWrapper, completion: @escaping () -> Void) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { content, _, isComplete, error in
-            if let content = content, !content.isEmpty {
-                buffer.data.append(content)
-            }
-            if isComplete || error != nil {
-                connection.cancel()
-                completion()
-                return
-            }
-            self.receiveLoop(connection: connection, buffer: buffer, completion: completion)
+    private static func posixError(_ operation: String) -> NSError {
+        let code = Int(errno)
+        return NSError(
+            domain: NSPOSIXErrorDomain,
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: "\(operation): \(String(cString: strerror(Int32(code))))"]
+        )
+    }
+
+    /// Connects, writes the whole request (multipart uploads can be large)
+    /// and reads until the daemon closes the connection.
+    private static func exchange(_ request: Data, socketPath: String, timeout: TimeInterval) throws -> Data {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw posixError("socket") }
+        defer { close(fd) }
+
+        var tv = timeval(tv_sec: Int(timeout), tv_usec: 0)
+        _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var noSigPipe: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let pathBytes = Array(socketPath.utf8)
+        let capacity = MemoryLayout.size(ofValue: addr.sun_path)
+        guard pathBytes.count < capacity else {
+            throw NSError(domain: "DirectDaemonClient", code: -2,
+                          userInfo: [NSLocalizedDescriptionKey: "socket path too long"])
         }
+        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
+            let buf = raw.bindMemory(to: UInt8.self)
+            for i in 0 ..< pathBytes.count { buf[i] = pathBytes[i] }
+            buf[pathBytes.count] = 0
+        }
+        let size = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let rc = withUnsafePointer(to: &addr) { ptr -> Int32 in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sp in
+                connect(fd, sp, size)
+            }
+        }
+        guard rc == 0 else { throw posixError("connect") }
+
+        try request.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            guard let base = raw.baseAddress else { return }
+            var sent = 0
+            while sent < raw.count {
+                let n = send(fd, base.advanced(by: sent), raw.count - sent, 0)
+                if n < 0 {
+                    if errno == EINTR { continue }
+                    throw posixError("send")
+                }
+                if n == 0 {
+                    throw NSError(domain: "DirectDaemonClient", code: -3,
+                                  userInfo: [NSLocalizedDescriptionKey: "connection closed while sending"])
+                }
+                sent += n
+            }
+        }
+
+        var response = Data()
+        var chunk = [UInt8](repeating: 0, count: 65536)
+        while true {
+            let n = chunk.withUnsafeMutableBytes { buf -> Int in
+                recv(fd, buf.baseAddress, buf.count, 0)
+            }
+            if n < 0 {
+                if errno == EINTR { continue }
+                throw posixError("recv")
+            }
+            if n == 0 { break }
+            response.append(contentsOf: chunk[0 ..< n])
+        }
+        return response
+    }
+
+    /// HTTP body after the header block, de-chunked when needed.
+    private func body(of responseData: Data) -> Data {
+        guard let range = responseData.range(of: Data("\r\n\r\n".utf8)) else {
+            return responseData
+        }
+        let bodyData = responseData.subdata(in: range.upperBound ..< responseData.endIndex)
+        let headerText = String(
+            data: responseData.subdata(in: responseData.startIndex ..< range.lowerBound),
+            encoding: .utf8
+        ) ?? ""
+        if headerText.lowercased().contains("transfer-encoding: chunked") {
+            return decodeChunked(bodyData)
+        }
+        return bodyData
     }
 
     private func decodeChunked(_ data: Data) -> Data {
@@ -243,9 +329,6 @@ private class DirectDaemonClient {
     }
 }
 
-private class DataWrapper {
-    var data = Data()
-}
 #endif
 
 // MARK: – C callbacks
@@ -300,11 +383,29 @@ private struct GlassButtonModifier: ViewModifier {
     }
 }
 
+/// How the shared files are delivered. File drop is handled here in the
+/// extension; a peer message needs the app's message store and outbound
+/// queue, so that path hands the files over to the app.
+enum ShareDeliveryMode: String, CaseIterable, Identifiable {
+    case fileDrop = "File Drop"
+    case peerMessage = "Peer Message"
+
+    var id: String { rawValue }
+}
+
 public struct FileDropView: View {
     @StateObject private var viewModel = FileDropViewModel()
     let sharedFiles: [SharedFile]
     let unSupportedTypes: Set<String>
     let onCancel: () -> Void
+    /// Opens a URL in the containing app; supplied by the hosting view
+    /// controller because the mechanism differs per platform. Returns false
+    /// when the app could not be asked to open, in which case the request
+    /// stays on disk for the app's next launch.
+    var openHostApp: (URL) -> Bool = { _ in false }
+    @State private var deliveryMode: ShareDeliveryMode = .fileDrop
+    @State private var handOffHint: String?
+    @State private var handingOff = false
     @State private var searchText = ""
     @State private var showOnlineOnly = false
     #if os(iOS)
@@ -355,7 +456,7 @@ public struct FileDropView: View {
                 Text("Cylonix")
                     .font(.subheadline)
                 Spacer()
-                Text("Send Files")
+                Text(deliveryMode == .peerMessage ? "Send as Message" : "Send Files")
                     .font(.title3)
                     .fontWeight(.bold)
                 Spacer()
@@ -400,66 +501,12 @@ public struct FileDropView: View {
                 }
                 Divider()
 
-                HStack {
-                    TextField("Search name or OS…", text: $searchText)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(minWidth: searchFieldMinWidth)
-                    #if os(iOS)
-                        .focused($searchFieldIsFocused)
-                    #endif
+                deliveryModePicker
 
-                    Toggle("Online Only", isOn: $showOnlineOnly)
-                        // Hug content so the label isn't squeezed into
-                        // per-character wrapping on narrow phone layouts.
-                        .fixedSize()
-                    #if os(macOS)
-                        .toggleStyle(CheckboxToggleStyle())
-                    #endif
-
-                    if viewModel.isRefreshing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(width: 24, height: 24)
-                    } else {
-                        Button {
-                            viewModel.loadStatus()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(.accentColor)
-                        .frame(width: 24, height: 24)
-                        .help("Refresh device status")
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.clear)
-
-                if viewModel.isLoading {
-                    Spacer()
-                    ProgressView("Loading devices...")
-                    Spacer()
-                } else if filteredPeers.isEmpty {
-                    Spacer()
-                    Text("No device available to share with")
-                        .foregroundColor(.secondary)
-                    Spacer()
+                if deliveryMode == .peerMessage {
+                    peerMessagePanel
                 } else {
-                    List(filteredPeers, id: \.listID) { peer in
-                        PeerRow(
-                            peer: peer,
-                            transfer: viewModel.transfers[peer.transferID],
-                            onSend: { viewModel.sendFiles(to: peer, files: sharedFiles) },
-                            onRetry: { viewModel.retryFailedFiles(for: peer) }
-                        )
-                    }.navigationTitle("Devices")
-                        .listStyle(.plain)
-                        .modifier(HideScrollBackground())
-                        .background(Color.clear)
-                    #if os(iOS)
-                        .refreshable { await viewModel.refreshStatus() }
-                    #endif
+                    fileDropSection
                 }
             }
         }
@@ -480,6 +527,183 @@ public struct FileDropView: View {
                 // make sure the keyboard is not up
                 searchFieldIsFocused = false
             #endif
+        }
+    }
+
+    // The picker and its hint are centred independently of each other: in
+    // a leading-aligned stack the longer Peer Message hint widened the
+    // stack and slid the picker to the left on every switch.
+    private var deliveryModePicker: some View {
+        VStack(alignment: .center, spacing: 4) {
+            Picker("Delivery", selection: $deliveryMode) {
+                ForEach(ShareDeliveryMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            Text(deliveryMode == .peerMessage
+                ? "Text and links become the message; files are attached. Queued if the peer is offline."
+                : "Sent straight to a device that is online now.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    @ViewBuilder
+    private var fileDropSection: some View {
+        HStack {
+            TextField("Search name or OS…", text: $searchText)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .frame(minWidth: searchFieldMinWidth)
+            #if os(iOS)
+                .focused($searchFieldIsFocused)
+            #endif
+
+            Toggle("Online Only", isOn: $showOnlineOnly)
+                // Hug content so the label isn't squeezed into
+                // per-character wrapping on narrow phone layouts.
+                .fixedSize()
+            #if os(macOS)
+                .toggleStyle(CheckboxToggleStyle())
+            #endif
+
+            if viewModel.isRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 24, height: 24)
+            } else {
+                Button {
+                    viewModel.loadStatus()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.accentColor)
+                .frame(width: 24, height: 24)
+                .help("Refresh device status")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.clear)
+
+        if viewModel.isLoading {
+            Spacer()
+            ProgressView("Loading devices...")
+            Spacer()
+        } else if filteredPeers.isEmpty {
+            Spacer()
+            Text("No device available to share with")
+                .foregroundColor(.secondary)
+            Spacer()
+        } else {
+            List(filteredPeers, id: \.listID) { peer in
+                PeerRow(
+                    peer: peer,
+                    transfer: viewModel.transfers[peer.transferID],
+                    onSend: { viewModel.sendFiles(to: peer, files: sharedFiles) },
+                    onRetry: { viewModel.retryFailedFiles(for: peer) }
+                )
+            }.navigationTitle("Devices")
+                .listStyle(.plain)
+                .modifier(HideScrollBackground())
+                .background(Color.clear)
+            #if os(iOS)
+                .refreshable { await viewModel.refreshStatus() }
+            #endif
+        }
+    }
+
+    /// The peer-message path: the thread list and composer live in the app,
+    /// so this panel hands the files over and opens Cylonix.
+    private var peerMessagePanel: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "bubble.left.and.text.bubble.right")
+                .font(.system(size: 40))
+                .foregroundColor(.accentColor)
+            Text("Send as a peer message")
+                .font(.headline)
+            Text(peerMessageDescription)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Button {
+                handOffToApp()
+            } label: {
+                Label("Continue in Cylonix", systemImage: "arrow.up.forward.app")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(handingOff)
+            if let hint = handOffHint {
+                Text(hint)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var peerMessageDescription: String {
+        let textItems = sharedFiles.filter { $0.kind != .file }.count
+        let fileItems = sharedFiles.count - textItems
+        let intro = "Cylonix opens so you can pick a conversation or start a new one. "
+        if fileItems == 0 {
+            return intro + "The shared text is sent as the message itself, not as a file, and reaches the peer even if it is offline right now."
+        }
+        if textItems > 0 {
+            return intro + "The text becomes the message and the files go out as attachments; they reach the peer even if it is offline right now."
+        }
+        return intro + "The files go out as attachments and reach the peer even if it is offline right now."
+    }
+
+    private func handOffToApp() {
+        guard let manifestURL = writeShareRequest(files: sharedFiles, mode: "peer-message") else {
+            handOffHint = "Could not prepare the shared files for Cylonix."
+            return
+        }
+        var components = URLComponents()
+        components.scheme = "cylonix"
+        components.host = "share"
+        components.queryItems = [
+            URLQueryItem(name: "mode", value: "peer-message"),
+            URLQueryItem(name: "manifest", value: manifestURL.path),
+        ]
+        guard let url = components.url else {
+            handOffHint = "Could not build the Cylonix link."
+            return
+        }
+        handingOff = true
+        let opened = openHostApp(url)
+        debugLog("Hand-off to app: opened=\(opened) url=\(url)")
+        // iOS has no supported way for an extension to open its app; the
+        // responder-chain call usually works but is not guaranteed, and the
+        // request waits on disk either way.
+        #if os(iOS)
+            handOffHint = opened
+                ? "Opening Cylonix… If it does not open, open Cylonix to finish sending."
+                : "Open Cylonix to finish sending — the files are waiting there."
+        #else
+            handOffHint = opened
+                ? "Opening Cylonix…"
+                : "Open Cylonix to finish sending — the files are waiting there."
+        #endif
+        // Leave the sheet up long enough for the open to be dispatched (and,
+        // when it could not be, for the hint to be read). The app owns the
+        // temp files from here, so no cleanup.
+        DispatchQueue.main.asyncAfter(deadline: .now() + (opened ? 0.8 : 2.5)) {
+            onCancel()
         }
     }
 }
@@ -739,15 +963,26 @@ class FileDropViewModel: ObservableObject {
         #if os(macOS)
         if let client = daemonClient {
             Task {
-                do {
-                    let s = try await client.getStatus()
-                    await MainActor.run {
-                        self.status = s
-                        self.finishLoading()
+                // A daemon restart or a transient socket error should not
+                // leave an empty list behind a refresh button.
+                var attempt = 0
+                while true {
+                    do {
+                        let s = try await client.getStatus()
+                        await MainActor.run {
+                            self.status = s
+                            self.finishLoading()
+                        }
+                        return
+                    } catch {
+                        attempt += 1
+                        debugLog("Direct loadStatus failed (attempt \(attempt)): \(error)")
+                        if attempt >= 3 {
+                            await MainActor.run { self.finishLoading() }
+                            return
+                        }
+                        try? await Task.sleep(nanoseconds: 700_000_000)
                     }
-                } catch {
-                    debugLog("Direct loadStatus failed: \(error)")
-                    await MainActor.run { self.finishLoading() }
                 }
             }
             return
@@ -1144,10 +1379,30 @@ struct PeerRow: View {
     }
 }
 
+/// What a shared item originally was. Text and links are written to disk as
+/// .txt / .webloc so File Drop can push them; the peer-message path sends
+/// their content as the message body instead and drops the synthetic file.
+enum SharedFileKind: String, Codable {
+    case file
+    case text
+    case url
+}
+
 struct SharedFile: Codable {
     let path: String
     let name: String
     let size: Int64
+    let kind: SharedFileKind
+    /// The original text or link for `.text` / `.url` items.
+    let text: String?
+
+    init(path: String, name: String, size: Int64, kind: SharedFileKind = .file, text: String? = nil) {
+        self.path = path
+        self.name = name
+        self.size = size
+        self.kind = kind
+        self.text = text
+    }
 }
 
 enum TransferStatus: String {

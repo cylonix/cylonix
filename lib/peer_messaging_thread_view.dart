@@ -31,6 +31,7 @@ import 'providers/peer_messaging.dart';
 import 'providers/peer_status.dart';
 import 'services/ipn.dart';
 import 'services/peer_messaging_service.dart';
+import 'utils/peer_message_attachments.dart';
 import 'utils/utils.dart';
 import 'viewmodels/state_notifier.dart';
 import 'widgets/adaptive_widgets.dart';
@@ -611,56 +612,14 @@ class _PeerMessagingThreadViewState
     String sourcePath,
     String fileName,
     String attachmentId,
-  ) async {
-    final managedPath = await _storeAttachmentCopy(
+  ) {
+    return prepareOutgoingAttachmentPath(
+      ipn: ref.read(ipnServiceProvider),
+      profileId: ref.read(currentLoginProfileProvider)?.id ?? '',
       sourcePath: sourcePath,
       fileName: fileName,
       attachmentId: attachmentId,
     );
-
-    if (!(Platform.isIOS || Platform.isMacOS)) {
-      return managedPath;
-    }
-
-    final sharedFolderPath =
-        await ref.read(ipnServiceProvider).getSharedFolderPath();
-    if (sharedFolderPath == null || sharedFolderPath.isEmpty) {
-      return managedPath;
-    }
-
-    final attachmentsDir = Directory(
-      p.join(
-        sharedFolderPath,
-        'peer-messaging',
-        'attachments',
-        _attachmentScopeFolderName(),
-      ),
-    );
-    await attachmentsDir.create(recursive: true);
-
-    final extension = p.extension(fileName);
-    final baseName = p.basenameWithoutExtension(fileName);
-    final stagedName = '${baseName}_$attachmentId$extension';
-    final stagedPath = p.join(attachmentsDir.path, stagedName);
-    await File(managedPath).copy(stagedPath);
-    return stagedPath;
-  }
-
-  Future<String> _storeAttachmentCopy({
-    required String sourcePath,
-    required String fileName,
-    required String attachmentId,
-  }) async {
-    final attachmentsDir = await _managedAttachmentDirectory();
-    final managedPath =
-        p.join(attachmentsDir.path, '${attachmentId}_$fileName');
-    final source = File(sourcePath);
-    final destination = File(managedPath);
-    if (await destination.exists()) {
-      await destination.delete();
-    }
-    await source.copy(destination.path);
-    return destination.path;
   }
 
   Future<void> _sendMessage(PeerMessagingConversation conversation) async {
@@ -1049,9 +1008,18 @@ class _PeerMessagingThreadViewState
             'Attachment file is not available yet on this device',
           );
         }
-        final toPath = await _iosAttachmentSavePath(sourceFileName);
-        await File(srcPath).copy(toPath);
-        showPath = toPath;
+        // Files export picker: the user picks a location they own (iCloud
+        // Drive, On My iPhone, another provider), so the saved copy outlives
+        // this app's container. Saving into our own Documents folder looked
+        // permanent in Files but was deleted with the app.
+        final toPath = await ref.read(ipnServiceProvider).exportLocalFile(
+              srcPath,
+              fileName: sourceFileName,
+            );
+        if (toPath == null) {
+          return; // cancelled
+        }
+        showPath = _friendlySavedLocation(toPath);
       } else {
         final toPath = await FilePicker.platform.saveFile(
           dialogTitle: 'Choose the file to be saved',
@@ -1440,54 +1408,20 @@ class _PeerMessagingThreadViewState
     return null;
   }
 
-  Future<Directory> _managedAttachmentDirectory() async {
-    final supportDir = await getApplicationSupportDirectory();
-    final attachmentsDir = Directory(
-      p.join(
-        supportDir.path,
-        'peer_messaging',
-        'attachments',
-        _attachmentScopeFolderName(),
-      ),
-    );
-    await attachmentsDir.create(recursive: true);
-    return attachmentsDir;
-  }
-
-  Future<String> _iosAttachmentSavePath(String fileName) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final attachmentsDir = Directory(
-      p.join(
-        dir.path,
-        'downloads',
-        'peer-messaging',
-        _attachmentScopeFolderName(),
-      ),
-    );
-    await attachmentsDir.create(recursive: true);
-
-    final candidate = File(p.join(attachmentsDir.path, fileName));
-    if (!await candidate.exists()) {
-      return candidate.path;
-    }
-
-    final extension = p.extension(fileName);
-    final baseName = p.basenameWithoutExtension(fileName);
-    for (var i = 1; i <= 100; i++) {
-      final path = p.join(attachmentsDir.path, '$baseName ($i)$extension');
-      if (!await File(path).exists()) {
-        return path;
-      }
-    }
-    return p.join(
-      attachmentsDir.path,
-      '${baseName}_${DateTime.now().millisecondsSinceEpoch}$extension',
+  Future<Directory> _managedAttachmentDirectory() {
+    return managedAttachmentDirectory(
+      ref.read(currentLoginProfileProvider)?.id ?? '',
     );
   }
 
-  String _attachmentScopeFolderName() {
-    final profileId = ref.read(currentLoginProfileProvider)?.id ?? 'default';
-    return profileId.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  /// Human-readable location for a path returned by the iOS Files picker.
+  String _friendlySavedLocation(String savedPath) {
+    final folder = p.basename(p.dirname(savedPath));
+    final name = p.basename(savedPath);
+    if (folder == 'com~apple~CloudDocs') {
+      return 'iCloud Drive/$name';
+    }
+    return 'Files: $folder/$name';
   }
 
   Future<AwaitingFile?> _resolveCurrentWaitingFileForAttachment(

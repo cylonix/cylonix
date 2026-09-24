@@ -61,6 +61,7 @@ class App extends ConsumerWidget {
       home: sharedFiles.isNotEmpty
           ? ShareView(
               paths: sharedFiles,
+              standalone: true,
               onCancel: () => exit(0),
             )
           : null,

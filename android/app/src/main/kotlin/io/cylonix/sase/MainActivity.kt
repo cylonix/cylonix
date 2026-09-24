@@ -27,6 +27,7 @@ import androidx.lifecycle.lifecycleScope
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel;
+import java.io.File
 import java.util.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,9 +73,19 @@ class MainActivity: FlutterFragmentActivity() {
         private const val KEY_AUTO_START = "auto_start_enabled"
         private const val DOWNLOADS_PREFS_NAME = "DownloadsFolderPrefs"  // Rename this
         private const val KEY_DOWNLOADS_URI = "downloads_uri"
+        // Set by com.tailscale.ipn.ShareActivity when the user picks "Peer
+        // Message" on the share screen: the path of a request manifest.
+        private const val EXTRA_SHARE_REQUEST = "io.cylonix.sase.share_request"
     }
     private val callbackByString: MutableMap<String, String> = HashMap()
     private var methodChannel: MethodChannel? = null
+
+    // Share requests handed over by ShareActivity, delivered to Dart as
+    // `shareRequest`. Held until Dart has pulled once with
+    // getPendingShareRequests (it does on first frame), so a request that
+    // arrives before a Dart handler exists is kept rather than lost.
+    private val pendingShareRequests = mutableListOf<String>()
+    private var shareRequestsListenerReady = false
 
     private fun isAutoStartEnabled(): Boolean {
         return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -98,6 +109,7 @@ class MainActivity: FlutterFragmentActivity() {
 		}
         Log.d(LOG_TAG, "Starting cylonix activity")
 		super.onCreate(savedInstanceState)
+        consumeShareRequest(intent)
 
         // Register VPN permission launcher BEFORE activity reaches STARTED state
         // (ActivityResultLauncher must be registered before STARTED)
@@ -319,6 +331,37 @@ class MainActivity: FlutterFragmentActivity() {
 		return adapter.getName();
 	}
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeShareRequest(intent)
+    }
+
+    /** Reads (and deletes) the manifest named by the share-request extra. */
+    private fun consumeShareRequest(intent: Intent?) {
+        val path = intent?.getStringExtra(EXTRA_SHARE_REQUEST) ?: return
+        intent.removeExtra(EXTRA_SHARE_REQUEST)
+        val file = File(path)
+        val json = try {
+            file.readText()
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Share request unreadable: $path", e)
+            return
+        }
+        file.delete()
+        Log.i(LOG_TAG, "Collected share request from ${file.name}")
+        deliverShareRequest(json)
+    }
+
+    private fun deliverShareRequest(json: String) {
+        val channel = methodChannel
+        if (!shareRequestsListenerReady || channel == null) {
+            pendingShareRequests.add(json)
+            return
+        }
+        runOnUiThread { channel.invokeMethod("shareRequest", json) }
+    }
+
 	override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
 		super.configureFlutterEngine(flutterEngine)
         methodChannel = MethodChannel(
@@ -328,6 +371,13 @@ class MainActivity: FlutterFragmentActivity() {
 
 		methodChannel?.setMethodCallHandler { call, result ->
 			when (call.method) {
+                "getPendingShareRequests" -> {
+                    // Dart's one-time pull on first frame; pushed from then on.
+                    shareRequestsListenerReady = true
+                    val items = pendingShareRequests.toList()
+                    pendingShareRequests.clear()
+                    result.success(items)
+                }
 				"check_app_update" -> {
 					val url = call.argument<String>("url")
 					var showDialog = call.argument<Boolean>("show_dialog") ?: true

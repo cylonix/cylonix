@@ -27,6 +27,7 @@ import UserNotifications
     #if os(iOS)
         private var previewFileURL: URL?
         private var documentInteractionController: UIDocumentInteractionController?
+        private var documentExportSession: DocumentExportSession?
     #endif
 
     private let channel: String = "io.cylonix.sase/wg"
@@ -290,6 +291,18 @@ import UserNotifications
         setupPeerMessagingNotificationObserver()
         setupShareNotificationObserver()
         setupUserNotifications()
+        #if os(macOS)
+            // Share hand-offs that could not be delivered through the URL
+            // (e.g. written while the app was not running) are picked up
+            // whenever the app comes forward.
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.processPendingShareRequests()
+            }
+        #endif
 
         #if os(iOS)
             if #available(iOS 10.0, *) {
@@ -332,6 +345,10 @@ import UserNotifications
                     self.requestLocalNetworkPermission(result)
                     return
                 }
+                if call.method == "getPendingShareRequests" {
+                    result(self.drainShareRequests())
+                    return
+                }
                 if call.method == "removeVpnConfiguration" {
                     self.vpnController.removeVpnConfiguration { error in
                         DispatchQueue.main.async {
@@ -357,6 +374,10 @@ import UserNotifications
                         return
                     }
                     self.previewLocalFile(path: path, result: result)
+                    return
+                }
+                if call.method == "exportLocalFile" {
+                    self.exportLocalFile(arguments: call.arguments, result: result)
                     return
                 }
                 #endif
@@ -597,6 +618,67 @@ import UserNotifications
                 presenter.present(activityController, animated: true) {
                     result(nil)
                 }
+            }
+        }
+
+        /// "Save" for an attachment: the Files export picker, so the copy goes
+        /// to a location the user owns (iCloud Drive, On My iPhone, a
+        /// third-party provider) and outlives this app's container. Resolves
+        /// with the destination path, or nil when the user cancels.
+        private func exportLocalFile(arguments: Any?, result: @escaping FlutterResult) {
+            guard let args = arguments as? [String: Any],
+                  let path = args["path"] as? String, !path.isEmpty
+            else {
+                result(FlutterError(code: "invalid_path", message: "Invalid file path", details: nil))
+                return
+            }
+            let requestedName = (args["name"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            DispatchQueue.main.async {
+                let sourceURL = URL(fileURLWithPath: path)
+                guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+                    result(FlutterError(code: "file_missing", message: "File does not exist", details: path))
+                    return
+                }
+                guard let presenter = self.activePresenterViewController() else {
+                    result(FlutterError(code: "missing_presenter", message: "Active view controller unavailable", details: nil))
+                    return
+                }
+                // The picker proposes the URL's last path component as the
+                // file name, and the managed store prefixes names with the
+                // attachment id, so stage the file under its display name: a
+                // hard link when the volume allows it, else a copy.
+                let name = requestedName.isEmpty ? sourceURL.lastPathComponent : requestedName
+                let stagingDir = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("cylonix-export", isDirectory: true)
+                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                let stagedURL = stagingDir.appendingPathComponent(name)
+                do {
+                    try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+                    do {
+                        try FileManager.default.linkItem(at: sourceURL, to: stagedURL)
+                    } catch {
+                        try FileManager.default.copyItem(at: sourceURL, to: stagedURL)
+                    }
+                } catch {
+                    try? FileManager.default.removeItem(at: stagingDir)
+                    result(FlutterError(
+                        code: "stage_failed",
+                        message: "Could not prepare the file for export: \(error.localizedDescription)",
+                        details: path
+                    ))
+                    return
+                }
+
+                let session = DocumentExportSession(stagingDir: stagingDir) { [weak self] pickedPath in
+                    self?.documentExportSession = nil
+                    result(pickedPath)
+                }
+                self.documentExportSession = session
+                let picker = UIDocumentPickerViewController(forExporting: [stagedURL], asCopy: true)
+                picker.delegate = session
+                picker.shouldShowFileExtensions = true
+                presenter.present(picker, animated: true)
             }
         }
 
@@ -945,6 +1027,118 @@ import UserNotifications
         invokeMethod("sharedContent", arguments: jsonString)
     }
 
+    // MARK: - Share requests handed over by the share extension
+
+    /// Manifests the share extension writes when it hands a share to the app
+    /// (e.g. "send as peer message"), delivered to Dart as `shareRequest`.
+    /// Nothing is invoked on the channel until Dart has pulled once with
+    /// `getPendingShareRequests` (it does so on first frame), so a request
+    /// that arrives before a Dart handler exists is held rather than lost.
+    /// All access is on the main thread.
+    private var pendingShareRequests: [String] = []
+    private var shareRequestsListenerReady = false
+
+    /// Folders scanned for request manifests. App-group builds share the
+    /// `share/requests` folder with the extension. The direct macOS build has
+    /// no app group: its sandboxed extension writes into its own container
+    /// tmp, which this unsandboxed app can read.
+    private var shareRequestFolders: [URL] {
+        var folders: [URL] = []
+        // appGroupId checked first: sharedFolderURL logs an error when the
+        // bundle has no app group (the direct build), on every activation.
+        if FileManager.appGroupId != nil, let shared = FileManager.sharedFolderURL {
+            folders.append(shared.appendingPathComponent("share/requests", isDirectory: true))
+        }
+        #if os(macOS)
+            if CylonixDistributionMode.current() == .direct,
+               let bundleId = Bundle.main.bundleIdentifier
+            {
+                folders.append(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+                    "Library/Containers/\(bundleId).share-extension/Data/tmp/io.cylonix.share/requests",
+                    isDirectory: true
+                ))
+            }
+        #endif
+        return folders
+    }
+
+    /// Moves every manifest on disk into memory, deleting the files.
+    private func collectShareRequestFiles() {
+        let fm = FileManager.default
+        for folder in shareRequestFolders {
+            guard let items = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
+                continue
+            }
+            for item in items.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+                where item.pathExtension == "json"
+            {
+                collectShareRequestFile(at: item)
+            }
+        }
+    }
+
+    private func collectShareRequestFile(at url: URL) {
+        guard let data = try? Data(contentsOf: url),
+              let json = String(data: data, encoding: .utf8)
+        else {
+            wg_log(.error, message: "Unreadable share request at \(url.path)")
+            return
+        }
+        try? FileManager.default.removeItem(at: url)
+        wg_log(.info, message: "Collected share request from \(url.lastPathComponent)")
+        pendingShareRequests.append(json)
+    }
+
+    private func flushShareRequests() {
+        guard shareRequestsListenerReady, methodChannel != nil else { return }
+        let items = pendingShareRequests
+        pendingShareRequests = []
+        for json in items {
+            invokeMethod("shareRequest", arguments: json)
+        }
+    }
+
+    /// Picks up manifests written while the app was not listening. Safe to
+    /// call from any thread.
+    func processPendingShareRequests() {
+        DispatchQueue.main.async {
+            self.collectShareRequestFiles()
+            self.flushShareRequests()
+        }
+    }
+
+    /// Dart's one-time pull on first frame; from then on requests are pushed.
+    private func drainShareRequests() -> [String] {
+        collectShareRequestFiles()
+        let items = pendingShareRequests
+        pendingShareRequests = []
+        shareRequestsListenerReady = true
+        return items
+    }
+
+    /// `cylonix://share?manifest=<path>`: the share extension's hand-off link.
+    /// Returns false for any other URL so the caller treats it as an app link.
+    private func handleShareRequestURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "cylonix",
+              url.host == "share" || url.path == "/share"
+        else {
+            return false
+        }
+        let manifest = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "manifest" })?
+            .value ?? ""
+        wg_log(.info, message: "Handling share hand-off URL (manifest given: \(!manifest.isEmpty))")
+        DispatchQueue.main.async {
+            if !manifest.isEmpty {
+                self.collectShareRequestFile(at: URL(fileURLWithPath: manifest))
+            }
+            self.collectShareRequestFiles()
+            self.flushShareRequests()
+        }
+        return true
+    }
+
 #if os(macOS)
     /// Final step of the NE-build uninstall: move this app's bundle to the
     /// Trash. A direct trash only works where the sandbox allows it; for
@@ -1178,8 +1372,10 @@ extension AppDelegate {
         override func application(_: NSApplication,
                                   open urls: [URL])
         {
-            // Handle app links
-            if let url = urls.first {
+            // Share hand-offs from the share extension first; anything else
+            // is an app link.
+            let remaining = urls.filter { !handleShareRequestURL($0) }
+            if let url = remaining.first {
                 handleAppLink(url)
             }
         }
@@ -1259,4 +1455,31 @@ extension AppDelegate: UIDocumentInteractionControllerDelegate {
         return activePresenterViewController() ?? UIViewController()
     }
 }
+#endif
+
+#if os(iOS)
+    /// Delegate for the attachment export picker. Owns the staged temp copy
+    /// until the user picks a destination or cancels, then removes it.
+    private final class DocumentExportSession: NSObject, UIDocumentPickerDelegate {
+        private let stagingDir: URL
+        private let completion: (String?) -> Void
+
+        init(stagingDir: URL, completion: @escaping (String?) -> Void) {
+            self.stagingDir = stagingDir
+            self.completion = completion
+        }
+
+        func documentPicker(_: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            finish(urls.first?.path)
+        }
+
+        func documentPickerWasCancelled(_: UIDocumentPickerViewController) {
+            finish(nil)
+        }
+
+        private func finish(_ path: String?) {
+            try? FileManager.default.removeItem(at: stagingDir)
+            completion(path)
+        }
+    }
 #endif

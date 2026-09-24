@@ -242,7 +242,7 @@ extension ShareViewController {
         do {
             try data.write(to: destURL)
             debugLog("Saved webloc to \(destURL.path)")
-            appendSharedFile(fileName, destURL)
+            appendSharedFile(fileName, destURL, kind: .url, text: url.absoluteString)
         } catch {
             debugLog("Failed to save webloc: \(error)")
         }
@@ -262,7 +262,7 @@ extension ShareViewController {
         do {
             try data.write(to: destURL)
             debugLog("Saved text to \(destURL.path)")
-            appendSharedFile(fileName, destURL)
+            appendSharedFile(fileName, destURL, kind: .text, text: text)
         } catch {
             debugLog("Failed to save text: \(error)")
         }
@@ -425,8 +425,13 @@ extension ShareViewController {
         }
     }
 
-    private func appendSharedFile(_ name: String, _ fileURL: URL) {
-        debugLog("Copied \(fileURL.path)")
+    private func appendSharedFile(
+        _ name: String,
+        _ fileURL: URL,
+        kind: SharedFileKind = .file,
+        text: String? = nil
+    ) {
+        debugLog("Copied \(fileURL.path) kind=\(kind.rawValue)")
         let size = (try? FileManager.default
             .attributesOfItem(atPath: fileURL.path)[.size]
             as? Int64) ?? 0
@@ -434,12 +439,15 @@ extension ShareViewController {
             "path": fileURL.path,
             "name": name,
             "size": size,
+            "kind": kind.rawValue,
         ]
         fileInfos.append(info)
         sharedFiles.append(
             SharedFile(path: fileURL.path,
                        name: name,
-                       size: size)
+                       size: size,
+                       kind: kind,
+                       text: text)
         )
     }
 
@@ -453,7 +461,8 @@ extension ShareViewController {
         let fileDropView = FileDropView(
             sharedFiles: sharedFiles,
             unSupportedTypes: unSupportedTypes,
-            onCancel: { [weak self] in self?.finishRequest() }
+            onCancel: { [weak self] in self?.finishRequest() },
+            openHostApp: { [weak self] url in self?.openHostApp(url) ?? false }
         )
         let hc = FileDropHostingController(rootView: fileDropView)
         addChild(hc)
@@ -471,6 +480,66 @@ extension ShareViewController {
         #endif
         hostingController = hc
     }
+
+    // MARK: - Hand-off to the containing app
+
+    #if os(iOS)
+        /// Opens the containing app. UIApplication.shared is off limits in an
+        /// extension, but the hosting UIApplication sits at the top of the
+        /// responder chain and its open(_:options:completionHandler:) works
+        /// from a share extension (this target is not built extension-API-
+        /// only, and the SDK no longer marks the method extension-unavailable).
+        /// The walk must look for the application specifically: UIWindowScene
+        /// sits below it in the chain and answers the same selector, but with
+        /// a UISceneOpenExternalURLOptions parameter — calling it with a
+        /// dictionary crashed the extension ("-[__NSDictionary0
+        /// universalLinksOnly]") and left the share sheet stuck.
+        /// Returns false when nothing could be asked to open; the app then
+        /// picks the request up from disk the next time the user opens it.
+        private func openHostApp(_ url: URL) -> Bool {
+            var responder: UIResponder? = self
+            while let current = responder {
+                if let application = current as? UIApplication {
+                    application.open(url, options: [:]) { success in
+                        debugLog("UIApplication.open success=\(success)")
+                    }
+                    return true
+                }
+                responder = current.next
+            }
+            if let scene = view.window?.windowScene {
+                scene.open(url, options: nil) { success in
+                    debugLog("UIWindowScene.open success=\(success)")
+                }
+                return true
+            }
+            debugLog("No UIApplication or window scene able to open \(url)")
+            return false
+        }
+    #elseif os(macOS)
+        /// Opens the URL with the containing app specifically: both the App
+        /// Store and the direct variant register the `cylonix` scheme, so a
+        /// plain open could land in whichever one Launch Services prefers.
+        /// The extension lives at <App>.app/Contents/PlugIns/<ext>.appex.
+        private func openHostApp(_ url: URL) -> Bool {
+            let appURL = Bundle.main.bundleURL
+                .deletingLastPathComponent() // PlugIns
+                .deletingLastPathComponent() // Contents
+                .deletingLastPathComponent() // <App>.app
+            guard appURL.pathExtension == "app" else {
+                debugLog("Not inside an app bundle (\(appURL.path)); opening \(url) with the default handler")
+                return NSWorkspace.shared.open(url)
+            }
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration) { _, error in
+                if let error = error {
+                    debugLog("Failed to open \(url) with \(appURL.path): \(error)")
+                }
+            }
+            return true
+        }
+    #endif
 
     private func sendToMainApp(fileInfos: [[String: Any]]) {
         debugLog("SendToMainApp: \(fileInfos)")
