@@ -67,15 +67,31 @@ cylonix_bundle_id() {
 
 # Unregister one Cylonix app bundle (pluginkit's DB is per-user — run it as
 # the GUI user) and delete it.
-remove_cylonix_bundle() {
-  local app="$1" gui_user
+# Run a command inside the console user's launchd session. Per-user services
+# such as pkd (pluginkit) and the user's LaunchServices database only answer
+# from that Mach bootstrap; a plain `sudo -u` from the installer's root
+# context reaches no pkd and pluginkit silently reports nothing.
+run_as_gui_user() {
+  local gui_user gui_uid
   gui_user="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
-  if [[ -n "${gui_user:-}" && "$gui_user" != "root" && "$gui_user" != "_"* \
-        && -d "$app/Contents/PlugIns/ShareExtension.appex" ]]; then
-    sudo -u "$gui_user" pluginkit -r \
+  if [[ -z "${gui_user:-}" || "$gui_user" == "root" || "$gui_user" == "_"* ]]; then
+    return 1
+  fi
+  gui_uid="$(id -u "$gui_user" 2>/dev/null || true)"
+  if [[ -z "${gui_uid:-}" ]]; then
+    return 1
+  fi
+  launchctl asuser "$gui_uid" sudo -u "$gui_user" "$@"
+}
+
+remove_cylonix_bundle() {
+  local app="$1"
+  if [[ -d "$app/Contents/PlugIns/ShareExtension.appex" ]]; then
+    run_as_gui_user pluginkit -r \
       "$app/Contents/PlugIns/ShareExtension.appex" 2>/dev/null || true
   fi
   "$LSREGISTER" -u "$app" 2>/dev/null || true
+  run_as_gui_user "$LSREGISTER" -u "$app" 2>/dev/null || true
   rm -rf "$app"
 }
 
@@ -95,6 +111,44 @@ remove_cylonix_orphans() {
       removed=0
     fi
   done
+  return $removed
+}
+
+# Unregister every Cylonix share extension PlugInKit still knows about other
+# than $1 (the appex to keep; pass "" to drop them all). PlugInKit keeps a
+# plug-in registered for as long as its bundle exists on disk, so copies in
+# Xcode/Flutter build folders, exported archives or the Trash each add a
+# second "Cylonix" to the Share menu, and only an explicit `pluginkit -r`
+# removes them. pluginkit's DB is per-user, so run as the GUI user.
+# Returns 0 when anything was unregistered.
+#
+# Known limit: inside the PackageKit script sandbox (pkg pre/postinstall)
+# pluginkit returns an empty listing even via launchctl asuser, so this is a
+# no-op there; the authoritative sweep runs in the user's session from
+# CylonixNotifier at agent start (postinstall bootstraps it, and it runs at
+# every login). It does work from a Terminal `sudo` (uninstall_direct.sh).
+remove_stray_share_extensions() {
+  local keep="${1:-}" listing line path app removed=1
+  # -A lists every registered copy, not only the elected one. Each line is
+  # "<flags> <id>(<ver>)<TAB><uuid><TAB><date><TAB><path>"; parsed with shell
+  # expansion only, since the installer script environment lacks awk.
+  listing="$(run_as_gui_user pluginkit -m -A -v -p com.apple.share-services 2>/dev/null || true)"
+  while IFS= read -r line; do
+    if [[ "$line" != *io.cylonix.sase*share-extension* ]]; then
+      continue
+    fi
+    path="${line##*$'\t'}"
+    if [[ -z "$path" || "$path" == "$line" || "$path" == "$keep" ]]; then
+      continue
+    fi
+    run_as_gui_user pluginkit -r "$path" 2>/dev/null || true
+    app="${path%/Contents/PlugIns/*}"
+    if [[ "$app" != "$path" && -d "$app" ]]; then
+      run_as_gui_user "$LSREGISTER" -u "$app" 2>/dev/null || true
+    fi
+    echo "unregistered stray share extension: $path" >&2
+    removed=0
+  done <<< "$listing"
   return $removed
 }
 
@@ -150,11 +204,12 @@ do_services() {
   local app_id need_finder_restart=0
   app_id="$(cylonix_bundle_id "$APP_PATH")"
   if [[ ! -d "$APP_PATH" || -z "$app_id" || "$app_id" == "$DIRECT_BUNDLE_ID" ]]; then
-    if [[ -n "${gui_user:-}" && -d "$APP_PATH/Contents/PlugIns/ShareExtension.appex" ]]; then
-      sudo -u "$gui_user" pluginkit -r \
+    if [[ -d "$APP_PATH/Contents/PlugIns/ShareExtension.appex" ]]; then
+      run_as_gui_user pluginkit -r \
         "$APP_PATH/Contents/PlugIns/ShareExtension.appex" >/dev/null 2>&1 || true
     fi
     "$LSREGISTER" -u "$APP_PATH" >/dev/null 2>&1 || true
+    run_as_gui_user "$LSREGISTER" -u "$APP_PATH" >/dev/null 2>&1 || true
     echo "• Share extension: unregistered"
     # Finder's ShareKit caches the share-service identity in-process. Having
     # just unregistered io.cylonix.sase.direct.share-extension, a still-running
@@ -172,6 +227,18 @@ do_services() {
   if remove_cylonix_orphans; then
     need_finder_restart=1
     echo "• Orphaned duplicate installs (Cylonix*.localized): removed"
+  fi
+  # Copies outside /Applications (dev builds, exported archives, the Trash)
+  # stay registered for as long as they exist on disk. Drop them all; keep
+  # only a network-extension flavor's registration when that flavor owns the
+  # canonical path.
+  local keep_ext=""
+  if [[ -n "$app_id" && "$app_id" != "$DIRECT_BUNDLE_ID" ]]; then
+    keep_ext="$APP_PATH/Contents/PlugIns/ShareExtension.appex"
+  fi
+  if remove_stray_share_extensions "$keep_ext"; then
+    need_finder_restart=1
+    echo "• Stray share extension registrations: removed"
   fi
   if [[ $need_finder_restart -eq 1 ]]; then
     bounce_finder

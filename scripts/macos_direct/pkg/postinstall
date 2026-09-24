@@ -27,15 +27,31 @@ cylonix_bundle_id() {
     "$1/Contents/Info.plist" 2>/dev/null || true
 }
 
-remove_cylonix_bundle() {
-  local app="$1" gui_user
+# Run a command inside the console user's launchd session. Per-user services
+# such as pkd (pluginkit) and the user's LaunchServices database only answer
+# from that Mach bootstrap; a plain `sudo -u` from the installer's root
+# context reaches no pkd and pluginkit silently reports nothing.
+run_as_gui_user() {
+  local gui_user gui_uid
   gui_user="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
-  if [[ -n "${gui_user:-}" && "$gui_user" != "root" && "$gui_user" != "_"* \
-        && -d "$app/Contents/PlugIns/ShareExtension.appex" ]]; then
-    sudo -u "$gui_user" pluginkit -r \
+  if [[ -z "${gui_user:-}" || "$gui_user" == "root" || "$gui_user" == "_"* ]]; then
+    return 1
+  fi
+  gui_uid="$(id -u "$gui_user" 2>/dev/null || true)"
+  if [[ -z "${gui_uid:-}" ]]; then
+    return 1
+  fi
+  launchctl asuser "$gui_uid" sudo -u "$gui_user" "$@"
+}
+
+remove_cylonix_bundle() {
+  local app="$1"
+  if [[ -d "$app/Contents/PlugIns/ShareExtension.appex" ]]; then
+    run_as_gui_user pluginkit -r \
       "$app/Contents/PlugIns/ShareExtension.appex" 2>/dev/null || true
   fi
   "$LSREGISTER" -u "$app" 2>/dev/null || true
+  run_as_gui_user "$LSREGISTER" -u "$app" 2>/dev/null || true
   rm -rf "$app"
 }
 
@@ -52,6 +68,44 @@ remove_cylonix_orphans() {
       removed=0
     fi
   done
+  return $removed
+}
+
+# Unregister every Cylonix share extension PlugInKit still knows about other
+# than $1 (the appex to keep; pass "" to drop them all). PlugInKit keeps a
+# plug-in registered for as long as its bundle exists on disk, so copies in
+# Xcode/Flutter build folders, exported archives or the Trash each add a
+# second "Cylonix" to the Share menu, and only an explicit `pluginkit -r`
+# removes them. pluginkit's DB is per-user, so run as the GUI user.
+# Returns 0 when anything was unregistered.
+#
+# Known limit: inside the PackageKit script sandbox (pkg pre/postinstall)
+# pluginkit returns an empty listing even via launchctl asuser, so this is a
+# no-op there; the authoritative sweep runs in the user's session from
+# CylonixNotifier at agent start (postinstall bootstraps it, and it runs at
+# every login). It does work from a Terminal `sudo` (uninstall_direct.sh).
+remove_stray_share_extensions() {
+  local keep="${1:-}" listing line path app removed=1
+  # -A lists every registered copy, not only the elected one. Each line is
+  # "<flags> <id>(<ver>)<TAB><uuid><TAB><date><TAB><path>"; parsed with shell
+  # expansion only, since the installer script environment lacks awk.
+  listing="$(run_as_gui_user pluginkit -m -A -v -p com.apple.share-services 2>/dev/null || true)"
+  while IFS= read -r line; do
+    if [[ "$line" != *io.cylonix.sase*share-extension* ]]; then
+      continue
+    fi
+    path="${line##*$'\t'}"
+    if [[ -z "$path" || "$path" == "$line" || "$path" == "$keep" ]]; then
+      continue
+    fi
+    run_as_gui_user pluginkit -r "$path" 2>/dev/null || true
+    app="${path%/Contents/PlugIns/*}"
+    if [[ "$app" != "$path" && -d "$app" ]]; then
+      run_as_gui_user "$LSREGISTER" -u "$app" 2>/dev/null || true
+    fi
+    echo "unregistered stray share extension: $path" >&2
+    removed=0
+  done <<< "$listing"
   return $removed
 }
 
@@ -248,13 +302,19 @@ LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/A/Framewo
 # Unregister any stale copies from derived-data directories
 "$LSREGISTER" -u "/tmp/cylonix-direct-derived" 2>/dev/null || true
 
+# Drop every other registered copy of the share extension (dev builds,
+# exported archives, trashed bundles) so the Share menu lists one "Cylonix".
+SHARE_EXT="$APP_PATH/Contents/PlugIns/ShareExtension.appex"
+if remove_stray_share_extensions "$SHARE_EXT"; then
+  bounce_finder
+fi
+
 # Register the installed app
 "$LSREGISTER" -f "$APP_PATH"
 
 # Register share extension with pluginkit
-SHARE_EXT="$APP_PATH/Contents/PlugIns/ShareExtension.appex"
 if [[ -d "$SHARE_EXT" ]]; then
-  pluginkit -a "$SHARE_EXT" 2>/dev/null || true
+  run_as_gui_user pluginkit -a "$SHARE_EXT" 2>/dev/null || pluginkit -a "$SHARE_EXT" 2>/dev/null || true
 fi
 
 exit 0

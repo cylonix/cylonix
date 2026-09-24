@@ -43,6 +43,11 @@ final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCent
         Thread.detachNewThread { [weak self] in
             self?.streamForever()
         }
+        Thread.detachNewThread {
+            // Let login-time services settle before talking to PlugInKit.
+            Thread.sleep(forTimeInterval: 5)
+            ShareExtensionSweeper.run()
+        }
     }
 
     // Show banners even when (notionally) "foreground" — we have no UI, but
@@ -379,6 +384,82 @@ final class NotifierApp: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 NSLog("cylonix-notifier: add notification failed: \(err)")
             }
         }
+    }
+}
+
+// MARK: - Stray share-extension sweep
+//
+// PlugInKit keeps an app extension registered for as long as its bundle
+// exists on disk, so copies of Cylonix in Xcode/Flutter build folders,
+// exported archives or the Trash each add a second "Cylonix" to the Share
+// menu, and ShareKit can then bind a menu pick to the wrong service (the
+// sheet never appears). Only an explicit `pluginkit -r` removes them, and
+// pluginkit only answers from the user's session: the pkg scripts run in the
+// PackageKit sandbox, where it returns nothing even via `launchctl asuser`.
+// This agent runs in that session — bootstrapped by postinstall and at every
+// login — so it does the sweep, keeping only the extension inside the app
+// bundle it ships in.
+private enum ShareExtensionSweeper {
+    private static let lsregister =
+        "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
+
+    /// <App>.app/Contents/Resources/CylonixNotifier.app → <App>.app's appex.
+    private static var canonicalAppex: String {
+        let app = Bundle.main.bundleURL
+            .deletingLastPathComponent() // Resources
+            .deletingLastPathComponent() // Contents
+            .deletingLastPathComponent() // <App>.app
+        if app.pathExtension == "app" {
+            return app.appendingPathComponent("Contents/PlugIns/ShareExtension.appex").path
+        }
+        return "/Applications/Cylonix.app/Contents/PlugIns/ShareExtension.appex"
+    }
+
+    static func run() {
+        // -A lists every registered copy, not only the elected one. Lines are
+        // "<flags> <id>(<ver>)\t<uuid>\t<date>\t<path>".
+        guard let listing = output(of: "/usr/bin/pluginkit", ["-m", "-A", "-v", "-p", "com.apple.share-services"]) else {
+            NSLog("cylonix-notifier: share-extension sweep: pluginkit unavailable")
+            return
+        }
+        let keep = canonicalAppex
+        var removed = 0
+        for line in listing.split(separator: "\n") {
+            guard line.contains("io.cylonix.sase"), line.contains("share-extension"),
+                  let tab = line.lastIndex(of: "\t")
+            else { continue }
+            let path = String(line[line.index(after: tab)...]).trimmingCharacters(in: .whitespaces)
+            if path.isEmpty || path == keep { continue }
+            NSLog("cylonix-notifier: unregistering stray share extension \(path)")
+            _ = output(of: "/usr/bin/pluginkit", ["-r", path])
+            if let range = path.range(of: "/Contents/PlugIns/") {
+                _ = output(of: lsregister, ["-u", String(path[..<range.lowerBound])])
+            }
+            removed += 1
+        }
+        guard removed > 0 else { return }
+        // ShareKit caches share-service identities inside Finder; bounce it so
+        // the Share menu re-resolves against the surviving registration.
+        NSLog("cylonix-notifier: removed \(removed) stray share extension registration(s); restarting Finder")
+        _ = output(of: "/usr/bin/killall", ["Finder"])
+    }
+
+    private static func output(of tool: String, _ arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            NSLog("cylonix-notifier: could not run \(tool): \(error)")
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
 

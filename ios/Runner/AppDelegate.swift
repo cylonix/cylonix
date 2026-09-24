@@ -1150,9 +1150,46 @@ import UserNotifications
     /// Dart which outcome to explain. On "trashed" the app terminates itself
     /// shortly after replying; on "revealed" Dart quits it via "quitApp"
     /// once the user has read the instructions.
+    /// PlugInKit keeps an app extension registered for as long as its bundle
+    /// exists on disk, and a bundle in the Trash still does. Without this the
+    /// Share menu keeps a dead "Cylonix" entry until the Trash is emptied,
+    /// and ShareKit can bind a later install's entry to that stale service
+    /// (the "share sheet never appears" cross-wiring). Best effort: the tools
+    /// run under the app sandbox; failures are logged and the uninstall
+    /// proceeds.
+    private func unregisterShareExtensionForUninstall() {
+        let bundleURL = Bundle.main.bundleURL
+        let appex = bundleURL.appendingPathComponent("Contents/PlugIns/ShareExtension.appex")
+        if FileManager.default.fileExists(atPath: appex.path) {
+            runUninstallTool("/usr/bin/pluginkit", ["-r", appex.path])
+        }
+        runUninstallTool(
+            "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
+            ["-u", bundleURL.path]
+        )
+    }
+
+    private func runUninstallTool(_ tool: String, _ arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: tool)
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            wg_log(.info, message: "Uninstall: \(tool) \(arguments.joined(separator: " ")) exited \(process.terminationStatus)")
+        } catch {
+            wg_log(.error, message: "Uninstall: could not run \(tool): \(error.localizedDescription)")
+        }
+    }
+
     private func moveAppToTrash(_ result: @escaping FlutterResult) {
         DispatchQueue.main.async {
             let bundleURL = Bundle.main.bundleURL
+            // Every path below ends with the bundle leaving /Applications (by
+            // us, or by the user after "revealed"), so unregister first.
+            self.unregisterShareExtensionForUninstall()
             if (try? FileManager.default.trashItem(at: bundleURL, resultingItemURL: nil)) != nil {
                 wg_log(.info, message: "Moved \(bundleURL.path) to Trash. Terminating.")
                 result("trashed")
