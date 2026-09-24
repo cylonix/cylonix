@@ -15,7 +15,6 @@ import 'dns_settings_view.dart';
 import 'exit_node_picker.dart';
 import 'health_view.dart';
 import 'intro_page.dart';
-import 'l2_relay_settings_view.dart';
 import 'main_view.dart';
 import 'models/ipn.dart';
 import 'peer_messaging_inbox_view.dart';
@@ -289,10 +288,6 @@ class _HomePageState extends ConsumerState<HomePage>
         return DNSSettingsView(
           onBackToSettings: () => _selectPage(Page.settings.value),
         );
-      case Page.l2RelaySettingsView:
-        return L2RelaySettingsView(
-          onBackToSettings: () => _selectPage(Page.settings.value),
-        );
       case Page.subnetRouting:
         return SubnetRoutingView(
           onBackToSettings: () => _selectPage(Page.settings.value),
@@ -378,8 +373,6 @@ class _HomePageState extends ConsumerState<HomePage>
       onNavigateToCustomControlURL: () => _selectPage(Page.customControl.value),
       onNavigateToUserSwitcher: () => _selectPage(Page.userSwitcher.value),
       onNavigateToDNSSettings: () => _selectPage(Page.dnsSettingsView.value),
-      onNavigateToL2RelaySettings: () =>
-          _selectPage(Page.l2RelaySettingsView.value),
       onNavigateToSubnetRouting: () => _selectPage(Page.subnetRouting.value),
       onNavigateToSplitTunneling: () => _selectPage(Page.splitTunnel.value),
       onNavigateToTailnetLock: () =>
@@ -436,7 +429,6 @@ class _HomePageState extends ConsumerState<HomePage>
       case Page.dnsSettingsView:
       case Page.subnetRouting:
       case Page.splitTunnel:
-      case Page.l2RelaySettingsView:
         return MainRailItem.settings;
       case Page.userSwitcher:
         return MainRailItem.account;
@@ -618,8 +610,7 @@ enum Page {
   runExitNodeView(11),
   dnsSettingsView(12),
   subnetRouting(13),
-  splitTunnel(14),
-  l2RelaySettingsView(15);
+  splitTunnel(14);
 
   const Page(this.value);
   final int value;

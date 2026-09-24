@@ -13,7 +13,6 @@ import 'dns_settings_view.dart';
 import 'exit_node_picker.dart';
 import 'health_view.dart';
 import 'home_page.dart';
-import 'l2_relay_settings_view.dart';
 import 'peer_messaging_inbox_view.dart';
 import 'peer_messaging_thread_view.dart';
 import 'peer_details_view.dart';
@@ -126,13 +125,6 @@ class App extends ConsumerWidget {
             onBackToSettings: () => Navigator.pop(_),
           ),
         );
-      case '/l2-relay-settings':
-        return MaterialPageRoute(
-          settings: settings,
-          builder: (_) => L2RelaySettingsView(
-            onBackToSettings: () => Navigator.pop(_),
-          ),
-        );
       case '/exit-nodes':
         return MaterialPageRoute(
           settings: settings,
@@ -213,8 +205,6 @@ class App extends ConsumerWidget {
                 Navigator.pushNamed(context, '/user-switcher'),
             onNavigateToDNSSettings: () =>
                 Navigator.pushNamed(context, '/dns-settings'),
-            onNavigateToL2RelaySettings: () =>
-                Navigator.pushNamed(context, '/l2-relay-settings'),
             onNavigateToSplitTunneling: () =>
                 Navigator.pushNamed(context, '/split-tunneling'),
             onNavigateToSubnetRouting: () =>

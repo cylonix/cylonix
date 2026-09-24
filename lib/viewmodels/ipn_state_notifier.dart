@@ -30,14 +30,8 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   StreamSubscription<IpnNotification>? _notificationSubscription;
   bool _isProcessingNotification = false;
   bool _initializingAlwaysUseDerp = false;
-  bool _initializingLocalDiscoveryRelay = false;
-  bool _initializingL2RelayCapture = false;
-  bool _initializingL2RelayVerboseDebug = false;
   bool _isTailchatInitialized = false;
   bool _isAlwaysUseDerpInitialized = false;
-  bool _isLocalDiscoveryRelayInitialized = false;
-  bool _isL2RelayCaptureInitialized = false;
-  bool _isL2RelayVerboseDebugInitialized = false;
   bool _checkedFilesWaiting = false;
   String? urlBrowsed;
   bool loginSent = false;
@@ -232,18 +226,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
           if (!_isAlwaysUseDerpInitialized) {
             _logger.d("Initializing always use DERP");
             _initAlwaysUseDerp();
-          }
-          if (!_isLocalDiscoveryRelayInitialized) {
-            _logger.d("Initializing local discovery relay");
-            _initLocalDiscoveryRelay();
-          }
-          if (!_isL2RelayCaptureInitialized) {
-            _logger.d("Initializing l2 relay capture");
-            _initL2RelayCapture();
-          }
-          if (!_isL2RelayVerboseDebugInitialized) {
-            _logger.d("Initializing l2 relay verbose debug");
-            _initL2RelayVerboseDebug();
           }
           if (!_isTailchatInitialized && !_initializingTailchat) {
             _logger.d("Initializing tailchat");
@@ -607,8 +589,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
   Future<void> start() async {
     _isTailchatInitialized = false;
     _isAlwaysUseDerpInitialized = false;
-    _isLocalDiscoveryRelayInitialized = false;
-    _isL2RelayCaptureInitialized = false;
     ref.read(localDiscoveryRelayProvider.notifier).setState(false);
     await _initialize();
   }
@@ -1164,81 +1144,6 @@ class IpnStateNotifier extends StateNotifier<AsyncValue<IpnState>> {
       // TODO: add a derp state to handle the error
     } finally {
       _initializingAlwaysUseDerp = false;
-    }
-  }
-
-  Future<void> _initLocalDiscoveryRelay() async {
-    if (_initializingLocalDiscoveryRelay) return;
-    _initializingLocalDiscoveryRelay = true;
-    try {
-      _logger.d("Initializing local discovery relay state");
-      final isSet = await _ipnService.getLocalDiscoveryRelay();
-      ref.read(localDiscoveryRelayProvider.notifier).setState(isSet);
-      _isLocalDiscoveryRelayInitialized = true;
-    } catch (e) {
-      _logger.e("Failed to initialize local discovery relay state: $e");
-    } finally {
-      _initializingLocalDiscoveryRelay = false;
-    }
-  }
-
-  Future<void> _initL2RelayCapture() async {
-    if (_initializingL2RelayCapture) return;
-    _initializingL2RelayCapture = true;
-    try {
-      _logger.d("Initializing l2 relay capture state");
-      final prefs = ref.read(sharedPreferencesProvider);
-      if (prefs.isLoading) {
-        _logger.d(
-          "SharedPreferences not ready, defer l2 relay capture initialization",
-        );
-        await Future.delayed(const Duration(milliseconds: 100));
-        _initializingL2RelayCapture = false;
-        _initL2RelayCapture();
-        return;
-      }
-
-      final captureEnabled = ref.read(l2RelayCaptureProvider);
-      _logger.d("L2 relay capture: $captureEnabled");
-      final isSet = await _ipnService.getL2RelayCapture();
-      if (captureEnabled && !isSet) {
-        await setL2RelayCapture(true);
-      }
-      _isL2RelayCaptureInitialized = true;
-    } catch (e) {
-      _logger.e("Failed to initialize l2 relay capture state: $e");
-    } finally {
-      _initializingL2RelayCapture = false;
-    }
-  }
-
-  Future<void> _initL2RelayVerboseDebug() async {
-    if (_initializingL2RelayVerboseDebug) return;
-    _initializingL2RelayVerboseDebug = true;
-    try {
-      _logger.d("Initializing l2 relay verbose debug state");
-      final prefs = ref.read(sharedPreferencesProvider);
-      if (prefs.isLoading) {
-        _logger.d(
-          "SharedPreferences not ready, defer l2 relay verbose debug initialization",
-        );
-        await Future.delayed(const Duration(milliseconds: 100));
-        _initializingL2RelayVerboseDebug = false;
-        _initL2RelayVerboseDebug();
-        return;
-      }
-
-      final verboseDebugEnabled = ref.read(l2RelayVerboseDebugProvider);
-      _logger.d("L2 relay verbose debug: ");
-      final isSet = await _ipnService.getL2RelayVerboseDebug();
-      if (verboseDebugEnabled != isSet) {
-        await setL2RelayVerboseDebug(verboseDebugEnabled);
-      }
-      _isL2RelayVerboseDebugInitialized = true;
-    } catch (e) {
-      _logger.e("Failed to initialize l2 relay verbose debug state: ");
-    } finally {
-      _initializingL2RelayVerboseDebug = false;
     }
   }
 

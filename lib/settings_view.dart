@@ -35,7 +35,6 @@ class SettingsView extends ConsumerStatefulWidget {
   final VoidCallback onNavigateToCustomControlURL;
   final VoidCallback onNavigateToUserSwitcher;
   final VoidCallback onNavigateToDNSSettings;
-  final VoidCallback onNavigateToL2RelaySettings;
   final VoidCallback onNavigateToSplitTunneling;
   final VoidCallback onNavigateToSubnetRouting;
   final VoidCallback onNavigateToTailnetLock;
@@ -54,7 +53,6 @@ class SettingsView extends ConsumerStatefulWidget {
     required this.onNavigateToCustomControlURL,
     required this.onNavigateToUserSwitcher,
     required this.onNavigateToDNSSettings,
-    required this.onNavigateToL2RelaySettings,
     required this.onNavigateToSplitTunneling,
     required this.onNavigateToSubnetRouting,
     required this.onNavigateToTailnetLock,
@@ -584,17 +582,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   ),
                   trailing: _trailingIcon,
                   onTap: widget.onNavigateToSubnetRouting,
-                ),
-                AdaptiveListTile.notched(
-                  title: const Text('Local Discovery Relay'),
-                  subtitle: const Text(
-                    'Relay printer, storage and game discovery et al '
-                    'across your mesh network',
-                    softWrap: true,
-                    maxLines: 3,
-                  ),
-                  trailing: _trailingIcon,
-                  onTap: widget.onNavigateToL2RelaySettings,
                 ),
                 if (Platform.isAndroid)
                   AdaptiveListTile.notched(
