@@ -20,6 +20,11 @@ class SystemTrayService {
   static Future<void> Function()? _onConnect;
   static Future<void> Function()? _onDisconnect;
 
+  /// Runs each time the tray brings the window back, before the native
+  /// show. The home page uses it to drop a stale minimize-to-tray prompt
+  /// so the window does not reappear with a dialog whose OK hides it again.
+  static void Function()? onShow;
+
   // Icon paths (asset paths for bundled icons)
   // Windows uses .ico files, macOS uses .png files
   static String get _iconConnected => Platform.isWindows
@@ -477,7 +482,7 @@ class SystemTrayService {
           MenuItemLabel(
             label: _displayName,
             image: avatarPath, // Now returns full path directly
-            onClicked: (menuItem) => _appWindow.show(),
+            onClicked: (menuItem) => show(),
           ),
         );
       }
@@ -485,7 +490,7 @@ class SystemTrayService {
         menuItems.add(
           MenuItemLabel(
             label: 'Email: $_email',
-            onClicked: (menuItem) => _appWindow.show(),
+            onClicked: (menuItem) => show(),
           ),
         );
       }
@@ -495,7 +500,7 @@ class SystemTrayService {
         menuItems.add(
           MenuItemLabel(
             label: 'Device: $_deviceName',
-            onClicked: (menuItem) => _appWindow.show(),
+            onClicked: (menuItem) => show(),
           ),
         );
       }
@@ -505,7 +510,7 @@ class SystemTrayService {
         MenuSeparator(),
         MenuItemLabel(
           label: 'Show Cylonix',
-          onClicked: (menuItem) => _appWindow.show(),
+          onClicked: (menuItem) => show(),
         ),
         MenuSeparator(),
         MenuItemLabel(
@@ -578,6 +583,7 @@ class SystemTrayService {
 
   static Future<void> show() async {
     if (!_isInitialized) return;
+    onShow?.call();
     await _appWindow.show();
   }
 

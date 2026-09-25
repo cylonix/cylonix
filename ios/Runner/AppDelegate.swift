@@ -899,6 +899,26 @@ import UserNotifications
         override func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool {
             return true
         }
+
+        // Closing the window hides it (orderOut) instead of minimizing it, and
+        // AppKit's default reopen only restores minimized windows, so a Dock
+        // click did nothing once the app was tucked away in the menu bar.
+        // Bring the main window back so the app can be reopened from the Dock
+        // as well as from the tray menu.
+        override func applicationShouldHandleReopen(
+            _: NSApplication,
+            hasVisibleWindows flag: Bool
+        ) -> Bool {
+            if flag {
+                return true
+            }
+            guard let window = mainFlutterWindow ?? NSApp.windows.first else {
+                return true
+            }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return false
+        }
     #endif
 
     private func setupShareNotificationObserver() {

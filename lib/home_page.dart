@@ -59,6 +59,12 @@ class _HomePageState extends ConsumerState<HomePage>
   Widget? _rightSide;
   StreamSubscription<void>? _shareRequestSub;
   bool _showingShareSheet = false;
+  // Closing the window again while the minimize-to-tray prompt is open must
+  // not stack a second prompt. The flag is set before the route is pushed
+  // (a fast double-click on close beats the first frame); the context is
+  // the prompt's own, recorded once its builder runs, for popping it.
+  bool _minimizeDialogShowing = false;
+  BuildContext? _minimizeDialogContext;
 
   @override
   void initState() {
@@ -72,6 +78,7 @@ class _HomePageState extends ConsumerState<HomePage>
     });
     if (Platform.isWindows || Platform.isMacOS) {
       windowManager.addListener(this);
+      SystemTrayService.onShow = _dismissMinimizeToTrayDialog;
     }
     WidgetsBinding.instance.platformDispatcher.onPlatformBrightnessChanged =
         () {
@@ -145,6 +152,9 @@ class _HomePageState extends ConsumerState<HomePage>
     WidgetsBinding.instance.removeObserver(this);
     if (Platform.isWindows || Platform.isMacOS) {
       windowManager.removeListener(this);
+      if (SystemTrayService.onShow == _dismissMinimizeToTrayDialog) {
+        SystemTrayService.onShow = null;
+      }
     }
     super.dispose();
   }
@@ -219,12 +229,38 @@ class _HomePageState extends ConsumerState<HomePage>
       return;
     }
 
+    // Closing again with the prompt still open: the window stays visible
+    // (preventClose) so every extra close click lands here. Pushing another
+    // prompt would stack them; each later OK then hides the window and the
+    // next "Show" from the tray uncovers the next prompt. Treat the repeat
+    // close as the user's answer instead.
+    if (_minimizeDialogShowing) {
+      _dismissMinimizeToTrayDialog();
+      await windowManager.hide();
+      return;
+    }
+
     await _showMinimizeToTrayDialog();
+  }
+
+  /// Pops the minimize-to-tray prompt if it is still up (the user closed
+  /// the window again, or the tray is bringing the window back).
+  void _dismissMinimizeToTrayDialog() {
+    final dialogContext = _minimizeDialogContext;
+    if (dialogContext == null || !dialogContext.mounted) {
+      return;
+    }
+    final route = ModalRoute.of(dialogContext);
+    if (route == null || !route.isCurrent) {
+      return;
+    }
+    Navigator.of(dialogContext).pop(false);
   }
 
   Future<void> _showMinimizeToTrayDialog() async {
     bool dontShowAgain = false;
 
+    _minimizeDialogShowing = true;
     await showAlertDialog(
       context,
       'Minimizing to System Tray',
@@ -234,6 +270,7 @@ class _HomePageState extends ConsumerState<HomePage>
           'in the system tray and select "Exit".',
       child: StatefulBuilder(
         builder: (context, setDialogState) {
+          _minimizeDialogContext = context;
           return Row(
             children: [
               Checkbox.adaptive(
@@ -244,6 +281,7 @@ class _HomePageState extends ConsumerState<HomePage>
                   });
                 },
               ),
+              const SizedBox(width: 8),
               const Text("Don't show this again"),
             ],
           );
@@ -258,6 +296,8 @@ class _HomePageState extends ConsumerState<HomePage>
         await windowManager.hide();
       },
     );
+    _minimizeDialogShowing = false;
+    _minimizeDialogContext = null;
   }
 
   void _initLogger() async {
