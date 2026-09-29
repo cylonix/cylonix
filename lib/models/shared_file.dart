@@ -119,13 +119,29 @@ class ShareRequest {
   /// [files] instead.
   final String text;
 
+  /// The on-disk manifest this request was read from (the Windows share
+  /// window hand-off), kept until the request has been presented so a
+  /// launch that dies before then can recover it. Null for requests that
+  /// arrived another way.
+  final String? manifestPath;
+
   const ShareRequest({
     required this.files,
     this.mode = ShareMode.fileDrop,
     this.ephemeral = false,
     this.source = 'unknown',
     this.text = '',
+    this.manifestPath,
   });
+
+  ShareRequest withManifestPath(String path) => ShareRequest(
+        files: files,
+        mode: mode,
+        ephemeral: ephemeral,
+        source: source,
+        text: text,
+        manifestPath: path,
+      );
 
   factory ShareRequest.fromJson(Map<String, dynamic> json) {
     final entries = (json['files'] as List<dynamic>?) ?? const [];

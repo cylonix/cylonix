@@ -61,18 +61,24 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
-  // Handle WM_COPYDATA for shared command lines
+  // WM_COPYDATA from another cylonix.exe process. dwData tells what the
+  // payload (a UTF-16 string) is:
+  //   0: a `--share ...` command line for the share window, which adds the
+  //      file to the send sheet (`onShare`);
+  //   1: the path of a share-request manifest for the main window, handed
+  //      over by a share window for the Peer Message path
+  //      (`onShareRequest`).
   if (message == WM_COPYDATA && flutter_controller_) {
     logStream << "Received WM_COPYDATA message\n";
     logStream.flush();
 
     COPYDATASTRUCT* cds = (COPYDATASTRUCT*)lparam;
     if (cds->lpData) {
-      // Extract command line
-      std::wstring cmd_line((wchar_t*)cds->lpData, cds->cbData / sizeof(wchar_t));
-      std::string narrow_cmd_line = WideToNarrow(cmd_line.c_str());
+      std::wstring payload((wchar_t*)cds->lpData, cds->cbData / sizeof(wchar_t));
+      std::string narrow_payload = WideToNarrow(payload.c_str());
+      const char* method = cds->dwData == 1 ? "onShareRequest" : "onShare";
 
-      logStream << "Received command line: '" << narrow_cmd_line << "'\n";
+      logStream << "Received " << method << ": '" << narrow_payload << "'\n";
 
       flutter::MethodChannel<> method_channel_{
         flutter_controller_->engine()->messenger(),
@@ -80,8 +86,8 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
         &flutter::StandardMethodCodec::GetInstance()
       };
       method_channel_.InvokeMethod(
-        "onShare",
-        std::make_unique<flutter::EncodableValue>(narrow_cmd_line)
+        method,
+        std::make_unique<flutter::EncodableValue>(narrow_payload)
       );
       SetForegroundWindow(hwnd);
       return TRUE;

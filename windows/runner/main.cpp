@@ -183,6 +183,60 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     }
     logStream.flush();
 
+    // A share window hands a "Peer Message" share to the main app by
+    // starting `cylonix.exe --share-request <manifest>`. When a main window
+    // is already up, forward the manifest path to it (WM_COPYDATA with
+    // dwData 1, which FlutterWindow delivers to Dart as `onShareRequest`)
+    // and exit; otherwise carry on as the main app, and Dart reads the
+    // argument at startup. Parsed from the wide command line since the path
+    // is sent as UTF-16.
+    if (!isShareWindow) {
+        std::wstring manifestPath;
+        int argc = 0;
+        wchar_t **argv = ::CommandLineToArgvW(::GetCommandLineW(), &argc);
+        if (argv != nullptr) {
+            for (int i = 1; i + 1 < argc; ++i) {
+                if (wcscmp(argv[i], L"--share-request") == 0) {
+                    manifestPath = argv[i + 1];
+                    break;
+                }
+            }
+            ::LocalFree(argv);
+        }
+        if (!manifestPath.empty()) {
+            logStream << GetTimestampString()
+                      << "Share request manifest: "
+                      << Utf8FromUtf16(manifestPath.c_str()) << std::endl;
+            HWND hwnd = FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"Cylonix");
+            logStream << "Existing main window HWND: " << hwnd << std::endl;
+            if (hwnd) {
+                COPYDATASTRUCT cds;
+                cds.dwData = 1;
+                cds.cbData = static_cast<DWORD>((manifestPath.length() + 1) *
+                                                sizeof(wchar_t));
+                cds.lpData = (PVOID)manifestPath.c_str();
+                bool sent = false;
+                for (int attempt = 0; attempt < 3; ++attempt) {
+                    if (SendMessageW(hwnd, WM_COPYDATA, 0, (LPARAM)&cds)) {
+                        sent = true;
+                        break;
+                    }
+                    Sleep(500);
+                }
+                logStream << (sent ? "Forwarded share request to main window\n"
+                                   : "Failed to forward share request; the "
+                                     "app picks the manifest up on its next "
+                                     "start\n");
+                logStream.flush();
+                SetForegroundWindow(hwnd);
+                ::CoUninitialize();
+                return 0;
+            }
+            logStream << "No main window; starting the app with the request\n";
+            logStream.flush();
+        }
+    }
+
     project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
     FlutterWindow window(project);

@@ -16,6 +16,7 @@ import 'providers/ipn.dart';
 import 'providers/peer_messaging.dart';
 import 'providers/share_file.dart';
 import 'services/ipn.dart';
+import 'services/windows_share_handoff.dart';
 import 'utils/logger.dart';
 import 'utils/peer_message_attachments.dart';
 import 'utils/utils.dart';
@@ -58,7 +59,9 @@ class ShareView extends ConsumerStatefulWidget {
 
   /// Running as the standalone share window (Windows `--share` process).
   /// Peer messages live in the main app's message store, which a second
-  /// process must not write to, so only File Drop is offered there.
+  /// process must not write to, so File Drop is handled here and Peer
+  /// Message hands the files over to the main app (like the Apple share
+  /// extension does) instead of showing the thread list.
   final bool standalone;
 
   const ShareView({
@@ -100,6 +103,11 @@ class _ShareViewState extends ConsumerState<ShareView> {
   StreamSubscription<ShareFileEvent>? _shareEventSub;
   static final _logger = Logger(tag: 'ShareView');
 
+  /// Standalone hand-off to the main app: in flight, and the hint shown
+  /// under the button once it has been attempted.
+  bool _handingOff = false;
+  String? _handOffHint;
+
   /// Entries that go out as attachments in Peer Message mode.
   List<SharedFile> get _attachmentFiles =>
       _sharedFiles.where((f) => f.isAttachment).toList();
@@ -109,7 +117,7 @@ class _ShareViewState extends ConsumerState<ShareView> {
   @override
   void initState() {
     super.initState();
-    _mode = widget.standalone ? ShareMode.fileDrop : widget.initialMode;
+    _mode = widget.initialMode;
     _captionController.text = widget.initialText;
     _shareEventSub = shareFileEventBus.on<ShareFileEvent>().listen((event) {
       _logger.i("Received share event: ${event.args}");
@@ -185,7 +193,7 @@ class _ShareViewState extends ConsumerState<ShareView> {
     // Text-only shares have nothing File Drop could send except the
     // synthetic .txt, so they stay in Peer Message mode.
     final textOnly = _sharedFiles.isEmpty && widget.initialText.isNotEmpty;
-    if (textOnly && _mode != ShareMode.peerMessage && !widget.standalone) {
+    if (textOnly && _mode != ShareMode.peerMessage) {
       _mode = ShareMode.peerMessage;
     }
     final empty = _sharedFiles.isEmpty && widget.initialText.isEmpty;
@@ -205,10 +213,12 @@ class _ShareViewState extends ConsumerState<ShareView> {
                     text: widget.initialText,
                   )
                 : _ShareHeaderView(files: _sharedFiles),
-            if (!widget.standalone && !textOnly) _buildModeSelector(context),
+            if (!textOnly) _buildModeSelector(context),
             Expanded(
               child: _mode == ShareMode.peerMessage
-                  ? _buildPeerMessageBody(context)
+                  ? (widget.standalone
+                      ? _buildHandOffPanel(context)
+                      : _buildPeerMessageBody(context))
                   : SharePeerDeviceList(
                       emptyMessage: 'No devices available to share with',
                       searchHintText: 'Search name or OS…',
@@ -407,6 +417,110 @@ class _ShareViewState extends ConsumerState<ShareView> {
 
       case TransferStatus.complete:
         return const Icon(Icons.check_circle, color: Colors.green);
+    }
+  }
+
+  // MARK: - Hand-off to the main app (standalone share window)
+
+  /// The peer-message path in the standalone share window: the thread list
+  /// and composer live in the main app, so this panel hands the files over
+  /// and opens Cylonix.
+  Widget _buildHandOffPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final hint = _handOffHint;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.forum_outlined,
+              size: 40,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 14),
+            Text('Send as a peer message', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              _handOffDescription,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _handingOff ? null : _handOffToApp,
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Continue in Cylonix'),
+            ),
+            if (hint != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                hint,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String get _handOffDescription {
+    final textItems = _sharedFiles.where((f) => !f.isAttachment).length;
+    final fileItems = _sharedFiles.length - textItems;
+    const intro =
+        'Cylonix opens so you can pick a conversation or start a new one. ';
+    if (fileItems == 0) {
+      return '${intro}The shared text is sent as the message itself, not as a '
+          'file, and reaches the peer even if it is offline right now.';
+    }
+    if (textItems > 0) {
+      return '${intro}The text becomes the message and the files go out as '
+          'attachments; they reach the peer even if it is offline right now.';
+    }
+    return '${intro}The files go out as attachments and reach the peer even '
+        'if it is offline right now.';
+  }
+
+  Future<void> _handOffToApp() async {
+    setState(() {
+      _handingOff = true;
+      _handOffHint = null;
+    });
+    final result = await WindowsShareHandoff.handOffToApp(
+      _sharedFiles,
+      text: widget.initialText,
+    );
+    _logger.i('Hand-off to app: $result files=${_sharedFiles.length}');
+    if (!mounted) return;
+    switch (result) {
+      case HandoffResult.started:
+        setState(() => _handOffHint = 'Opening Cylonix…');
+      case HandoffResult.notStarted:
+        // The manifest is on disk, so a retry would queue the same files
+        // twice; the button stays disabled and the app picks the request
+        // up on its next launch.
+        setState(() {
+          _handOffHint = 'Could not open Cylonix. Open it to finish sending; '
+              'the files are waiting there.';
+        });
+        return;
+      case HandoffResult.notWritten:
+        // Nothing is queued anywhere, so the user may try again.
+        setState(() {
+          _handingOff = false;
+          _handOffHint = 'Could not prepare the shared files for Cylonix.';
+        });
+        return;
+    }
+    // Leave the window up long enough for the launch to be dispatched and
+    // the hint to be read. The app owns the request from here.
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (mounted) {
+      await _finish();
     }
   }
 

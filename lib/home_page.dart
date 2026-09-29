@@ -27,6 +27,7 @@ import 'providers/share_file.dart';
 import 'providers/theme.dart';
 import 'services/android_taildrop_notifications.dart';
 import 'services/share_request_inbox.dart';
+import 'services/windows_share_handoff.dart';
 import 'services/system_tray_service.dart';
 import 'run_exit_node_view.dart';
 import 'settings_view.dart';
@@ -185,6 +186,9 @@ class _HomePageState extends ConsumerState<HomePage>
       return;
     }
     _logger.i("Presenting share request: $request");
+    // The Windows hand-off manifest stays on disk until here so a launch
+    // that died earlier could recover it; from now on the sheet owns it.
+    unawaited(WindowsShareHandoff.consume(request));
     if (Platform.isMacOS || Platform.isWindows) {
       // The window may be hidden in the tray when the share extension
       // hands a share over.
