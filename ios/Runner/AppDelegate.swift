@@ -13,6 +13,9 @@
 import NetworkExtension
 import Network
 import UserNotifications
+#if os(iOS)
+    import FileProvider
+#endif
 #if SWIFT_PACKAGE
     import WireGuardKitGo
 #endif
@@ -291,6 +294,9 @@ import UserNotifications
         setupPeerMessagingNotificationObserver()
         setupShareNotificationObserver()
         setupUserNotifications()
+        #if os(iOS)
+            prepareSharedDownloadsFolder()
+        #endif
         #if os(macOS)
             // Share hand-offs that could not be delivered through the URL
             // (e.g. written while the app was not running) are picked up
@@ -728,6 +734,52 @@ import UserNotifications
             .deliverImmediately
         )
     }
+
+    #if os(iOS)
+        /// The File Provider extension serves the app group's "File
+        /// Provider Storage" folder as the "Cylonix" location in Files with
+        /// no domain to register. Earlier builds used a replicated domain
+        /// and a "Downloads" folder; clean both up so nothing stale shows
+        /// in Files and no delivered file is left behind.
+        private func prepareSharedDownloadsFolder() {
+            guard let shared = FileManager.sharedFolderURL else { return }
+            let root = shared.appendingPathComponent(SharedDownloads.folderName, isDirectory: true)
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+            let legacy = shared.appendingPathComponent(SharedDownloads.legacyFolderName, isDirectory: true)
+            if let names = try? FileManager.default.contentsOfDirectory(atPath: legacy.path) {
+                for name in names where !name.hasPrefix(".") {
+                    let source = legacy.appendingPathComponent(name)
+                    var dest = root.appendingPathComponent(name)
+                    if FileManager.default.fileExists(atPath: dest.path) {
+                        dest = root.appendingPathComponent("\(UUID().uuidString)-\(name)")
+                    }
+                    do {
+                        try FileManager.default.moveItem(at: source, to: dest)
+                        wg_log(.info, message: "Migrated \(name) into the File Provider folder")
+                    } catch {
+                        wg_log(.error, message: "Could not migrate \(name): \(error)")
+                    }
+                }
+                try? FileManager.default.removeItem(at: legacy)
+            }
+
+            if #available(iOS 16.0, *) {
+                let stale = NSFileProviderDomain(
+                    identifier: NSFileProviderDomainIdentifier(rawValue: SharedDownloads.legacyDomainIdentifier),
+                    displayName: SharedDownloads.domainDisplayName
+                )
+                NSFileProviderManager.remove(stale) { error in
+                    if let error {
+                        wg_log(.debug, message: "Stale file provider domain not removed: \(error)")
+                    } else {
+                        wg_log(.info, message: "Removed stale file provider domain")
+                    }
+                }
+            }
+            NSFileProviderManager.default.signalEnumerator(for: .rootContainer) { _ in }
+        }
+    #endif
 
     private func setupFilesWaitingNotificationObserver() {
         // Observe Darwin notifications

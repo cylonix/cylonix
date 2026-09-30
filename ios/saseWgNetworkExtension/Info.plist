@@ -4,6 +4,8 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Cylonix saves photos and videos received from peers directly to your Photos library, like AirDrop.</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>
