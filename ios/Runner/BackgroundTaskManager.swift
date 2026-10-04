@@ -83,12 +83,19 @@ class BackgroundTaskManager {
             var peerMessagingTransferIDs: [String] = []
             var nonPeerMessagingFiles: [String] = []
             var photoLibrarySavedFiles: [String] = []
+            // Entries whose file is already gone (handled on an earlier
+            // pass, or imported by the extension) count as done so the
+            // record still gets cleared below; otherwise a record made up
+            // only of stale entries would never be released and would
+            // suppress re-announcements of those names.
+            var missingFiles: [String] = []
 
             for file in filesWaiting.Files {
                 let sourceURL = sourceDir.appendingPathComponent(file.Name)
 
                 if !FileManager.default.fileExists(atPath: sourceURL.path) {
                     wg_log(.error, message: "Source file not found: \(sourceURL.path)")
+                    missingFiles.append(file.Name)
                     continue
                 }
 
@@ -178,6 +185,11 @@ class BackgroundTaskManager {
                     wg_log(.info, message: "Suppressing auto-save notification for peer messaging transfers: \(peerMessagingTransferIDs)")
                 }
                 wg_log(.info, message: "Processed files: \(processedFiles.joined(separator: ", "))")
+            }
+            if !processedFiles.isEmpty || !missingFiles.isEmpty {
+                // Release the record only if the extension has not merged
+                // more files into it meanwhile; those get handled on the
+                // next pass.
                 groupDefaults.atomicUpdate(forKey: "FilesWaiting") { currentValue in
                     if currentValue as? String == filesWaitingJson {
                         return nil
